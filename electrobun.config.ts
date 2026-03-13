@@ -2,7 +2,7 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
   app: {
-    name: "codictate",
+    name: "Codictate",
     identifier: "codictate.electrobun.dev",
     version: "0.0.1",
   },
