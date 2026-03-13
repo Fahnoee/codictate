@@ -5,9 +5,13 @@ const soundPath = (filename: string) =>
 
 // Fire-and-forget — does not block the caller
 export const playStartSound = () => {
-  Bun.spawn(['afplay', soundPath('start.mp3')])
+  // TODO: ADD fun mode
+  // Bun.spawn(['afplay', soundPath('start.mp3')])
+  Bun.spawn(['afplay', soundPath('dictation-start.wav')])
 }
 
 export const playEndSound = () => {
-  Bun.spawn(['afplay', soundPath('end.mp3')])
+  // TODO: ADD fun mode
+  // Bun.spawn(['afplay', soundPath('end.mp3')])
+  Bun.spawn(['afplay', soundPath('dictation-stop.wav')])
 }

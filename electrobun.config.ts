@@ -19,9 +19,13 @@ export default {
       // -- Whisper (vendored by preBuild, not committed to git)
       "vendors/whisper/whisper-cli": "native-helpers/whisper-cli",
       "vendors/whisper/ggml-base.en.bin": "native-helpers/ggml-base.en.bin",
-      // -- Sounds
-      "src/assets/start.mp3": "sounds/start.mp3",
-      "src/assets/end.mp3": "sounds/end.mp3",
+      // -- Sounds (src/assets/sounds → app/sounds)
+      "src/assets/sounds/dictation-start.wav": "sounds/dictation-start.wav",
+      "src/assets/sounds/dictation-stop.wav": "sounds/dictation-stop.wav",
+      "src/assets/sounds/start.mp3": "sounds/start.mp3",
+      "src/assets/sounds/end.mp3": "sounds/end.mp3",
+      // -- Images (src/assets/images → app/images)
+      "src/assets/images/MacTrayIcon.svg": "images/MacTrayIcon.svg",
       // -- ffmpeg (vendored static binary, downloaded by preBuild)
       "vendors/ffmpeg/ffmpeg": "native-helpers/ffmpeg",
     },

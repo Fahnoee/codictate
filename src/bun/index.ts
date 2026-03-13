@@ -1,4 +1,4 @@
-import { BrowserView, BrowserWindow, Updater } from 'electrobun/bun'
+import { BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
 import { WebviewRPCType } from '../shared/types'
 import { findDevices } from './utils/ffmpeg/devices'
 import { AppConfig } from './AppConfig/AppConfig'
@@ -54,17 +54,47 @@ const rpc = BrowserView.defineRPC<WebviewRPCType>({
   },
 })
 
-const mainWindow = new BrowserWindow({
-  title: 'Codictate',
-  url,
-  frame: { width: 900, height: 700, x: 200, y: 200 },
-  rpc,
-})
+function createMainWindow() {
+  return new BrowserWindow({
+    title: 'Codictate',
+    url,
+    frame: { width: 900, height: 700, x: 200, y: 200 },
+    rpc,
+  })
+}
 
-const trayHandlers = setupTray(mainWindow, devices, UserAppConfig)
+let mainWindow = createMainWindow()
 
-// Small delay before sending initial state so the webview socket is ready
-const sendToWebview = (fn: () => void) => setTimeout(fn, 500)
+// Returns the existing window if still alive, otherwise recreates it.
+// Electrobun removes windows from its internal registry when they are closed,
+// so BrowserWindow.getById returning undefined is the reliable alive-check.
+function getOrCreateWindow(): BrowserWindow {
+  if (BrowserWindow.getById(mainWindow.id)) {
+    return mainWindow
+  }
+  mainWindow = createMainWindow()
+  // Re-send current state to the new window after it loads
+  setTimeout(() => {
+    rpc.send.updateStatus({ status: 'ready' })
+    keyboard.checkPermissions()
+  }, 500)
+  return mainWindow
+}
+
+const trayHandlers = setupTray(
+  getOrCreateWindow,
+  devices,
+  UserAppConfig,
+  () => {
+    // Stop the keyboard listener BEFORE quitting so the event tap is cleanly
+    // disabled. Utils.quit() calls _exit() which does NOT send SIGTERM to child
+    // processes, so we must kill the process explicitly first.
+    keyboard.stop()
+    // Brief delay to let the KeyListener process handle the kill signal and
+    // disable its event tap before we tear down the process tree.
+    setTimeout(() => Utils.quit(), 150)
+  }
+)
 
 let permissionPoll: ReturnType<typeof setInterval> | null = null
 
@@ -78,13 +108,11 @@ const keyboard = setupRecording(
     rpc.send.updatePermissions(permissions)
 
     if (permissions.inputMonitoring && permissions.microphone) {
-      // All granted — stop polling
       if (permissionPoll) {
         clearInterval(permissionPoll)
         permissionPoll = null
       }
     } else if (!permissionPoll) {
-      // Start polling every 3 s so the UI updates once the user grants access
       permissionPoll = setInterval(() => {
         keyboard.checkPermissions()
       }, 3000)
@@ -92,12 +120,13 @@ const keyboard = setupRecording(
   }
 )
 
-// Send initial status to the webview after it loads
-sendToWebview(() => {
+// Send initial state to the webview after it loads
+setTimeout(() => {
   rpc.send.updateStatus({ status: 'ready' })
   keyboard.checkPermissions()
-})
+}, 500)
 
+// Fallback cleanup — catches any exit path not handled above
 process.on('exit', () => keyboard.stop())
 
 console.log('Codictate started!')
