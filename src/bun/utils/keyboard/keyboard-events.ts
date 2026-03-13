@@ -71,22 +71,35 @@ export function startKeyboardListener(
   const decoder = new TextDecoder()
 
   ;(async () => {
+    // Buffer for incomplete lines — a single read() chunk can contain multiple
+    // JSON objects or a partial object split across two chunks.
+    let buffer = ''
+
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
 
-      try {
-        const parsed = JSON.parse(decoder.decode(value))
-        if (typeof parsed.keycode === 'number') {
-          onKeyDown(parsed as KeyEvent)
-        } else if (
-          parsed.status === 'permission_requested' ||
-          parsed.status === 'error'
-        ) {
-          console.error(`[KeyListener] ${parsed.message ?? parsed.status}`)
+      buffer += decoder.decode(value, { stream: true })
+
+      // Process every complete newline-terminated JSON line.
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? '' // keep any trailing incomplete line
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const parsed = JSON.parse(line)
+          if (typeof parsed.keycode === 'number') {
+            onKeyDown(parsed as KeyEvent)
+          } else if (
+            parsed.status === 'permission_requested' ||
+            parsed.status === 'error'
+          ) {
+            console.error(`[KeyListener] ${parsed.message ?? parsed.status}`)
+          }
+        } catch {
+          // Ignore malformed output lines from the native binary
         }
-      } catch {
-        // Ignore malformed output lines from the native binary
       }
     }
   })()
