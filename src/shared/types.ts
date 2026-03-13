@@ -1,19 +1,26 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { RPCSchema } from 'electrobun'
 
+export type AppStatus = 'ready' | 'recording' | 'transcribing'
+export type SettingsPane = 'inputMonitoring' | 'microphone'
+
 export type WebviewRPCType = {
-  // functions that execute in the main process
+  // Messages/requests handled by the Bun (main) process
   bun: RPCSchema<{
     requests: {
       startMicSession: { params: {}; response: boolean }
     }
     messages: {
       logBun: { msg: string }
+      openSystemPreferences: { pane: SettingsPane }
     }
   }>
-  // functions that execute in the browser context
+  // Messages/requests handled by the browser (webview)
   webview: RPCSchema<{
     requests: {}
-    messages: {}
+    messages: {
+      updatePermissions: { inputMonitoring: boolean; microphone: boolean }
+      updateStatus: { status: AppStatus }
+    }
   }>
 }

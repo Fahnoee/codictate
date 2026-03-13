@@ -1,12 +1,19 @@
 import { startRecording, stopRecording } from './utils/ffmpeg/start-rec'
-import { Key, startKeyboardListener } from './utils/keyboard/keyboard-events'
+import {
+  Key,
+  startKeyboardListener,
+  type PermissionStatus,
+} from './utils/keyboard/keyboard-events'
 import { playStartSound } from './utils/sound/play-sound'
 import { AppConfig } from './AppConfig/AppConfig'
 import type { TrayHandlers } from './setup-tray'
+import type { AppStatus } from '../shared/types'
 
 export const setupRecording = (
   appConfig: AppConfig,
-  { setTrayIdle, setTrayRecording, setTrayTranscribing }: TrayHandlers
+  { setTrayIdle, setTrayRecording, setTrayTranscribing }: TrayHandlers,
+  onStatusChange?: (status: AppStatus) => void,
+  onPermissions?: (status: PermissionStatus) => void
 ) => {
   let ffmpeg: ReturnType<typeof Bun.spawn> | null = null
 
@@ -18,13 +25,18 @@ export const setupRecording = (
         console.log('START RECORD')
         playStartSound()
         setTrayRecording()
+        onStatusChange?.('recording')
         ffmpeg = await startRecording(
           appConfig,
           () => {
             ffmpeg = null
             setTrayTranscribing()
+            onStatusChange?.('transcribing')
           },
-          () => setTrayIdle()
+          () => {
+            setTrayIdle()
+            onStatusChange?.('ready')
+          }
         )
         return
       }
@@ -40,6 +52,7 @@ export const setupRecording = (
         ffmpeg.kill()
         ffmpeg = null
         setTrayIdle()
+        onStatusChange?.('ready')
         console.log('Recording cancelled')
       }
     },
@@ -51,7 +64,8 @@ export const setupRecording = (
         control: false,
         shift: false,
       },
-    ]
+    ],
+    onPermissions
   )
 
   return keyboard

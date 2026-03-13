@@ -34,13 +34,19 @@ export interface KeyEvent {
   shift: boolean
 }
 
+export interface PermissionStatus {
+  inputMonitoring: boolean
+  microphone: boolean
+}
+
 // Set when the keyboard listener starts so pasteToActiveWindow can use
 // the already-trusted KeyListener process instead of osascript/System Events.
 let keyListenerPaste: (() => void) | null = null
 
 export function startKeyboardListener(
   onKeyDown: (event: KeyEvent) => void,
-  swallowRules: KeyEvent[] = []
+  swallowRules: KeyEvent[] = [],
+  onPermissions?: (status: PermissionStatus) => void
 ) {
   const binaryPath = join(import.meta.dir, '../native-helpers/KeyListener')
   const proc = Bun.spawn([binaryPath], { stdout: 'pipe', stdin: 'pipe' })
@@ -49,7 +55,7 @@ export function startKeyboardListener(
   proc.stdin.write(config + '\n')
   proc.stdin.flush()
 
-  // Warn if the process exits early (e.g. missing Input Monitoring permission)
+  // If the process exits with an error, Input Monitoring was denied
   proc.exited.then((code) => {
     if (code !== 0) {
       console.error(
@@ -57,11 +63,17 @@ export function startKeyboardListener(
           `If shortcuts are not working, grant Input Monitoring permission:\n` +
           `System Settings > Privacy & Security > Input Monitoring → add this app, then restart.`
       )
+      onPermissions?.({ inputMonitoring: false, microphone: false })
     }
   })
 
   const paste = () => {
     proc.stdin.write(JSON.stringify({ command: 'paste' }) + '\n')
+    proc.stdin.flush()
+  }
+
+  const checkPermissions = () => {
+    proc.stdin.write(JSON.stringify({ command: 'check_permissions' }) + '\n')
     proc.stdin.flush()
   }
 
@@ -71,8 +83,6 @@ export function startKeyboardListener(
   const decoder = new TextDecoder()
 
   ;(async () => {
-    // Buffer for incomplete lines — a single read() chunk can contain multiple
-    // JSON objects or a partial object split across two chunks.
     let buffer = ''
 
     while (true) {
@@ -83,14 +93,25 @@ export function startKeyboardListener(
 
       // Process every complete newline-terminated JSON line.
       const lines = buffer.split('\n')
-      buffer = lines.pop() ?? '' // keep any trailing incomplete line
+      buffer = lines.pop() ?? ''
 
       for (const line of lines) {
         if (!line.trim()) continue
         try {
           const parsed = JSON.parse(line)
+
           if (typeof parsed.keycode === 'number') {
             onKeyDown(parsed as KeyEvent)
+          } else if (parsed.status === 'started') {
+            onPermissions?.({
+              inputMonitoring: parsed.inputMonitoring ?? false,
+              microphone: parsed.microphone ?? false,
+            })
+          } else if (parsed.type === 'permissions') {
+            onPermissions?.({
+              inputMonitoring: parsed.inputMonitoring ?? false,
+              microphone: parsed.microphone ?? false,
+            })
           } else if (
             parsed.status === 'permission_requested' ||
             parsed.status === 'error'
@@ -110,6 +131,7 @@ export function startKeyboardListener(
       proc.kill()
     },
     paste,
+    checkPermissions,
   }
 }
 

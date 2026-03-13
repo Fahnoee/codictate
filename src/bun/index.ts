@@ -9,6 +9,13 @@ import { setupRecording } from './setup-recording'
 const DEV_SERVER_PORT = 5173
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`
 
+const SYSTEM_PREFS_URLS = {
+  inputMonitoring:
+    'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
+  microphone:
+    'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+}
+
 async function getMainViewUrl(): Promise<string> {
   const channel = await Updater.localInfo.channel()
   if (channel === 'dev') {
@@ -40,6 +47,9 @@ const rpc = BrowserView.defineRPC<WebviewRPCType>({
     },
     messages: {
       logBun: ({ msg }) => console.log('Bun Log:', msg),
+      openSystemPreferences: ({ pane }) => {
+        Bun.spawn(['open', SYSTEM_PREFS_URLS[pane]])
+      },
     },
   },
 })
@@ -52,7 +62,41 @@ const mainWindow = new BrowserWindow({
 })
 
 const trayHandlers = setupTray(mainWindow, devices, UserAppConfig)
-const keyboard = setupRecording(UserAppConfig, trayHandlers)
+
+// Small delay before sending initial state so the webview socket is ready
+const sendToWebview = (fn: () => void) => setTimeout(fn, 500)
+
+let permissionPoll: ReturnType<typeof setInterval> | null = null
+
+const keyboard = setupRecording(
+  UserAppConfig,
+  trayHandlers,
+  (status) => {
+    rpc.send.updateStatus({ status })
+  },
+  (permissions) => {
+    rpc.send.updatePermissions(permissions)
+
+    if (permissions.inputMonitoring && permissions.microphone) {
+      // All granted — stop polling
+      if (permissionPoll) {
+        clearInterval(permissionPoll)
+        permissionPoll = null
+      }
+    } else if (!permissionPoll) {
+      // Start polling every 3 s so the UI updates once the user grants access
+      permissionPoll = setInterval(() => {
+        keyboard.checkPermissions()
+      }, 3000)
+    }
+  }
+)
+
+// Send initial status to the webview after it loads
+sendToWebview(() => {
+  rpc.send.updateStatus({ status: 'ready' })
+  keyboard.checkPermissions()
+})
 
 process.on('exit', () => keyboard.stop())
 

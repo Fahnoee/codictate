@@ -1,11 +1,13 @@
 import Cocoa
 import Foundation
+import AVFoundation
 
 // Input Monitoring is the correct permission for CGEvent.tapCreate on modern macOS.
 // AXIsProcessTrusted() (Accessibility) is a separate permission that is NOT sufficient.
 let hasPermission = CGPreflightListenEventAccess()
+let micAuthorized = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
 
-print("{\"status\": \"started\", \"inputMonitoring\": \(hasPermission)}")
+print("{\"status\": \"started\", \"inputMonitoring\": \(hasPermission), \"microphone\": \(micAuthorized)}")
 fflush(stdout)
 
 if !hasPermission {
@@ -71,6 +73,14 @@ let commandThread = Thread {
             // Small delay so the clipboard write is guaranteed to complete first
             Thread.sleep(forTimeInterval: 0.05)
             pasteViaKeyEvent()
+        } else if command == "check_permissions" {
+            let micOk = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+            // inputMonitoring is true by definition — we're running
+            let json = "{\"type\": \"permissions\", \"inputMonitoring\": true, \"microphone\": \(micOk)}"
+            outputQueue.async {
+                print(json)
+                fflush(stdout)
+            }
         }
     }
 }
