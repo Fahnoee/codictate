@@ -1,0 +1,22 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"lib": [
+			"ES2020",
+			"DOM",
+			"DOM.Iterable"
+		],
+		"types": [],
+		"composite": true
+	},
+	"include": [
+		"src/mainview",
+		"src/shared"
+	],
+	"exclude": [
+		"node_modules",
+		"dist",
+		"build",
+		"../../package/dist"
+	]
+}

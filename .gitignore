@@ -18,6 +18,14 @@ dist*
 # production
 /build
 
+# vendored binaries (downloaded by preBuild script, never commit these)
+/vendors
+artifacts/
+
+# guard against accidentally committing large binaries back into source tree
+src/bun/utils/whisper/whisper-cli
+src/bun/utils/whisper/ggml-base.en.bin
+
 # misc
 .DS_Store
 *.pem

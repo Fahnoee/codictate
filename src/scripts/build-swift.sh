@@ -1,0 +1,1 @@
+swiftc src/bun/utils/keyboard/KeyListener.swift -o src/bun/utils/keyboard/KeyListener

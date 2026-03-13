@@ -1,0 +1,22 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"lib": [
+			"ES2020"
+		],
+		"types": [
+			"bun-types"
+		],
+		"composite": true
+	},
+	"include": [
+		"src/bun",
+		"src/shared"
+	],
+	"exclude": [
+		"node_modules",
+		"dist",
+		"build",
+		"../../package/dist"
+	]
+}

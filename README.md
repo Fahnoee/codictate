@@ -59,3 +59,7 @@ When you run `bun run dev` (without HMR):
 - **Vite settings**: Edit `vite.config.ts`
 - **Window settings**: Edit `src/bun/index.ts`
 - **App metadata**: Edit `electrobun.config.ts`
+
+# TSConfig setup
+The setup is made beucase the `DOM` types should not be used in the `Bun` runtime.
+It messes up with things like `ReadableStream`.
