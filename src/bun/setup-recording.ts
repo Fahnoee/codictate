@@ -1,6 +1,7 @@
 import { startRecording, stopRecording } from './utils/ffmpeg/start-rec'
 import {
   Key,
+  SHORTCUTS,
   startKeyboardListener,
   type PermissionStatus,
 } from './utils/keyboard/keyboard-events'
@@ -16,10 +17,11 @@ export const setupRecording = (
   onPermissions?: (status: PermissionStatus) => void
 ) => {
   let ffmpeg: ReturnType<typeof Bun.spawn> | null = null
+  const shortcut = SHORTCUTS[appConfig.getShortcutId()]
 
   const keyboard = startKeyboardListener(
     async (keyEvent) => {
-      const isShortcut = keyEvent.keycode === Key.space && keyEvent.option
+      const isShortcut = shortcut.isMatch(keyEvent)
 
       if (isShortcut && ffmpeg === null) {
         console.log('START RECORD')
@@ -56,15 +58,7 @@ export const setupRecording = (
         console.log('Recording cancelled')
       }
     },
-    [
-      {
-        keycode: Key.space,
-        option: true,
-        command: false,
-        control: false,
-        shift: false,
-      },
-    ],
+    [shortcut.swallowRule],
     onPermissions
   )
 

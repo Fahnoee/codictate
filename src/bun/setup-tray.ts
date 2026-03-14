@@ -18,11 +18,12 @@ export type TrayHandlers = {
 const trayIconPath = join(import.meta.dir, '../images/MacTrayIcon.svg')
 
 export const setupTray = (
-  getOrCreateWindow: () => BrowserWindow,
+  getOrCreateWindow: (onAction?: () => void) => BrowserWindow,
   devices: Record<string, string>,
   appConfig: AppConfig,
   onQuit: () => void,
-  onDeviceSelected?: (device: number) => void
+  onDeviceSelected?: (device: number) => void,
+  onOpenSettings?: () => void
 ): TrayHandlers => {
   const tray = new Tray({
     image: trayIconPath,
@@ -36,6 +37,7 @@ export const setupTray = (
 
   const buildMenu = (selectedDevice: number) => [
     { type: 'normal' as const, label: 'Open Codictate', action: 'open' },
+    { type: 'normal' as const, label: 'Settings', action: 'open-settings' },
     { type: 'divider' as const },
     {
       type: 'normal' as const,
@@ -52,6 +54,9 @@ export const setupTray = (
     const event = e as { data: { action: string } }
     if (event.data.action === 'open') {
       getOrCreateWindow().focus()
+    }
+    if (event.data.action === 'open-settings') {
+      onOpenSettings?.()
     }
     if (event.data.action === 'quit') onQuit()
     handleDeviceAction(event.data.action, appConfig, (device) => {

@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import type { ShortcutId } from '../../../shared/types'
 
 export const KeyCode: Record<number, string> = {
   49: 'space',
@@ -38,6 +39,70 @@ export interface PermissionStatus {
   inputMonitoring: boolean
   microphone: boolean
   accessibility: boolean
+}
+
+export interface ShortcutDefinition {
+  displayKeys: string[]
+  swallowRule: KeyEvent
+  isMatch: (e: KeyEvent) => boolean
+}
+
+export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
+  'option-space': {
+    displayKeys: ['⌥', 'Space'],
+    swallowRule: {
+      keycode: Key.space,
+      option: true,
+      command: false,
+      control: false,
+      shift: false,
+    },
+    isMatch: (e) => e.keycode === Key.space && e.option,
+  },
+  'right-option': {
+    displayKeys: ['Right ⌥'],
+    swallowRule: {
+      keycode: Key.rightOption,
+      option: true,
+      command: false,
+      control: false,
+      shift: false,
+    },
+    isMatch: (e) => e.keycode === Key.rightOption && e.option,
+  },
+  'option-f1': {
+    displayKeys: ['⌥', 'F1'],
+    swallowRule: {
+      keycode: Key.f1,
+      option: true,
+      command: false,
+      control: false,
+      shift: false,
+    },
+    isMatch: (e) => e.keycode === Key.f1 && e.option,
+  },
+  'option-f2': {
+    displayKeys: ['⌥', 'F2'],
+    swallowRule: {
+      keycode: Key.f2,
+      option: true,
+      command: false,
+      control: false,
+      shift: false,
+    },
+    isMatch: (e) => e.keycode === Key.f2 && e.option,
+  },
+  'option-enter': {
+    displayKeys: ['⌥', 'Enter'],
+    swallowRule: {
+      keycode: Key.enter,
+      option: true,
+      command: false,
+      control: false,
+      shift: false,
+    },
+    isMatch: (e) => e.keycode === Key.enter && e.option,
+  },
 }
 
 // Set when the keyboard listener starts so pasteToActiveWindow can use

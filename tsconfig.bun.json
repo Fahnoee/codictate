@@ -11,7 +11,8 @@
 	},
 	"include": [
 		"src/bun",
-		"src/shared"
+		"src/shared",
+		"scripts/**/*.ts"
 	],
 	"exclude": [
 		"node_modules",

@@ -4,8 +4,11 @@ import type {
   WebviewRPCType,
   PermissionState,
   DeviceInfo,
+  AppSettings,
   SettingsPane,
+  ShortcutId,
 } from '../shared/types'
+
 import type { AppStatus } from '../shared/types'
 import { appEvents } from './app-events'
 
@@ -26,6 +29,13 @@ const rpc = Electroview.defineRPC<WebviewRPCType>({
       updateDevice: (data: DeviceInfo) => {
         queryClient.setQueryData(['devices'], data)
       },
+      updateSettings: (data: AppSettings) => {
+        queryClient.setQueryData(['settings'], data)
+        appEvents.emit('settings', data)
+      },
+      openSettingsScreen: () => {
+        appEvents.emit('openSettingsScreen')
+      },
     },
   },
 })
@@ -45,4 +55,12 @@ export async function fetchPermissions(): Promise<PermissionState> {
 
 export async function fetchDevices(): Promise<DeviceInfo> {
   return rpc.request.getDevices({})
+}
+
+export async function fetchSettings(): Promise<AppSettings> {
+  return rpc.request.getSettings({})
+}
+
+export async function setShortcut(shortcutId: ShortcutId): Promise<boolean> {
+  return rpc.request.setSettings({ shortcutId })
 }

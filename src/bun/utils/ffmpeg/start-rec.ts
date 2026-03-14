@@ -22,7 +22,7 @@ export const startRecording = async (
       '44100',
       RECORDING_PATH,
       '-t',
-      '60', // limit after 60 seconds
+      '120', // limit after 60 seconds
       '-y',
     ],
     {

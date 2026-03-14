@@ -155,13 +155,29 @@ func callback(
         return nil
     }
 
-    if type == .keyDown {
+    if type == .keyDown || type == .flagsChanged {
         let keycode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
         let option = flags.contains(.maskAlternate)
         let command = flags.contains(.maskCommand)
         let control = flags.contains(.maskControl)
         let shift = flags.contains(.maskShift)
+
+        // flagsChanged fires on both press AND release of a modifier key.
+        // We only want to emit/swallow on the press (when the modifier flag
+        // just became SET). Detect a release by checking whether the modifier
+        // corresponding to this keycode is now absent in the flags.
+        if type == .flagsChanged {
+            let isPress: Bool
+            switch keycode {
+            case 58, 61: isPress = option    // left / right option
+            case 56, 60: isPress = shift     // left / right shift
+            case 55, 54: isPress = command   // left / right command
+            case 59, 62: isPress = control   // left / right control
+            default: return Unmanaged.passRetained(event)
+            }
+            if !isPress { return Unmanaged.passRetained(event) }
+        }
 
         // Decide swallow synchronously (fast array scan, no I/O) so the
         // callback returns in microseconds before dispatching the output.
@@ -178,6 +194,7 @@ func callback(
 }
 
 let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+    | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
 
 guard let tap = CGEvent.tapCreate(
     tap: .cgSessionEventTap,

@@ -34,6 +34,8 @@ export default {
     mac: {
       icons: "icon.iconset",
       bundleCEF: false,
+      // codesign: true,
+      // notarize: true,
       entitlements: {
         "com.apple.security.device.audio-input":
           "Microphone access for dictation recording",

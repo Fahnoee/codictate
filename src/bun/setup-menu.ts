@@ -9,12 +9,14 @@ export const setupApplicationMenu = (
   devices: Record<string, string>,
   appConfig: AppConfig,
   getOrCreateWindow: () => BrowserWindow,
-  onDeviceSelected?: (device: number) => void
+  onDeviceSelected?: (device: number) => void,
+  onOpenSettings?: () => void
 ): { rebuildDeviceMenu: (selectedDevice: number) => void } => {
   const buildFullMenu = (selectedDevice: number) => [
     {
       submenu: [
         { label: 'Show Window', action: 'show-window' },
+        { label: 'Settings', action: 'open-settings' },
         { type: 'separator' as const },
         { label: 'Quit Codictate', role: 'quit' as const },
       ],
@@ -49,6 +51,10 @@ export const setupApplicationMenu = (
   Electrobun.events.on('application-menu-clicked', (e) => {
     if (e.data.action === 'show-window') {
       getOrCreateWindow().focus()
+      return
+    }
+    if (e.data.action === 'open-settings') {
+      onOpenSettings?.()
       return
     }
     handleDeviceAction(e.data.action, appConfig, (device) => {

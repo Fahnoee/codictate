@@ -1,11 +1,18 @@
-import type { AppStatus, PermissionState, SettingsPane } from '../shared/types'
+import type {
+  AppStatus,
+  AppSettings,
+  PermissionState,
+  SettingsPane,
+} from '../shared/types'
 
 export type { PermissionState }
 
 type EventMap = {
   permissions: PermissionState
   status: AppStatus
+  settings: AppSettings
   openSettings: SettingsPane
+  openSettingsScreen: void
 }
 
 type Unsubscribe = () => void
@@ -23,8 +30,13 @@ class AppEventBus {
     return () => set.delete(listener as (data: unknown) => void)
   }
 
-  emit<K extends keyof EventMap>(event: K, data: EventMap[K]) {
-    this.listeners.get(event)?.forEach((fn) => fn(data))
+  emit<K extends keyof EventMap>(
+    ...args: EventMap[K] extends void
+      ? [event: K]
+      : [event: K, data: EventMap[K]]
+  ) {
+    const [event, data] = args
+    this.listeners.get(event)?.forEach((fn) => fn(data as unknown))
   }
 }
 

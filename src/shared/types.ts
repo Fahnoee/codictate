@@ -8,6 +8,18 @@ export type SettingsPane =
   | 'accessibility'
   | 'documents'
 
+export type ShortcutId =
+  | 'option-space'
+  | 'right-option'
+  | 'option-f1'
+  | 'option-f2'
+  | 'option-enter'
+
+export interface AppSettings {
+  shortcutId: ShortcutId
+  maxRecordingDuration: number
+}
+
 export interface PermissionState {
   inputMonitoring: boolean
   microphone: boolean
@@ -27,6 +39,8 @@ export type WebviewRPCType = {
       startMicSession: { params: {}; response: boolean }
       getPermissions: { params: {}; response: PermissionState }
       getDevices: { params: {}; response: DeviceInfo }
+      getSettings: { params: {}; response: AppSettings }
+      setSettings: { params: { shortcutId: ShortcutId }; response: boolean }
     }
     messages: {
       logBun: { msg: string }
@@ -40,6 +54,8 @@ export type WebviewRPCType = {
       updatePermissions: PermissionState
       updateStatus: { status: AppStatus }
       updateDevice: DeviceInfo
+      updateSettings: AppSettings
+      openSettingsScreen: {}
     }
   }>
 }
