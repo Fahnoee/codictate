@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { appEvents, type PermissionState } from "./app-events";
+import { fetchPermissions } from "./rpc";
 import type { AppStatus, SettingsPane } from "../shared/types";
 
 // ─── Permission Screen ────────────────────────────────────────────────────────
@@ -72,7 +74,11 @@ function PermissionScreen({
   permissions: PermissionState;
   onOpenSettings: (pane: SettingsPane) => void;
 }) {
-  const allGranted = permissions.inputMonitoring && permissions.microphone;
+  const allGranted =
+    permissions.inputMonitoring &&
+    permissions.microphone &&
+    permissions.accessibility &&
+    permissions.documents;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#07090f] text-white select-none px-8">
@@ -118,13 +124,29 @@ function PermissionScreen({
               pane="microphone"
               onOpen={onOpenSettings}
             />
+            <PermissionRow
+              granted={permissions.accessibility}
+              icon="🔑"
+              title="Accessibility"
+              description="Simulate keystrokes to paste transcription into other apps."
+              pane="accessibility"
+              onOpen={onOpenSettings}
+            />
+            <PermissionRow
+              granted={permissions.documents}
+              icon="📁"
+              title="Files & Folders"
+              description="Save transcription history and recordings to your Documents folder."
+              pane="documents"
+              onOpen={onOpenSettings}
+            />
           </div>
 
           {!allGranted && (
             <p className="mt-4 text-[11px] text-white/20 text-center leading-relaxed">
               This screen updates automatically once permissions are granted.
               <br />
-              You may need to restart the app after Input Monitoring.
+              You may need to restart the app after granting Input Monitoring.
             </p>
           )}
         </div>
@@ -220,34 +242,48 @@ function ReadyScreen({ status }: { status: AppStatus }) {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
+const DEFAULT_PERMISSIONS: PermissionState = {
+  inputMonitoring: false,
+  microphone: false,
+  accessibility: false,
+  documents: false,
+};
+
 export default function App() {
-  const [permissions, setPermissions] = useState<PermissionState>({
-    inputMonitoring: false,
-    microphone: false,
+  const { data: permissions } = useQuery({
+    queryKey: ["permissions"],
+    queryFn: fetchPermissions,
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (
+        d?.inputMonitoring &&
+        d?.microphone &&
+        d?.accessibility &&
+        d?.documents
+      )
+        return false;
+      return 3000;
+    },
+    refetchOnWindowFocus: true,
+    staleTime: 1000,
   });
+
   const [status, setStatus] = useState<AppStatus>("ready");
-  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const unsub1 = appEvents.on("permissions", (p) => {
-      setPermissions(p);
-      setHydrated(true);
-    });
-    const unsub2 = appEvents.on("status", (s) => {
-      setStatus(s);
-      setHydrated(true);
-    });
-    return () => {
-      unsub1();
-      unsub2();
-    };
+    return appEvents.on("status", (s) => setStatus(s));
   }, []);
 
   const openSettings = useCallback((pane: SettingsPane) => {
     appEvents.emit("openSettings", pane);
   }, []);
 
-  if (!hydrated) {
+  const p = permissions ?? DEFAULT_PERMISSIONS;
+
+  const allPermissionsGranted =
+    p.inputMonitoring && p.microphone && p.accessibility && p.documents;
+
+  if (!permissions) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#07090f]">
         <div className="w-1.5 h-1.5 rounded-full bg-white/20 animate-pulse" />
@@ -255,16 +291,8 @@ export default function App() {
     );
   }
 
-  const allPermissionsGranted =
-    permissions.inputMonitoring && permissions.microphone;
-
   if (!allPermissionsGranted) {
-    return (
-      <PermissionScreen
-        permissions={permissions}
-        onOpenSettings={openSettings}
-      />
-    );
+    return <PermissionScreen permissions={p} onOpenSettings={openSettings} />;
   }
 
   return <ReadyScreen status={status} />;

@@ -4,9 +4,22 @@ import AVFoundation
 
 // Input Monitoring is the correct permission for CGEvent.tapCreate on modern macOS.
 let hasPermission = CGPreflightListenEventAccess()
-let micAuthorized = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
 
-print("{\"status\": \"started\", \"inputMonitoring\": \(hasPermission), \"microphone\": \(micAuthorized)}")
+// Request microphone proactively so the user sees the dialog at startup instead
+// of being surprised during the first recording.
+var micAuthorized = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+if !micAuthorized {
+    let sem = DispatchSemaphore(value: 0)
+    AVCaptureDevice.requestAccess(for: .audio) { granted in
+        micAuthorized = granted
+        sem.signal()
+    }
+    sem.wait()
+}
+
+let hasAccessibility = AXIsProcessTrusted()
+
+print("{\"status\": \"started\", \"inputMonitoring\": \(hasPermission), \"microphone\": \(micAuthorized), \"accessibility\": \(hasAccessibility)}")
 fflush(stdout)
 
 if !hasPermission {
@@ -114,7 +127,8 @@ let commandThread = Thread {
 
         case "check_permissions":
             let micOk = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-            let permMsg = "{\"type\": \"permissions\", \"inputMonitoring\": true, \"microphone\": \(micOk)}"
+            let axOk = AXIsProcessTrusted()
+            let permMsg = "{\"type\": \"permissions\", \"inputMonitoring\": true, \"microphone\": \(micOk), \"accessibility\": \(axOk)}"
             outputQueue.async { print(permMsg); fflush(stdout) }
 
         case "quit":

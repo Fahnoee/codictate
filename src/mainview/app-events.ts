@@ -1,14 +1,10 @@
-import type { AppStatus, SettingsPane } from '../shared/types'
+import type { AppStatus, PermissionState, SettingsPane } from '../shared/types'
 
-export interface PermissionState {
-  inputMonitoring: boolean
-  microphone: boolean
-}
+export type { PermissionState }
 
 type EventMap = {
   permissions: PermissionState
   status: AppStatus
-  // emitted by UI components, consumed by main.tsx which forwards to Bun via rpc
   openSettings: SettingsPane
 }
 

@@ -12,6 +12,7 @@
     "postbuild": "chmod +x build/dev-macos-arm64/react-tailwind-vite-dev.app/Contents/Resources/native-helpers/KeyListener"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.90.21",
     "electrobun": "1.15.1",
     "pbcopy": "^0.0.1",
     "react": "19.2.4",

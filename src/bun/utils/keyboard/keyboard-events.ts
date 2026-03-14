@@ -37,6 +37,7 @@ export interface KeyEvent {
 export interface PermissionStatus {
   inputMonitoring: boolean
   microphone: boolean
+  accessibility: boolean
 }
 
 // Set when the keyboard listener starts so pasteToActiveWindow can use
@@ -50,20 +51,25 @@ export function startKeyboardListener(
 ) {
   const binaryPath = join(import.meta.dir, '../native-helpers/KeyListener')
   const proc = Bun.spawn([binaryPath], { stdout: 'pipe', stdin: 'pipe' })
+  let procAlive = true
 
   const config = JSON.stringify({ swallow: swallowRules })
   proc.stdin.write(config + '\n')
   proc.stdin.flush()
 
-  // If the process exits with an error, Input Monitoring was denied
   proc.exited.then((code) => {
+    procAlive = false
     if (code !== 0) {
       console.error(
         `[KeyListener] exited with code ${code}.\n` +
           `If shortcuts are not working, grant Input Monitoring permission:\n` +
           `System Settings > Privacy & Security > Input Monitoring → add this app, then restart.`
       )
-      onPermissions?.({ inputMonitoring: false, microphone: false })
+      onPermissions?.({
+        inputMonitoring: false,
+        microphone: false,
+        accessibility: false,
+      })
     }
   })
 
@@ -106,11 +112,13 @@ export function startKeyboardListener(
             onPermissions?.({
               inputMonitoring: parsed.inputMonitoring ?? false,
               microphone: parsed.microphone ?? false,
+              accessibility: parsed.accessibility ?? false,
             })
           } else if (parsed.type === 'permissions') {
             onPermissions?.({
               inputMonitoring: parsed.inputMonitoring ?? false,
               microphone: parsed.microphone ?? false,
+              accessibility: parsed.accessibility ?? false,
             })
           } else if (
             parsed.status === 'permission_requested' ||
@@ -126,6 +134,9 @@ export function startKeyboardListener(
   })()
 
   return {
+    get isAlive() {
+      return procAlive
+    },
     stop: () => {
       keyListenerPaste = null
       proc.kill()

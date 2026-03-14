@@ -1,0 +1,40 @@
+import { Electroview } from 'electrobun/view'
+import { QueryClient } from '@tanstack/react-query'
+import type {
+  WebviewRPCType,
+  PermissionState,
+  SettingsPane,
+} from '../shared/types'
+import type { AppStatus } from '../shared/types'
+import { appEvents } from './app-events'
+
+export const queryClient = new QueryClient()
+
+// rpc is not exported — the inferred type references an internal electrobun path
+// that TypeScript cannot name in declaration files (TS2742). All external access
+// goes through the typed helpers below.
+const rpc = Electroview.defineRPC<WebviewRPCType>({
+  handlers: {
+    messages: {
+      updatePermissions: (data: PermissionState) => {
+        queryClient.setQueryData(['permissions'], data)
+        appEvents.emit('permissions', data)
+      },
+      updateStatus: ({ status }: { status: AppStatus }) =>
+        appEvents.emit('status', status),
+    },
+  },
+})
+
+appEvents.on('openSettings', (pane: SettingsPane) => {
+  rpc.send.openSystemPreferences({ pane })
+})
+
+// Initialize the Electroview bridge here so main.tsx doesn't need to import rpc.
+new Electroview({ rpc })
+
+// ─── Typed helpers for consumers ──────────────────────────────────────────────
+
+export async function fetchPermissions(): Promise<PermissionState> {
+  return rpc.request.getPermissions({})
+}
