@@ -48,6 +48,12 @@ export default {
       bundleCEF: false,
     },
   },
+  release: {
+    // GitHub Releases download URL for the codictate-releases repo.
+    // Electrobun appends /{channel}/update.json → resolves to the release asset.
+    baseUrl:
+      "https://github.com/EmilLykke/codictate-releases/releases/download",
+  },
   scripts: {
     preBuild: "./scripts/pre-build.ts",
     postBuild: "./scripts/post-build.ts",

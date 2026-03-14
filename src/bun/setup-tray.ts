@@ -11,6 +11,9 @@ export type TrayHandlers = {
   setTrayRecording: () => void
   setTrayTranscribing: () => void
   rebuildDeviceMenu: (selectedDevice: number) => void
+  setUpdateChecking: () => void
+  showUpdateReady: () => void
+  resetUpdateState: () => void
 }
 
 // Resolves to app/images/MacTrayIcon.png in the bundle.
@@ -23,7 +26,9 @@ export const setupTray = (
   appConfig: AppConfig,
   onQuit: () => void,
   onDeviceSelected?: (device: number) => void,
-  onOpenSettings?: () => void
+  onOpenSettings?: () => void,
+  onApplyUpdate?: () => void,
+  onCheckForUpdate?: () => void
 ): TrayHandlers => {
   const tray = new Tray({
     image: trayIconPath,
@@ -35,9 +40,34 @@ export const setupTray = (
     height: 16,
   })
 
+  type UpdateState = 'idle' | 'checking' | 'ready'
+  let updateState: UpdateState = 'idle'
+
+  const updateMenuItem = () => {
+    if (updateState === 'ready')
+      return {
+        type: 'normal' as const,
+        label: '⬆ Restart to Update',
+        action: 'restart-to-update',
+      }
+    if (updateState === 'checking')
+      return {
+        type: 'normal' as const,
+        label: 'Checking for Updates…',
+        action: 'noop',
+      }
+    return {
+      type: 'normal' as const,
+      label: 'Check for Updates',
+      action: 'check-for-update',
+    }
+  }
+
   const buildMenu = (selectedDevice: number) => [
     { type: 'normal' as const, label: 'Open Codictate', action: 'open' },
     { type: 'normal' as const, label: 'Settings', action: 'open-settings' },
+    { type: 'divider' as const },
+    updateMenuItem(),
     { type: 'divider' as const },
     {
       type: 'normal' as const,
@@ -58,6 +88,8 @@ export const setupTray = (
     if (event.data.action === 'open-settings') {
       onOpenSettings?.()
     }
+    if (event.data.action === 'check-for-update') onCheckForUpdate?.()
+    if (event.data.action === 'restart-to-update') onApplyUpdate?.()
     if (event.data.action === 'quit') onQuit()
     handleDeviceAction(event.data.action, appConfig, (device) => {
       tray.setMenu(buildMenu(device))
@@ -71,5 +103,17 @@ export const setupTray = (
     setTrayTranscribing: () => tray.setTitle(' …'),
     rebuildDeviceMenu: (selectedDevice: number) =>
       tray.setMenu(buildMenu(selectedDevice)),
+    setUpdateChecking: () => {
+      updateState = 'checking'
+      tray.setMenu(buildMenu(appConfig.getAudioDevice()))
+    },
+    showUpdateReady: () => {
+      updateState = 'ready'
+      tray.setMenu(buildMenu(appConfig.getAudioDevice()))
+    },
+    resetUpdateState: () => {
+      updateState = 'idle'
+      tray.setMenu(buildMenu(appConfig.getAudioDevice()))
+    },
   }
 }

@@ -108,6 +108,12 @@ menuHandlers = setupApplicationMenu(
   onOpenSettings
 )
 
+const onApplyUpdate = async () => {
+  if (Updater.updateInfo()?.updateReady) {
+    await Updater.applyUpdate()
+  }
+}
+
 trayHandlers = setupTray(
   (onAction) => win.getOrCreateWindow(onAction),
   devices,
@@ -117,7 +123,9 @@ trayHandlers = setupTray(
     setTimeout(() => Utils.quit(), 150)
   },
   onDeviceSelected,
-  onOpenSettings
+  onOpenSettings,
+  onApplyUpdate,
+  () => checkForUpdates()
 )
 
 let permissionPoll: ReturnType<typeof setInterval> | null = null
@@ -161,5 +169,35 @@ setTimeout(pushInitialState, 500)
 
 Electrobun.events.on('before-quit', () => keyboard.stop())
 process.on('exit', () => keyboard.stop())
+
+async function checkForUpdates() {
+  try {
+    const channel = await Updater.localInfo.channel()
+    if (channel === 'dev') return
+
+    trayHandlers.setUpdateChecking()
+
+    const updateInfo = await Updater.checkForUpdate()
+    if (!updateInfo.updateAvailable) {
+      trayHandlers.resetUpdateState()
+      return
+    }
+
+    await Updater.downloadUpdate()
+
+    if (Updater.updateInfo()?.updateReady) {
+      trayHandlers.showUpdateReady()
+    } else {
+      trayHandlers.resetUpdateState()
+    }
+  } catch (e) {
+    console.error('Update check failed:', e)
+    trayHandlers.resetUpdateState()
+  }
+}
+
+// First check 10 s after launch, then every 4 hours.
+setTimeout(checkForUpdates, 10_000)
+setInterval(checkForUpdates, 4 * 60 * 60 * 1_000)
 
 console.log('Codictate started!')

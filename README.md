@@ -1,65 +1,85 @@
-# React + Tailwind + Vite Electrobun Template
+# Codictate
 
-A fast Electrobun desktop app template with React, Tailwind CSS, and Vite for hot module replacement (HMR).
+macOS dictation app built with Electrobun, React, and Bun. Press a shortcut, speak, and your transcribed text is pasted wherever your cursor is.
 
-## Getting Started
+## Development
 
 ```bash
-# Install dependencies
 bun install
 
-# Development without HMR (uses bundled assets)
+# Dev (no HMR)
 bun run dev
 
-# Development with HMR (recommended)
+# Dev with HMR (recommended — Vite hot reload)
 bun run dev:hmr
-
-# Build for production
-bun run build
-
-# Build for production release
-bun run build:prod
 ```
 
-## How HMR Works
+## Building
 
-When you run `bun run dev:hmr`:
+```bash
+bun run build:canary    # canary build
+bun run build:stable    # stable build
+bun run build:all       # both
+```
 
-1. **Vite dev server** starts on `http://localhost:5173` with HMR enabled
-2. **Electrobun** starts and detects the running Vite server
-3. The app loads from the Vite dev server instead of bundled assets
-4. Changes to React components update instantly without full page reload
+Builds require a `.env` file in the project root. Copy `.env.example` and fill in your values:
 
-When you run `bun run dev` (without HMR):
+```bash
+cp .env.example .env
+```
 
-1. Electrobun starts and loads from `views://mainview/index.html`
-2. You need to rebuild (`bun run build`) to see changes
+## Releasing
+
+```bash
+bun run release:canary    # bump version, build, publish canary
+bun run release:stable    # bump version, build, publish stable
+bun run release           # both channels
+```
+
+Each release:
+1. Bumps the patch version in `electrobun.config.ts`
+2. Runs the full build
+3. Creates a versioned GitHub release (e.g. `v0.0.2-canary`) with all artifacts
+4. Updates the fixed `canary` / `stable` pointer release with `update.json` for the in-app updater
+
+After releasing, commit the version bump:
+```bash
+git add electrobun.config.ts && git commit -m "chore: bump version to vX.X.X"
+```
+
+Artifacts are published to [EmilLykke/codictate-releases](https://github.com/EmilLykke/codictate-releases).
 
 ## Project Structure
 
 ```
-├── src/
-│   ├── bun/
-│   │   └── index.ts        # Main process (Electrobun/Bun)
-│   └── mainview/
-│       ├── App.tsx         # React app component
-│       ├── main.tsx        # React entry point
-│       ├── index.html      # HTML template
-│       └── index.css       # Tailwind CSS
-├── electrobun.config.ts    # Electrobun configuration
-├── vite.config.ts          # Vite configuration
-├── tailwind.config.js      # Tailwind configuration
-└── package.json
+src/
+  bun/                  # Main process (Bun/Electrobun)
+    index.ts            # App entry point
+    setup-window.ts     # Window + RPC setup
+    setup-tray.ts       # Tray menu
+    setup-menu.ts       # Application menu
+    setup-recording.ts  # Keyboard listener + recording pipeline
+    AppConfig/          # User settings persistence
+    utils/
+      keyboard/         # Swift KeyListener + event definitions
+      whisper/          # Transcription (whisper-cli)
+      ffmpeg/           # Audio recording + device detection
+  mainview/             # React frontend (Vite)
+    App.tsx
+    components/
+      Permissions/
+      Ready/
+      Settings/
+scripts/
+  pre-build.ts          # Downloads vendored binaries (whisper, ffmpeg)
+  post-build.ts         # Patches .app bundle (plist, icon, binary rename)
+  release.sh            # Release pipeline
+electrobun.config.ts    # App config, version, build settings
 ```
 
-## Customizing
+## Requirements
 
-- **React components**: Edit files in `src/mainview/`
-- **Tailwind theme**: Edit `tailwind.config.js`
-- **Vite settings**: Edit `vite.config.ts`
-- **Window settings**: Edit `src/bun/index.ts`
-- **App metadata**: Edit `electrobun.config.ts`
-
-# TSConfig setup
-The setup is made beucase the `DOM` types should not be used in the `Bun` runtime.
-It messes up with things like `ReadableStream`.
+- macOS 13+, Apple Silicon
+- [Bun](https://bun.sh) v1.3+
+- [gh CLI](https://cli.github.com) (for releases)
+- Xcode Command Line Tools (for Swift compilation)
