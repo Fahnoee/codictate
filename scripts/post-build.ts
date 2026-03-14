@@ -1,28 +1,32 @@
-// Runs after every Electrobun build (dev and production).
-// Patches Info.plist with display name, usage descriptions, and dock icon.
-// The launcher binary rename is skipped for dev builds because Electrobun's
-// dev runner hardcodes the name "launcher" when spawning the app.
+// Runs inside Electrobun's build pipeline after the .app bundle is assembled.
+// Electrobun reads icon.iconset/ directly (mac.icons in electrobun.config.ts).
+// The iconset is committed to the repo, but this script regenerates missing
+// sizes so a fresh clone still builds correctly.
 
 import { join } from "path";
-import { existsSync, renameSync, mkdirSync, rmSync } from "fs";
+import { existsSync, renameSync, readdirSync, mkdirSync } from "fs";
 
 const buildDir = process.env.ELECTROBUN_BUILD_DIR;
-const appName = process.env.ELECTROBUN_APP_NAME;
 const buildEnv = process.env.ELECTROBUN_BUILD_ENV;
 
-if (!buildDir || !appName) {
-  console.error(
-    "[post-build] Missing ELECTROBUN_BUILD_DIR or ELECTROBUN_APP_NAME",
-  );
+if (!buildDir) {
+  console.error("[post-build] Missing ELECTROBUN_BUILD_DIR");
   process.exit(1);
 }
 
-const contentsDir = join(buildDir, `${appName}.app`, "Contents");
+const appBundle = readdirSync(buildDir).find((f) => f.endsWith(".app"));
+if (!appBundle) {
+  console.error(`[post-build] No .app bundle found in ${buildDir}`);
+  process.exit(1);
+}
+console.log(`[post-build] Patching bundle: ${appBundle}`);
+
+const contentsDir = join(buildDir, appBundle, "Contents");
 const macosDir = join(contentsDir, "MacOS");
-const resourcesDir = join(contentsDir, "Resources");
 const plistPath = join(contentsDir, "Info.plist");
 
-// --- Patch Info.plist ---
+// ─── Patch Info.plist ─────────────────────────────────────────────────────────
+
 const plist = (command: string) =>
   Bun.spawnSync(["/usr/libexec/PlistBuddy", "-c", command, plistPath], {
     stdio: ["ignore", "pipe", "pipe"],
@@ -30,9 +34,7 @@ const plist = (command: string) =>
 
 const setOrAdd = (key: string, value: string) => {
   const result = plist(`Set :${key} ${value}`);
-  if (result.exitCode !== 0) {
-    plist(`Add :${key} string ${value}`);
-  }
+  if (result.exitCode !== 0) plist(`Add :${key} string ${value}`);
 };
 
 setOrAdd("CFBundleDisplayName", "Codictate");
@@ -41,75 +43,44 @@ setOrAdd(
   '"Codictate uses the microphone to record your voice for dictation."',
 );
 
-// --- Dock icon ---
-// Convert the dock icon → AppIcon.icns and set CFBundleIconFile.
-// sips + iconutil are pre-installed on every Mac — no extra tooling needed.
-const sourceIcon = join("src", "assets", "images", "MacDocIcon.png");
+// ─── Ensure icon.iconset is populated ────────────────────────────────────────
+
+const iconsetDir = join(import.meta.dir, "..", "icon.iconset");
+const sourceIcon = join(import.meta.dir, "..", "src", "assets", "images", "MacDocIcon.png");
+
+const iconSizes = [
+  { size: 16, scale: 1 }, { size: 16, scale: 2 },
+  { size: 32, scale: 1 }, { size: 32, scale: 2 },
+  { size: 128, scale: 1 }, { size: 128, scale: 2 },
+  { size: 256, scale: 1 }, { size: 256, scale: 2 },
+  { size: 512, scale: 1 }, { size: 512, scale: 2 },
+];
 
 if (existsSync(sourceIcon)) {
-  const iconsetDir = join(buildDir, "AppIcon.iconset");
-  const icnsPath = join(resourcesDir, "AppIcon.icns");
+  const missing = iconSizes.filter(({ size, scale }) => {
+    const label = scale === 1 ? `icon_${size}x${size}.png` : `icon_${size}x${size}@2x.png`;
+    return !existsSync(join(iconsetDir, label));
+  });
 
-  try {
+  if (missing.length > 0) {
     mkdirSync(iconsetDir, { recursive: true });
-    mkdirSync(resourcesDir, { recursive: true });
-
-    // macOS icon sizes required by the iconset format
-    const sizes: { size: number; scale: number }[] = [
-      { size: 16, scale: 1 },
-      { size: 16, scale: 2 },
-      { size: 32, scale: 1 },
-      { size: 32, scale: 2 },
-      { size: 128, scale: 1 },
-      { size: 128, scale: 2 },
-      { size: 256, scale: 1 },
-      { size: 256, scale: 2 },
-      { size: 512, scale: 1 },
-      { size: 512, scale: 2 },
-    ];
-
-    for (const { size, scale } of sizes) {
+    for (const { size, scale } of missing) {
       const px = size * scale;
-      const label =
-        scale === 1
-          ? `icon_${size}x${size}.png`
-          : `icon_${size}x${size}@2x.png`;
-      const out = join(iconsetDir, label);
+      const label = scale === 1 ? `icon_${size}x${size}.png` : `icon_${size}x${size}@2x.png`;
       Bun.spawnSync(
-        ["sips", "-z", String(px), String(px), sourceIcon, "--out", out],
+        ["sips", "-z", String(px), String(px), sourceIcon, "--out", join(iconsetDir, label)],
         { stdio: ["ignore", "ignore", "pipe"] },
       );
     }
-
-    const result = Bun.spawnSync(
-      ["iconutil", "-c", "icns", iconsetDir, "-o", icnsPath],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-
-    if (result.exitCode === 0) {
-      setOrAdd("CFBundleIconFile", "AppIcon");
-      console.log("[post-build] Dock icon set: AppIcon.icns");
-    } else {
-      console.warn("[post-build] iconutil failed:", result.stderr?.toString());
-    }
-  } catch (err) {
-    console.warn("[post-build] Could not generate dock icon:", err);
-  } finally {
-    if (existsSync(iconsetDir)) {
-      rmSync(iconsetDir, { recursive: true, force: true });
-    }
+    console.log(`[post-build] Generated ${missing.length} missing icon(s) in icon.iconset/`);
   }
-} else {
-  console.warn(`[post-build] Dock icon source not found: ${sourceIcon}`);
 }
 
-// Rename launcher → Codictate only for distribution builds.
-// Dev builds must keep the "launcher" name — Electrobun's dev runner
-// spawns it by that hardcoded path and will crash otherwise.
+// ─── Rename launcher binary (non-dev only) ────────────────────────────────────
+
 if (buildEnv !== "dev") {
   const launcherPath = join(macosDir, "launcher");
   const newBinaryPath = join(macosDir, "Codictate");
-
   if (existsSync(launcherPath)) {
     renameSync(launcherPath, newBinaryPath);
     setOrAdd("CFBundleExecutable", "Codictate");
@@ -117,4 +88,4 @@ if (buildEnv !== "dev") {
   }
 }
 
-console.log("[post-build] Patched Info.plist");
+console.log("[post-build] Done");

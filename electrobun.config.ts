@@ -26,11 +26,13 @@ export default {
       "src/assets/sounds/end.mp3": "sounds/end.mp3",
       // -- Images (src/assets/images → app/images)
       "src/assets/images/MacTrayIcon.svg": "images/MacTrayIcon.svg",
+      "src/assets/images/MacDocIcon.png": "images/MacDocIcon.png",
       // -- ffmpeg (vendored static binary, downloaded by preBuild)
       "vendors/ffmpeg/ffmpeg": "native-helpers/ffmpeg",
     },
     watchIgnore: ["dist/**"],
     mac: {
+      icons: "icon.iconset",
       bundleCEF: false,
       entitlements: {
         "com.apple.security.device.audio-input":
