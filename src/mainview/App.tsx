@@ -1,69 +1,114 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "motion/react";
 import { appEvents, type PermissionState } from "./app-events";
-import { fetchPermissions } from "./rpc";
-import type { AppStatus, SettingsPane } from "../shared/types";
+import { fetchPermissions, fetchDevices } from "./rpc";
+import type { AppStatus, DeviceInfo, SettingsPane } from "../shared/types";
+
+// ─── Shared motion variants ───────────────────────────────────────────────────
+
+const EASE_OUT: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 10 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.06, duration: 0.35, ease: EASE_OUT },
+  }),
+  exit: { opacity: 0, y: -6, transition: { duration: 0.2 } },
+};
 
 // ─── Permission Screen ────────────────────────────────────────────────────────
 
-interface PermissionRowProps {
-  granted: boolean;
-  icon: string;
-  title: string;
-  description: string;
-  pane: SettingsPane;
-  onOpen: (pane: SettingsPane) => void;
-}
-
 function PermissionRow({
   granted,
-  icon,
-  title,
+  label,
   description,
   pane,
+  index,
   onOpen,
-}: PermissionRowProps) {
+}: {
+  granted: boolean;
+  label: string;
+  description: string;
+  pane: SettingsPane;
+  index: number;
+  onOpen: (pane: SettingsPane) => void;
+}) {
   return (
-    <div
-      className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${
-        granted
-          ? "border-white/8 bg-white/3"
-          : "border-amber-500/20 bg-amber-500/5"
+    <motion.div
+      custom={index}
+      variants={fadeUp}
+      initial="hidden"
+      animate="visible"
+      layout
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors duration-300 ${
+        granted ? "border-white/6 bg-white/3" : "border-white/10 bg-white/2"
       }`}
     >
-      <div
-        className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${
-          granted ? "bg-white/6" : "bg-amber-500/10"
-        }`}
-      >
-        {icon}
+      {/* Status dot */}
+      <div className="shrink-0 w-5 flex items-center justify-center">
+        <AnimatePresence mode="wait">
+          {granted ? (
+            <motion.span
+              key="check"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.4, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+              className="block w-[7px] h-[7px] rounded-full bg-emerald-400"
+            />
+          ) : (
+            <motion.span
+              key="dot"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.4, opacity: 0 }}
+              className="block w-[7px] h-[7px] rounded-full bg-white/20"
+            />
+          )}
+        </AnimatePresence>
       </div>
 
+      {/* Text */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-sm font-medium text-white/80">{title}</span>
-          {granted ? (
-            <span className="text-[10px] font-medium text-emerald-400/80 bg-emerald-400/10 px-2 py-0.5 rounded-full">
-              Granted
-            </span>
-          ) : (
-            <span className="text-[10px] font-medium text-amber-400/80 bg-amber-400/10 px-2 py-0.5 rounded-full">
-              Required
-            </span>
+        <div className="flex items-baseline gap-2">
+          <span
+            className={`text-[13px] font-medium leading-none transition-colors duration-300 ${granted ? "text-white/60" : "text-white/80"}`}
+          >
+            {label}
+          </span>
+          {granted && (
+            <motion.span
+              initial={{ opacity: 0, x: -4 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="text-[10px] text-emerald-400/60 font-medium"
+            >
+              granted
+            </motion.span>
           )}
         </div>
-        <p className="text-xs text-white/30 leading-relaxed">{description}</p>
+        <p className="text-[11px] text-white/25 mt-0.5 leading-snug">
+          {description}
+        </p>
       </div>
 
-      {!granted && (
-        <button
-          onClick={() => onOpen(pane)}
-          className="shrink-0 text-xs font-medium text-white/50 hover:text-white/80 border border-white/10 hover:border-white/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-        >
-          Open Settings →
-        </button>
-      )}
-    </div>
+      {/* Action */}
+      <AnimatePresence>
+        {!granted && (
+          <motion.button
+            initial={{ opacity: 0, x: 6 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 6 }}
+            onClick={() => onOpen(pane)}
+            className="shrink-0 text-[11px] text-white/35 hover:text-white/70 border border-white/8 hover:border-white/20 px-2.5 py-1 rounded-lg transition-colors duration-200 cursor-pointer"
+          >
+            Allow →
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -74,82 +119,136 @@ function PermissionScreen({
   permissions: PermissionState;
   onOpenSettings: (pane: SettingsPane) => void;
 }) {
-  const allGranted =
-    permissions.inputMonitoring &&
-    permissions.microphone &&
-    permissions.accessibility &&
-    permissions.documents;
+  const grantedCount = [
+    permissions.inputMonitoring,
+    permissions.microphone,
+    permissions.accessibility,
+    permissions.documents,
+  ].filter(Boolean).length;
+
+  const allGranted = grantedCount === 4;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#07090f] text-white select-none px-8">
-      <div className="w-full max-w-sm">
-        {/* Header */}
-        <div className="flex flex-col items-center mb-10">
-          <div className="w-14 h-14 rounded-2xl border border-white/10 flex items-center justify-center text-2xl mb-5">
-            ⏺
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[#070810] text-white select-none px-6">
+      <div className="w-full max-w-[340px]">
+        {/* Logo area */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          className="flex flex-col items-center mb-8"
+        >
+          {/* Waveform logo mark */}
+          <div className="relative w-12 h-12 mb-4 flex items-end justify-center gap-[3px]">
+            {[0.4, 0.65, 1, 0.8, 0.55, 0.75, 0.45].map((h, i) => (
+              <div
+                key={i}
+                className="w-[3px] rounded-full bg-white/20"
+                style={{ height: `${h * 100}%` }}
+              />
+            ))}
           </div>
-          <h1 className="text-xl font-semibold tracking-tight mb-1">
+          <h1 className="text-[15px] font-semibold tracking-tight text-white/80">
             Codictate
           </h1>
-          <p className="text-xs text-white/30">Local voice dictation</p>
+          <p className="text-[11px] text-white/25 mt-0.5">
+            A few things before we start
+          </p>
+        </motion.div>
+
+        {/* Progress bar */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.4 }}
+          className="mb-4"
+        >
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-[10px] text-white/25 font-medium uppercase tracking-wider">
+              Permissions
+            </span>
+            <span className="text-[10px] text-white/25">
+              {grantedCount} / 4
+            </span>
+          </div>
+          <div className="h-[2px] bg-white/6 rounded-full overflow-hidden">
+            <motion.div
+              className={`h-full rounded-full ${allGranted ? "bg-emerald-400" : "bg-white/30"}`}
+              initial={{ width: 0 }}
+              animate={{ width: `${(grantedCount / 4) * 100}%` }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            />
+          </div>
+        </motion.div>
+
+        {/* Permission rows */}
+        <div className="flex flex-col gap-1.5">
+          <PermissionRow
+            granted={permissions.inputMonitoring}
+            label="Input Monitoring"
+            description="Detect the ⌥Space shortcut while the app is in background"
+            pane="inputMonitoring"
+            index={0}
+            onOpen={onOpenSettings}
+          />
+          <PermissionRow
+            granted={permissions.microphone}
+            label="Microphone"
+            description="Record your voice to transcribe into text"
+            pane="microphone"
+            index={1}
+            onOpen={onOpenSettings}
+          />
+          <PermissionRow
+            granted={permissions.accessibility}
+            label="Accessibility"
+            description="Simulate keystrokes to paste transcription into other apps"
+            pane="accessibility"
+            index={2}
+            onOpen={onOpenSettings}
+          />
+          <PermissionRow
+            granted={permissions.documents}
+            label="Files & Folders"
+            description="Save recordings and transcription history"
+            pane="documents"
+            index={3}
+            onOpen={onOpenSettings}
+          />
         </div>
 
-        {/* Setup card */}
-        <div className="border border-white/8 rounded-2xl p-5 bg-white/2">
-          <div className="mb-4">
-            <h2 className="text-sm font-semibold text-white/70 mb-1">
-              {allGranted ? "All set!" : "Setup required"}
-            </h2>
-            <p className="text-xs text-white/30 leading-relaxed">
-              {allGranted
-                ? "Codictate has everything it needs."
-                : "Grant the following permissions so Codictate can listen for your shortcut and record your voice."}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <PermissionRow
-              granted={permissions.inputMonitoring}
-              icon="⌨"
-              title="Input Monitoring"
-              description="Detect the ⌥Space shortcut globally, even when the app is in the background."
-              pane="inputMonitoring"
-              onOpen={onOpenSettings}
-            />
-            <PermissionRow
-              granted={permissions.microphone}
-              icon="🎙"
-              title="Microphone"
-              description="Record your voice to transcribe it into text."
-              pane="microphone"
-              onOpen={onOpenSettings}
-            />
-            <PermissionRow
-              granted={permissions.accessibility}
-              icon="🔑"
-              title="Accessibility"
-              description="Simulate keystrokes to paste transcription into other apps."
-              pane="accessibility"
-              onOpen={onOpenSettings}
-            />
-            <PermissionRow
-              granted={permissions.documents}
-              icon="📁"
-              title="Files & Folders"
-              description="Save transcription history and recordings to your Documents folder."
-              pane="documents"
-              onOpen={onOpenSettings}
-            />
-          </div>
-
+        {/* Footer note */}
+        <AnimatePresence>
           {!allGranted && (
-            <p className="mt-4 text-[11px] text-white/20 text-center leading-relaxed">
-              This screen updates automatically once permissions are granted.
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ delay: 0.5, duration: 0.3 }}
+              className="mt-5 text-[10px] text-white/15 text-center leading-relaxed"
+            >
+              Updates live — return to this window after granting each
+              permission.
               <br />
-              You may need to restart the app after granting Input Monitoring.
-            </p>
+              Input Monitoring requires an app restart.
+            </motion.p>
           )}
-        </div>
+        </AnimatePresence>
+
+        {/* All granted state */}
+        <AnimatePresence>
+          {allGranted && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-5 flex flex-col items-center gap-1"
+            >
+              <div className="text-[11px] text-emerald-400/70 font-medium">
+                All set — ready to dictate
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -157,85 +256,249 @@ function PermissionScreen({
 
 // ─── Ready Screen ─────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: AppStatus }) {
-  if (status === "recording") {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
-        </span>
-        <span className="text-xs text-red-400/80 font-medium">Recording…</span>
-      </div>
-    );
-  }
-
-  if (status === "transcribing") {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-        <span className="text-xs text-amber-400/80 font-medium">
-          Transcribing…
-        </span>
-      </div>
-    );
-  }
+function RecordingOrb({ status }: { status: AppStatus }) {
+  const isRecording = status === "recording";
+  const isTranscribing = status === "transcribing";
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-      <span className="text-xs text-white/25">Ready</span>
+    <div className="relative flex items-center justify-center w-20 h-20">
+      {/* Outer pulse ring — only while recording */}
+      <AnimatePresence>
+        {isRecording && (
+          <motion.span
+            key="pulse-ring"
+            className="absolute inset-0 rounded-full border border-red-500/30"
+            initial={{ scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1.35, opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Mid ring */}
+      <AnimatePresence>
+        {isRecording && (
+          <motion.span
+            key="mid-ring"
+            className="absolute inset-0 rounded-full border border-red-500/20"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1.18, opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{
+              duration: 1.4,
+              repeat: Infinity,
+              ease: "easeOut",
+              delay: 0.35,
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Core orb */}
+      <motion.div
+        layout
+        className={`relative z-10 w-14 h-14 rounded-full border flex items-center justify-center transition-colors duration-500 ${
+          isRecording
+            ? "border-red-500/25 bg-red-500/8"
+            : isTranscribing
+              ? "border-amber-400/20 bg-amber-400/5"
+              : "border-white/8 bg-white/3"
+        }`}
+        animate={{
+          scale: isRecording ? [1, 1.04, 1] : 1,
+        }}
+        transition={
+          isRecording
+            ? { duration: 1.8, repeat: Infinity, ease: "easeInOut" }
+            : { duration: 0.3 }
+        }
+      >
+        {isTranscribing ? (
+          <motion.div
+            className="flex items-end gap-[2px] h-4"
+            initial="hidden"
+            animate="visible"
+          >
+            {[0, 1, 2].map((i) => (
+              <motion.span
+                key={i}
+                className="block w-[3px] rounded-full bg-amber-400/60"
+                animate={{ scaleY: [0.3, 1, 0.3] }}
+                transition={{
+                  duration: 0.9,
+                  repeat: Infinity,
+                  delay: i * 0.15,
+                  ease: "easeInOut",
+                }}
+                style={{ height: "100%", transformOrigin: "bottom" }}
+              />
+            ))}
+          </motion.div>
+        ) : (
+          <motion.div
+            className="flex items-end gap-[2px] h-4"
+            animate={isRecording ? "active" : "idle"}
+          >
+            {[0.45, 0.75, 1, 0.7, 0.5].map((base, i) => (
+              <motion.span
+                key={i}
+                className={`block w-[3px] rounded-full transition-colors duration-500 ${isRecording ? "bg-red-400/70" : "bg-white/15"}`}
+                animate={
+                  isRecording
+                    ? {
+                        scaleY: [base, base * 0.4 + 0.1, base + 0.2, base],
+                      }
+                    : { scaleY: base }
+                }
+                transition={
+                  isRecording
+                    ? {
+                        duration: 0.6 + i * 0.07,
+                        repeat: Infinity,
+                        delay: i * 0.1,
+                        ease: "easeInOut",
+                      }
+                    : { duration: 0.4 }
+                }
+                style={{ height: "100%", transformOrigin: "bottom" }}
+              />
+            ))}
+          </motion.div>
+        )}
+      </motion.div>
     </div>
   );
 }
 
-function ReadyScreen({ status }: { status: AppStatus }) {
-  const isActive = status !== "ready";
+function ReadyScreen({
+  status,
+  deviceInfo,
+}: {
+  status: AppStatus;
+  deviceInfo?: DeviceInfo;
+}) {
+  const isRecording = status === "recording";
+  const isTranscribing = status === "transcribing";
+  const isIdle = status === "ready";
+
+  const micName = deviceInfo
+    ? (deviceInfo.devices[String(deviceInfo.selectedDevice)] ?? "Default")
+    : null;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#07090f] text-white select-none">
-      {/* Icon */}
-      <div
-        className={`w-14 h-14 rounded-2xl border flex items-center justify-center text-2xl mb-6 transition-colors ${
-          status === "recording"
-            ? "border-red-500/30 bg-red-500/5"
-            : status === "transcribing"
-              ? "border-amber-500/20 bg-amber-500/5"
-              : "border-white/10"
-        }`}
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[#070810] text-white select-none">
+      {/* Orb */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="mb-7"
       >
-        {status === "recording" ? "⏺" : status === "transcribing" ? "✦" : "⏺"}
-      </div>
+        <RecordingOrb status={status} />
+      </motion.div>
 
       {/* Title */}
-      <h1 className="text-xl font-semibold tracking-tight mb-1">Codictate</h1>
-      <p className="text-xs text-white/30 mb-12">Local voice dictation</p>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        className="flex flex-col items-center mb-10"
+      >
+        <h1 className="text-[15px] font-semibold tracking-tight text-white/70">
+          Codictate
+        </h1>
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={status}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2 }}
+            className={`text-[11px] mt-0.5 font-medium ${
+              isRecording
+                ? "text-red-400/70"
+                : isTranscribing
+                  ? "text-amber-400/60"
+                  : "text-white/20"
+            }`}
+          >
+            {isRecording
+              ? "Listening…"
+              : isTranscribing
+                ? "Transcribing…"
+                : "Ready"}
+          </motion.p>
+        </AnimatePresence>
+      </motion.div>
 
-      {/* Shortcuts */}
-      <div
-        className={`flex flex-col items-center gap-5 transition-opacity ${isActive ? "opacity-30" : "opacity-100"}`}
+      {/* Shortcut keys */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: isIdle ? 1 : 0.2, y: 0 }}
+        transition={{ delay: 0.18, duration: 0.35 }}
+        className="flex flex-col items-center gap-5"
       >
         <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Kbd>⌥</Kbd>
-            <span className="text-white/20 text-xs">+</span>
+            <span className="text-white/15 text-[10px] font-light">+</span>
             <Kbd>Space</Kbd>
           </div>
-          <span className="text-xs text-white/30">Start / stop recording</span>
+          <span className="text-[10px] text-white/20">
+            Start / stop recording
+          </span>
         </div>
 
-        <div className="w-px h-4 bg-white/10" />
+        <div className="w-px h-3 bg-white/8" />
 
         <div className="flex flex-col items-center gap-2">
           <Kbd>Esc</Kbd>
-          <span className="text-xs text-white/30">Cancel recording</span>
+          <span className="text-[10px] text-white/20">Cancel</span>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Status */}
-      <div className="absolute bottom-8">
-        <StatusBadge status={status} />
-      </div>
+      {/* Active microphone indicator */}
+      <AnimatePresence>
+        {micName && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ delay: 0.3, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute bottom-7 flex items-center gap-1.5"
+          >
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              className="text-white/20 shrink-0"
+              fill="currentColor"
+            >
+              <rect x="3" y="0" width="4" height="6" rx="2" />
+              <path
+                d="M1.5 5.5a3.5 3.5 0 0 0 7 0"
+                stroke="currentColor"
+                strokeWidth="1"
+                fill="none"
+                strokeLinecap="round"
+              />
+              <line
+                x1="5"
+                y1="9"
+                x2="5"
+                y2="8.5"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className="text-[10px] text-white/20 max-w-[180px] truncate">
+              {micName}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -268,6 +531,12 @@ export default function App() {
     staleTime: 1000,
   });
 
+  const { data: deviceInfo } = useQuery({
+    queryKey: ["devices"],
+    queryFn: fetchDevices,
+    staleTime: Infinity,
+  });
+
   const [status, setStatus] = useState<AppStatus>("ready");
 
   useEffect(() => {
@@ -279,28 +548,51 @@ export default function App() {
   }, []);
 
   const p = permissions ?? DEFAULT_PERMISSIONS;
-
   const allPermissionsGranted =
     p.inputMonitoring && p.microphone && p.accessibility && p.documents;
 
   if (!permissions) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#07090f]">
-        <div className="w-1.5 h-1.5 rounded-full bg-white/20 animate-pulse" />
+      <div className="flex items-center justify-center min-h-screen bg-[#070810]">
+        <motion.div
+          animate={{ opacity: [0.2, 0.5, 0.2] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          className="w-1.5 h-1.5 rounded-full bg-white/20"
+        />
       </div>
     );
   }
 
-  if (!allPermissionsGranted) {
-    return <PermissionScreen permissions={p} onOpenSettings={openSettings} />;
-  }
-
-  return <ReadyScreen status={status} />;
+  return (
+    <AnimatePresence mode="wait">
+      {!allPermissionsGranted ? (
+        <motion.div
+          key="permissions"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.25 }}
+        >
+          <PermissionScreen permissions={p} onOpenSettings={openSettings} />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="ready"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <ReadyScreen status={status} deviceInfo={deviceInfo} />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 }
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="px-3 py-1.5 text-xs font-mono border border-white/10 rounded-lg bg-white/4 text-white/60">
+    <kbd className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 text-[11px] font-mono text-white/35 border border-white/10 rounded-md bg-white/4 leading-none">
       {children}
     </kbd>
   );

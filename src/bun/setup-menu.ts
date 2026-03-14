@@ -1,4 +1,4 @@
-import Electrobun, { ApplicationMenu } from 'electrobun/bun'
+import Electrobun, { ApplicationMenu, BrowserWindow } from 'electrobun/bun'
 import { AppConfig } from './AppConfig/AppConfig'
 import {
   buildDeviceMenuItems,
@@ -7,24 +7,30 @@ import {
 
 export const setupApplicationMenu = (
   devices: Record<string, string>,
-  appConfig: AppConfig
-) => {
-  ApplicationMenu.setApplicationMenu([
+  appConfig: AppConfig,
+  getOrCreateWindow: () => BrowserWindow,
+  onDeviceSelected?: (device: number) => void
+): { rebuildDeviceMenu: (selectedDevice: number) => void } => {
+  const buildFullMenu = (selectedDevice: number) => [
     {
-      submenu: [{ label: 'Quit', role: 'quit' }],
+      submenu: [
+        { label: 'Show Window', action: 'show-window' },
+        { type: 'separator' as const },
+        { label: 'Quit Codictate', role: 'quit' as const },
+      ],
     },
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'pasteAndMatchStyle' },
-        { role: 'delete' },
-        { role: 'selectAll' },
+        { role: 'undo' as const },
+        { role: 'redo' as const },
+        { type: 'separator' as const },
+        { role: 'cut' as const },
+        { role: 'copy' as const },
+        { role: 'paste' as const },
+        { role: 'pasteAndMatchStyle' as const },
+        { role: 'delete' as const },
+        { role: 'selectAll' as const },
       ],
     },
     {
@@ -32,13 +38,27 @@ export const setupApplicationMenu = (
       submenu: [
         {
           label: 'Microphone',
-          submenu: buildDeviceMenuItems(devices),
+          submenu: buildDeviceMenuItems(devices, selectedDevice),
         },
       ],
     },
-  ])
+  ]
+
+  ApplicationMenu.setApplicationMenu(buildFullMenu(appConfig.getAudioDevice()))
 
   Electrobun.events.on('application-menu-clicked', (e) => {
-    handleDeviceAction(e.data.action, appConfig)
+    if (e.data.action === 'show-window') {
+      getOrCreateWindow().focus()
+      return
+    }
+    handleDeviceAction(e.data.action, appConfig, (device) => {
+      ApplicationMenu.setApplicationMenu(buildFullMenu(device))
+      onDeviceSelected?.(device)
+    })
   })
+
+  return {
+    rebuildDeviceMenu: (selectedDevice: number) =>
+      ApplicationMenu.setApplicationMenu(buildFullMenu(selectedDevice)),
+  }
 }

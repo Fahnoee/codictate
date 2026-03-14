@@ -10,6 +10,7 @@ export type TrayHandlers = {
   setTrayIdle: () => void
   setTrayRecording: () => void
   setTrayTranscribing: () => void
+  rebuildDeviceMenu: (selectedDevice: number) => void
 }
 
 // Resolves to app/images/MacTrayIcon.png in the bundle.
@@ -20,7 +21,8 @@ export const setupTray = (
   getOrCreateWindow: () => BrowserWindow,
   devices: Record<string, string>,
   appConfig: AppConfig,
-  onQuit: () => void
+  onQuit: () => void,
+  onDeviceSelected?: (device: number) => void
 ): TrayHandlers => {
   const tray = new Tray({
     image: trayIconPath,
@@ -32,17 +34,19 @@ export const setupTray = (
     height: 16,
   })
 
-  tray.setMenu([
-    { type: 'normal', label: 'Open Codictate', action: 'open' },
-    { type: 'divider' },
+  const buildMenu = (selectedDevice: number) => [
+    { type: 'normal' as const, label: 'Open Codictate', action: 'open' },
+    { type: 'divider' as const },
     {
-      type: 'normal',
+      type: 'normal' as const,
       label: 'Microphone',
-      submenu: buildDeviceMenuItems(devices),
+      submenu: buildDeviceMenuItems(devices, selectedDevice),
     },
-    { type: 'divider' },
-    { type: 'normal', label: 'Quit', action: 'quit' },
-  ])
+    { type: 'divider' as const },
+    { type: 'normal' as const, label: 'Quit', action: 'quit' },
+  ]
+
+  tray.setMenu(buildMenu(appConfig.getAudioDevice()))
 
   tray.on('tray-clicked', (e) => {
     const event = e as { data: { action: string } }
@@ -50,15 +54,17 @@ export const setupTray = (
       getOrCreateWindow().focus()
     }
     if (event.data.action === 'quit') onQuit()
-    handleDeviceAction(event.data.action, appConfig)
+    handleDeviceAction(event.data.action, appConfig, (device) => {
+      tray.setMenu(buildMenu(device))
+      onDeviceSelected?.(device)
+    })
   })
 
   return {
-    // Idle: icon only, no extra text
     setTrayIdle: () => tray.setTitle(''),
-    // Recording: brief indicator next to the icon
     setTrayRecording: () => tray.setTitle(' ⏺'),
-    // Transcribing: brief indicator next to the icon
     setTrayTranscribing: () => tray.setTitle(' …'),
+    rebuildDeviceMenu: (selectedDevice: number) =>
+      tray.setMenu(buildMenu(selectedDevice)),
   }
 }

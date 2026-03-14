@@ -15,12 +15,18 @@ export interface PermissionState {
   documents: boolean
 }
 
+export interface DeviceInfo {
+  devices: Record<string, string>
+  selectedDevice: number
+}
+
 export type WebviewRPCType = {
   // Messages/requests handled by the Bun (main) process
   bun: RPCSchema<{
     requests: {
       startMicSession: { params: {}; response: boolean }
       getPermissions: { params: {}; response: PermissionState }
+      getDevices: { params: {}; response: DeviceInfo }
     }
     messages: {
       logBun: { msg: string }
@@ -33,6 +39,7 @@ export type WebviewRPCType = {
     messages: {
       updatePermissions: PermissionState
       updateStatus: { status: AppStatus }
+      updateDevice: DeviceInfo
     }
   }>
 }

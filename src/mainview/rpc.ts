@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query'
 import type {
   WebviewRPCType,
   PermissionState,
+  DeviceInfo,
   SettingsPane,
 } from '../shared/types'
 import type { AppStatus } from '../shared/types'
@@ -22,6 +23,9 @@ const rpc = Electroview.defineRPC<WebviewRPCType>({
       },
       updateStatus: ({ status }: { status: AppStatus }) =>
         appEvents.emit('status', status),
+      updateDevice: (data: DeviceInfo) => {
+        queryClient.setQueryData(['devices'], data)
+      },
     },
   },
 })
@@ -37,4 +41,8 @@ new Electroview({ rpc })
 
 export async function fetchPermissions(): Promise<PermissionState> {
   return rpc.request.getPermissions({})
+}
+
+export async function fetchDevices(): Promise<DeviceInfo> {
+  return rpc.request.getDevices({})
 }

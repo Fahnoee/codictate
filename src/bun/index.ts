@@ -1,7 +1,12 @@
 import { readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
+import Electrobun, {
+  BrowserView,
+  BrowserWindow,
+  Updater,
+  Utils,
+} from 'electrobun/bun'
 import type {
   WebviewRPCType,
   PermissionState,
@@ -58,7 +63,29 @@ export const UserAppConfig = new AppConfig()
 await UserAppConfig.load()
 
 const devices = await findDevices()
-setupApplicationMenu(devices, UserAppConfig)
+// onDeviceSelected, trayHandlers, and menuHandlers are all wired up below.
+// These are forward-referenced here since setupApplicationMenu is called
+// before trayHandlers is assigned — closures capture by reference so by
+// the time any callback fires, all variables will be initialised.
+// eslint-disable-next-line prefer-const
+let trayHandlers: ReturnType<typeof setupTray>
+// eslint-disable-next-line prefer-const
+let menuHandlers: ReturnType<typeof setupApplicationMenu>
+
+const onDeviceSelected = (device: number) => {
+  // Keep both menus in sync with the new selection.
+  trayHandlers.rebuildDeviceMenu(device)
+  menuHandlers.rebuildDeviceMenu(device)
+  // Push the change to the webview so the UI updates immediately.
+  rpc.send.updateDevice({ devices, selectedDevice: device })
+}
+
+menuHandlers = setupApplicationMenu(
+  devices,
+  UserAppConfig,
+  () => getOrCreateWindow(),
+  onDeviceSelected
+)
 
 let currentPermissions: PermissionState = {
   inputMonitoring: false,
@@ -85,6 +112,10 @@ const rpc = BrowserView.defineRPC<WebviewRPCType>({
         if (keyboard.isAlive) keyboard.checkPermissions()
         return currentPermissions
       },
+      getDevices: async () => ({
+        devices,
+        selectedDevice: UserAppConfig.getAudioDevice(),
+      }),
     },
     messages: {
       logBun: ({ msg }) => console.log('Bun Log:', msg),
@@ -100,6 +131,7 @@ function createMainWindow() {
     title: 'Codictate',
     url,
     frame: { width: 900, height: 700, x: 200, y: 200 },
+    titleBarStyle: 'hiddenInset',
     rpc,
   })
 }
@@ -118,14 +150,15 @@ function getOrCreateWindow(): BrowserWindow {
   return mainWindow
 }
 
-const trayHandlers = setupTray(
+trayHandlers = setupTray(
   getOrCreateWindow,
   devices,
   UserAppConfig,
   () => {
     keyboard.stop()
     setTimeout(() => Utils.quit(), 150)
-  }
+  },
+  onDeviceSelected
 )
 
 let permissionPoll: ReturnType<typeof setInterval> | null = null
@@ -172,6 +205,9 @@ setTimeout(() => {
   keyboard.checkPermissions()
 }, 500)
 
+// Stop the keyboard process cleanly before the app exits, regardless of
+// whether quit was triggered via Cmd+Q, the menu item, or the tray.
+Electrobun.events.on('before-quit', () => keyboard.stop())
 process.on('exit', () => keyboard.stop())
 
 console.log('Codictate started!')
