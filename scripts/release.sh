@@ -78,12 +78,19 @@ bump_patch() {
 
 release_channel() {
   local CH="$1"
+  local OVERRIDE_VERSION="$2"   # optional — forces a specific version (used by release:both)
   local BASE_VERSION CANARY_BUILD FULL_VERSION VERSIONED_TAG
 
   BASE_VERSION=$(read_version_field baseVersion)
   CANARY_BUILD=$(read_version_field canaryBuild)
 
-  if [ "$CH" = "stable" ]; then
+  if [ -n "$OVERRIDE_VERSION" ]; then
+    # Both-channel release: use the same version for canary and stable
+    FULL_VERSION="$OVERRIDE_VERSION"
+    VERSIONED_TAG="v${FULL_VERSION}-${CH}"
+    # For stable in a both-release, use a clean tag (no channel suffix)
+    [ "$CH" = "stable" ] && VERSIONED_TAG="v${FULL_VERSION}"
+  elif [ "$CH" = "stable" ]; then
     FULL_VERSION="$BASE_VERSION"
     VERSIONED_TAG="v${BASE_VERSION}"
   else
@@ -139,8 +146,8 @@ release_channel() {
     echo "  → Updated '${CH}' pointer with update.json"
   fi
 
-  # After stable: bump baseVersion and reset canaryBuild for the next cycle
-  if [ "$CH" = "stable" ]; then
+  # After a solo stable release: bump baseVersion and reset canaryBuild
+  if [ "$CH" = "stable" ] && [ -z "$OVERRIDE_VERSION" ]; then
     local NEXT_BASE
     NEXT_BASE=$(bump_patch "$BASE_VERSION")
     save_version "$NEXT_BASE" "0"
@@ -149,15 +156,22 @@ release_channel() {
     echo "Next canaries will target v${NEXT_BASE}"
   else
     echo ""
-    echo "canary released as ${VERSIONED_TAG} ✓"
+    echo "${CH} released as ${VERSIONED_TAG} ✓"
   fi
 }
 
 if [ "$CHANNEL" = "both" ]; then
-  # Stable first — bumps baseVersion for the new cycle
-  release_channel "stable"
-  # Canary immediately kicks off the next cycle
-  release_channel "canary"
+  # Both channels get the exact same version — this is a simultaneous milestone release.
+  # After both are done, bump baseVersion for the next canary cycle.
+  SHARED_VERSION=$(read_version_field baseVersion)
+  echo "Releasing v${SHARED_VERSION} to both stable and canary..."
+  release_channel "stable" "$SHARED_VERSION"
+  release_channel "canary" "$SHARED_VERSION"
+  NEXT_BASE=$(bump_patch "$SHARED_VERSION")
+  save_version "$NEXT_BASE" "0"
+  echo ""
+  echo "Both channels released as v${SHARED_VERSION} ✓"
+  echo "Next canaries will target v${NEXT_BASE}"
 else
   release_channel "$CHANNEL"
 fi
