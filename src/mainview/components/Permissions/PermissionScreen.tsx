@@ -21,6 +21,7 @@ export function PermissionScreen({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#070810] text-white select-none px-6">
+      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
       <div className="w-full max-w-[340px]">
         <motion.div
           initial={{ opacity: 0, y: 16 }}

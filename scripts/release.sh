@@ -164,6 +164,7 @@ if [ "$CHANNEL" = "both" ]; then
   # Both channels get the exact same version — this is a simultaneous milestone release.
   # After both are done, bump baseVersion for the next canary cycle.
   SHARED_VERSION=$(read_version_field baseVersion)
+  RELEASED_VERSION="$SHARED_VERSION"
   echo "Releasing v${SHARED_VERSION} to both stable and canary..."
   release_channel "stable" "$SHARED_VERSION"
   release_channel "canary" "$SHARED_VERSION"
@@ -173,9 +174,17 @@ if [ "$CHANNEL" = "both" ]; then
   echo "Both channels released as v${SHARED_VERSION} ✓"
   echo "Next canaries will target v${NEXT_BASE}"
 else
+  # Capture the version that will actually be released before any bumping happens
+  BASE_VERSION=$(read_version_field baseVersion)
+  CANARY_BUILD=$(read_version_field canaryBuild)
+  if [ "$CHANNEL" = "canary" ]; then
+    RELEASED_VERSION="${BASE_VERSION}-canary.$((CANARY_BUILD + 1))"
+  else
+    RELEASED_VERSION="$BASE_VERSION"
+  fi
   release_channel "$CHANNEL"
 fi
 
 echo ""
 echo "Commit the version files:"
-echo "  git add electrobun.config.ts version.json && git commit -m \"release: $(read_version_field baseVersion | xargs -I{} echo v{} | sed 's/v//')\""
+echo "  git add electrobun.config.ts version.json && git commit -m \"release: v${RELEASED_VERSION}\""

@@ -34,12 +34,17 @@ export function ReadyScreen({
     : null;
 
   const displayKeys = useMemo(
-    () => SHORTCUT_DISPLAY[settings?.shortcutId ?? "option-space"] ?? ["⌥", "Space"],
-    [settings?.shortcutId]
+    () =>
+      SHORTCUT_DISPLAY[settings?.shortcutId ?? "option-space"] ?? [
+        "⌥",
+        "Space",
+      ],
+    [settings?.shortcutId],
   );
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#070810] text-white select-none">
+      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -93,7 +98,9 @@ export function ReadyScreen({
             {displayKeys.map((key, i) => (
               <span key={key} className="flex items-center gap-1.5">
                 {i > 0 && (
-                  <span className="text-white/15 text-[10px] font-light">+</span>
+                  <span className="text-white/15 text-[10px] font-light">
+                    +
+                  </span>
                 )}
                 <Kbd>{key}</Kbd>
               </span>

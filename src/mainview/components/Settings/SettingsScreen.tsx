@@ -13,12 +13,9 @@ export function SettingsScreen({
   settings: AppSettings;
   onBack: () => void;
 }) {
-  const handleShortcutChange = useCallback(
-    async (id: ShortcutId) => {
-      await setShortcut(id);
-    },
-    []
-  );
+  const handleShortcutChange = useCallback(async (id: ShortcutId) => {
+    await setShortcut(id);
+  }, []);
 
   const durationLabel =
     settings.maxRecordingDuration >= 60
@@ -27,6 +24,7 @@ export function SettingsScreen({
 
   return (
     <div className="flex flex-col items-center min-h-screen bg-[#070810] text-white select-none px-6 py-10">
+      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
       <div className="w-full max-w-[380px]">
         {/* Header */}
         <motion.div
@@ -75,8 +73,8 @@ export function SettingsScreen({
             onChange={handleShortcutChange}
           />
           <p className="mt-2.5 text-[10px] text-white/15 leading-relaxed">
-            The keyboard shortcut used to start and stop dictation.
-            Changing it takes effect immediately.
+            The keyboard shortcut used to start and stop dictation. Changing it
+            takes effect immediately.
           </p>
         </motion.div>
 
@@ -107,13 +105,11 @@ export function SettingsScreen({
             <span className="text-[13px] text-white/50 font-medium">
               {durationLabel}
             </span>
-            <span className="text-[10px] text-white/15 ml-auto">
-              auto-stop
-            </span>
+            <span className="text-[10px] text-white/15 ml-auto">auto-stop</span>
           </div>
           <p className="mt-2.5 text-[10px] text-white/15 leading-relaxed">
-            Recording will automatically stop after {durationLabel} to
-            keep transcription fast and accurate.
+            Recording will automatically stop after {durationLabel} to keep
+            transcription fast and accurate.
           </p>
         </motion.div>
       </div>
