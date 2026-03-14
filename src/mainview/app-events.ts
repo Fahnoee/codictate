@@ -3,6 +3,7 @@ import type {
   AppSettings,
   PermissionState,
   SettingsPane,
+  UpdateCheckState,
 } from '../shared/types'
 
 export type { PermissionState }
@@ -13,6 +14,7 @@ type EventMap = {
   settings: AppSettings
   openSettings: SettingsPane
   openSettingsScreen: void
+  updateCheckStatus: { state: UpdateCheckState; message?: string }
 }
 
 type Unsubscribe = () => void

@@ -2,6 +2,13 @@
 import { RPCSchema } from 'electrobun'
 
 export type AppStatus = 'ready' | 'recording' | 'transcribing'
+export type UpdateCheckState =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'up-to-date'
+  | 'ready'
+  | 'error'
 export type SettingsPane =
   | 'inputMonitoring'
   | 'microphone'
@@ -45,6 +52,8 @@ export type WebviewRPCType = {
     messages: {
       logBun: { msg: string }
       openSystemPreferences: { pane: SettingsPane }
+      triggerUpdateCheck: {}
+      triggerApplyUpdate: {}
     }
   }>
   // Messages/requests handled by the browser (webview)
@@ -56,6 +65,7 @@ export type WebviewRPCType = {
       updateDevice: DeviceInfo
       updateSettings: AppSettings
       openSettingsScreen: {}
+      updateCheckStatus: { state: UpdateCheckState; message?: string }
     }
   }>
 }

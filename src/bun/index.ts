@@ -69,6 +69,12 @@ const pushInitialState = () => {
   keyboard.checkPermissions()
 }
 
+const onApplyUpdate = async () => {
+  if (Updater.updateInfo()?.updateReady) {
+    await Updater.applyUpdate()
+  }
+}
+
 const win = setupWindow({
   url,
   appConfig: UserAppConfig,
@@ -86,6 +92,8 @@ const win = setupWindow({
     keyboard = startKeyboard()
     win.send.updateSettings(UserAppConfig.getSettings())
   },
+  onTriggerUpdateCheck: () => checkForUpdates(),
+  onApplyUpdate: onApplyUpdate,
   // Re-push app state whenever the window is re-opened after being closed.
   onNewWindowReady: () => pushInitialState(),
 })
@@ -107,12 +115,6 @@ menuHandlers = setupApplicationMenu(
   onDeviceSelected,
   onOpenSettings
 )
-
-const onApplyUpdate = async () => {
-  if (Updater.updateInfo()?.updateReady) {
-    await Updater.applyUpdate()
-  }
-}
 
 trayHandlers = setupTray(
   (onAction) => win.getOrCreateWindow(onAction),
@@ -171,28 +173,47 @@ Electrobun.events.on('before-quit', () => keyboard.stop())
 process.on('exit', () => keyboard.stop())
 
 async function checkForUpdates() {
+  const sendStatus = (
+    state: Parameters<typeof win.send.updateCheckStatus>[0]
+  ) => {
+    try {
+      win.send.updateCheckStatus(state)
+    } catch {
+      /* window may be closed */
+    }
+  }
+
   try {
     const channel = await Updater.localInfo.channel()
-    if (channel === 'dev') return
+    if (channel === 'dev') {
+      sendStatus({ state: 'up-to-date', message: 'Running in dev mode' })
+      return
+    }
 
     trayHandlers.setUpdateChecking()
+    sendStatus({ state: 'checking' })
 
     const updateInfo = await Updater.checkForUpdate()
     if (!updateInfo.updateAvailable) {
       trayHandlers.resetUpdateState()
+      sendStatus({ state: 'up-to-date' })
       return
     }
 
+    sendStatus({ state: 'downloading' })
     await Updater.downloadUpdate()
 
     if (Updater.updateInfo()?.updateReady) {
       trayHandlers.showUpdateReady()
+      sendStatus({ state: 'ready' })
     } else {
       trayHandlers.resetUpdateState()
+      sendStatus({ state: 'idle' })
     }
   } catch (e) {
     console.error('Update check failed:', e)
     trayHandlers.resetUpdateState()
+    sendStatus({ state: 'error', message: 'Could not reach the update server' })
   }
 }
 

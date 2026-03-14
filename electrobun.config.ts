@@ -49,10 +49,12 @@ export default {
     },
   },
   release: {
-    // GitHub Releases download URL for the codictate-releases repo.
-    // Electrobun appends /{channel}/update.json → resolves to the release asset.
+    // Always resolves to the latest non-prerelease (= stable) release.
+    // Electrobun fetches {baseUrl}/{channel}-{os}-{arch}-update.json
+    // Both stable and canary artifacts are uploaded to the stable release,
+    // so canary users can also find updates here.
     baseUrl:
-      "https://github.com/EmilLykke/codictate-releases/releases/download",
+      "https://github.com/EmilLykke/codictate-releases/releases/latest/download",
   },
   scripts: {
     preBuild: "./scripts/pre-build.ts",

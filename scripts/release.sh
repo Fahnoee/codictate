@@ -118,32 +118,44 @@ release_channel() {
     TITLE="v${BASE_VERSION}"
   fi
 
-  gh release create "${VERSIONED_TAG}" \
-    --title "${TITLE}" \
-    --notes "Codictate ${FULL_VERSION}" \
-    --repo "${REPO}"
+  # Stable = regular release (GitHub marks it as "Latest" automatically).
+  # Canary = pre-release (never gets the "Latest" badge).
+  if [ "$CH" = "canary" ]; then
+    gh release create "${VERSIONED_TAG}" \
+      --title "${TITLE}" \
+      --notes "Codictate ${FULL_VERSION}" \
+      --prerelease \
+      --repo "${REPO}"
+  else
+    gh release create "${VERSIONED_TAG}" \
+      --title "${TITLE}" \
+      --notes "Codictate ${FULL_VERSION}" \
+      --repo "${REPO}"
+  fi
 
+  # Upload artifacts to the versioned release (permanent history / user downloads)
   for FILE in "${ARTIFACT_DIR}/${CH}-"*; do
     [ -f "$FILE" ] || continue
-    echo "  → $(basename "$FILE")"
+    echo "  → $(basename "$FILE") [versioned]"
     gh release upload "${VERSIONED_TAG}" "$FILE" --repo "${REPO}"
   done
 
-  # Update the fixed pointer release (what Electrobun's updater fetches)
-  local PREFIXED_JSON
-  PREFIXED_JSON=$(ls "${ARTIFACT_DIR}/${CH}-"*-update.json 2>/dev/null | head -1)
-  if [ -n "$PREFIXED_JSON" ]; then
-    if ! gh release view "${CH}" --repo "${REPO}" > /dev/null 2>&1; then
-      echo "Creating pointer release: ${CH}"
-      gh release create "${CH}" \
-        --title "${CH^} — Latest" \
-        --notes "Pointer release for Electrobun's auto-updater." \
-        --repo "${REPO}"
+  # Also upload to the latest STABLE release so the in-app updater can always
+  # find both canary-* and stable-* artifacts at releases/latest/download/.
+  # For stable: this IS the versioned release we just created (already "latest").
+  # For canary: we find the current latest non-prerelease and add the canary files there.
+  if [ "$CH" = "canary" ]; then
+    local LATEST_STABLE_TAG
+    LATEST_STABLE_TAG=$(gh release view --repo "${REPO}" --json tagName -q '.tagName' 2>/dev/null || true)
+    if [ -n "$LATEST_STABLE_TAG" ]; then
+      for FILE in "${ARTIFACT_DIR}/${CH}-"*; do
+        [ -f "$FILE" ] || continue
+        echo "  → $(basename "$FILE") [→ ${LATEST_STABLE_TAG} for updater]"
+        gh release upload "${LATEST_STABLE_TAG}" "$FILE" --clobber --repo "${REPO}"
+      done
+    else
+      echo "  ⚠ No stable release found yet — canary updater files not uploaded. Run release:stable first."
     fi
-    cp "$PREFIXED_JSON" /tmp/update.json
-    gh release upload "${CH}" /tmp/update.json --clobber --repo "${REPO}"
-    rm -f /tmp/update.json
-    echo "  → Updated '${CH}' pointer with update.json"
   fi
 
   # After a solo stable release: bump baseVersion and reset canaryBuild

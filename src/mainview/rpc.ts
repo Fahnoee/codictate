@@ -7,6 +7,7 @@ import type {
   AppSettings,
   SettingsPane,
   ShortcutId,
+  UpdateCheckState,
 } from '../shared/types'
 
 import type { AppStatus } from '../shared/types'
@@ -36,6 +37,12 @@ const rpc = Electroview.defineRPC<WebviewRPCType>({
       openSettingsScreen: () => {
         appEvents.emit('openSettingsScreen')
       },
+      updateCheckStatus: (data: {
+        state: UpdateCheckState
+        message?: string
+      }) => {
+        appEvents.emit('updateCheckStatus', data)
+      },
     },
   },
 })
@@ -63,4 +70,12 @@ export async function fetchSettings(): Promise<AppSettings> {
 
 export async function setShortcut(shortcutId: ShortcutId): Promise<boolean> {
   return rpc.request.setSettings({ shortcutId })
+}
+
+export function triggerUpdateCheck(): void {
+  rpc.send.triggerUpdateCheck({})
+}
+
+export function triggerApplyUpdate(): void {
+  rpc.send.triggerApplyUpdate({})
 }

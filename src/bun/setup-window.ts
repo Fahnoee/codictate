@@ -7,6 +7,7 @@ import type {
   PermissionState,
   SettingsPane,
   ShortcutId,
+  UpdateCheckState,
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
 
@@ -27,6 +28,8 @@ interface WindowDeps {
   devices: Record<string, string>
   getPermissions: () => Promise<PermissionState>
   onSettingsChanged: (shortcutId: ShortcutId) => Promise<void>
+  onTriggerUpdateCheck?: () => void
+  onApplyUpdate?: () => Promise<void>
   /** Called after a newly re-created window is ready to receive RPC messages. */
   onNewWindowReady?: () => void
 }
@@ -38,6 +41,10 @@ export interface WindowHandle {
     updateDevice: (data: DeviceInfo) => void
     updateSettings: (data: AppSettings) => void
     openSettingsScreen: () => void
+    updateCheckStatus: (data: {
+      state: UpdateCheckState
+      message?: string
+    }) => void
   }
   /**
    * Returns (or creates) the main window.
@@ -70,6 +77,8 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         openSystemPreferences: ({ pane }) => {
           Bun.spawn(['open', SYSTEM_PREFS_URLS[pane]])
         },
+        triggerUpdateCheck: () => deps.onTriggerUpdateCheck?.(),
+        triggerApplyUpdate: () => deps.onApplyUpdate?.(),
       },
     },
   })
@@ -110,6 +119,7 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
       updateDevice: (data) => rpc.send.updateDevice(data),
       updateSettings: (data) => rpc.send.updateSettings(data),
       openSettingsScreen: () => rpc.send.openSettingsScreen({}),
+      updateCheckStatus: (data) => rpc.send.updateCheckStatus(data),
     },
     getOrCreateWindow,
   }
