@@ -11,6 +11,10 @@ export type TrayHandlers = {
   setTrayRecording: () => void
   setTrayTranscribing: () => void
   rebuildDeviceMenu: (selectedDevice: number) => void
+  updateDeviceList: (
+    newDevices: Record<string, string>,
+    selectedDevice: number
+  ) => void
   setUpdateChecking: () => void
   showUpdateReady: () => void
   resetUpdateState: () => void
@@ -39,6 +43,8 @@ export const setupTray = (
     width: 16,
     height: 16,
   })
+
+  let currentDevices = devices
 
   type UpdateState = 'idle' | 'checking' | 'ready'
   let updateState: UpdateState = 'idle'
@@ -72,13 +78,13 @@ export const setupTray = (
     {
       type: 'normal' as const,
       label: 'Microphone',
-      submenu: buildDeviceMenuItems(devices, selectedDevice),
+      submenu: buildDeviceMenuItems(currentDevices, selectedDevice),
     },
     { type: 'divider' as const },
     { type: 'normal' as const, label: 'Quit', action: 'quit' },
   ]
 
-  tray.setMenu(buildMenu(appConfig.getAudioDevice()))
+  tray.setMenu(buildMenu(appConfig.resolveAudioDevice(devices)))
 
   tray.on('tray-clicked', (e) => {
     const event = e as { data: { action: string } }
@@ -91,10 +97,15 @@ export const setupTray = (
     if (event.data.action === 'check-for-update') onCheckForUpdate?.()
     if (event.data.action === 'restart-to-update') onApplyUpdate?.()
     if (event.data.action === 'quit') onQuit()
-    handleDeviceAction(event.data.action, appConfig, (device) => {
-      tray.setMenu(buildMenu(device))
-      onDeviceSelected?.(device)
-    })
+    handleDeviceAction(
+      event.data.action,
+      appConfig,
+      currentDevices,
+      (device) => {
+        tray.setMenu(buildMenu(device))
+        onDeviceSelected?.(device)
+      }
+    )
   })
 
   return {
@@ -103,17 +114,24 @@ export const setupTray = (
     setTrayTranscribing: () => tray.setTitle(' …'),
     rebuildDeviceMenu: (selectedDevice: number) =>
       tray.setMenu(buildMenu(selectedDevice)),
+    updateDeviceList: (
+      newDevices: Record<string, string>,
+      selectedDevice: number
+    ) => {
+      currentDevices = newDevices
+      tray.setMenu(buildMenu(selectedDevice))
+    },
     setUpdateChecking: () => {
       updateState = 'checking'
-      tray.setMenu(buildMenu(appConfig.getAudioDevice()))
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
     showUpdateReady: () => {
       updateState = 'ready'
-      tray.setMenu(buildMenu(appConfig.getAudioDevice()))
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
     resetUpdateState: () => {
       updateState = 'idle'
-      tray.setMenu(buildMenu(appConfig.getAudioDevice()))
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
   }
 }

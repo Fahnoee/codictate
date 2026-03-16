@@ -43,7 +43,7 @@ const url = await getMainViewUrl()
 export const UserAppConfig = new AppConfig()
 await UserAppConfig.load()
 
-const devices = await findDevices()
+let devices = await findDevices()
 
 let currentPermissions: PermissionState = {
   inputMonitoring: false,
@@ -78,7 +78,7 @@ const onApplyUpdate = async () => {
 const win = setupWindow({
   url,
   appConfig: UserAppConfig,
-  devices,
+  getCurrentDevices: () => devices,
   getPermissions: async () => {
     currentPermissions = {
       ...currentPermissions,
@@ -92,6 +92,12 @@ const win = setupWindow({
     keyboard = startKeyboard()
     win.send.updateSettings(UserAppConfig.getSettings())
   },
+  onAudioDeviceSelected: async (index) => {
+    const deviceName = devices[index.toString()]
+    await UserAppConfig.setAudioDevice(index, deviceName)
+    trayHandlers.rebuildDeviceMenu(index)
+    menuHandlers.rebuildDeviceMenu(index)
+  },
   onTriggerUpdateCheck: () => checkForUpdates(),
   onApplyUpdate: onApplyUpdate,
   // Re-push app state whenever the window is re-opened after being closed.
@@ -102,6 +108,21 @@ const onDeviceSelected = (device: number) => {
   trayHandlers.rebuildDeviceMenu(device)
   menuHandlers.rebuildDeviceMenu(device)
   win.send.updateDevice({ devices, selectedDevice: device })
+}
+
+function startDeviceMonitor() {
+  let snapshot = JSON.stringify(devices)
+  setInterval(async () => {
+    const newDevices = await findDevices()
+    const newSnapshot = JSON.stringify(newDevices)
+    if (newSnapshot === snapshot) return
+    snapshot = newSnapshot
+    devices = newDevices
+    const selected = UserAppConfig.resolveAudioDevice(newDevices)
+    trayHandlers.updateDeviceList(newDevices, selected)
+    menuHandlers.updateDeviceList(newDevices, selected)
+    win.send.updateDevice({ devices: newDevices, selectedDevice: selected })
+  }, 5000)
 }
 
 const onOpenSettings = () => {
@@ -169,6 +190,8 @@ let keyboard = startKeyboard()
 // Push initial app state once the first window's RPC bridge is live.
 setTimeout(pushInitialState, 500)
 
+startDeviceMonitor()
+
 Electrobun.events.on('before-quit', () => keyboard.stop())
 process.on('exit', () => keyboard.stop())
 
@@ -213,7 +236,10 @@ async function checkForUpdates() {
   } catch (e) {
     console.error('Update check failed:', e)
     trayHandlers.resetUpdateState()
-    sendStatus({ state: 'error', message: 'Could not reach the update server' })
+    sendStatus({
+      state: 'error',
+      message: 'Could not reach the update server',
+    })
   }
 }
 

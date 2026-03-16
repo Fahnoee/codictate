@@ -48,6 +48,7 @@ export type WebviewRPCType = {
       getDevices: { params: {}; response: DeviceInfo }
       getSettings: { params: {}; response: AppSettings }
       setSettings: { params: { shortcutId: ShortcutId }; response: boolean }
+      setAudioDevice: { params: { index: number }; response: boolean }
     }
     messages: {
       logBun: { msg: string }

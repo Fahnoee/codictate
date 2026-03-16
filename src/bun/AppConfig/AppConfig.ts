@@ -14,10 +14,14 @@ const CONFIG_PATH = join(CONFIG_DIR, 'app-config.json')
 const MAX_RECORDING_DURATION = 120
 
 export class AppConfig {
+  // Name is the primary key — stable across device list reorders.
+  // Index is stored as a fallback for configs that predate name storage.
+  private audioDeviceName: string | null
   private audioDevice: number
   private shortcutId: ShortcutId
 
   constructor() {
+    this.audioDeviceName = null
     this.audioDevice = 0
     this.shortcutId = 'option-space'
   }
@@ -28,6 +32,8 @@ export class AppConfig {
     try {
       const file = Bun.file(CONFIG_PATH)
       const raw = await file.json()
+      if (raw.audioDeviceName !== undefined)
+        this.audioDeviceName = raw.audioDeviceName
       if (raw.audioDevice !== undefined) this.audioDevice = raw.audioDevice
       if (raw.shortcutId !== undefined) this.shortcutId = raw.shortcutId
     } catch {
@@ -44,6 +50,7 @@ export class AppConfig {
 
   public get() {
     return {
+      audioDeviceName: this.audioDeviceName,
       audioDevice: this.audioDevice,
       shortcutId: this.shortcutId,
     }
@@ -51,13 +58,32 @@ export class AppConfig {
 
   // --- Getters / Setters ---
 
-  public async setAudioDevice(newDevice?: number) {
-    if (newDevice !== undefined) {
-      this.audioDevice = newDevice
-      await this.save()
-    }
+  /**
+   * Saves both the device index and its name.
+   * The name is the primary key used by resolveAudioDevice().
+   */
+  public async setAudioDevice(index: number, name?: string) {
+    this.audioDevice = index
+    if (name !== undefined) this.audioDeviceName = name
+    await this.save()
   }
 
+  /**
+   * Returns the current device index by looking up the stored name
+   * in the live device list. Falls back to the stored index if the
+   * name is not found (e.g. device was removed or not yet present).
+   */
+  public resolveAudioDevice(devices: Record<string, string>): number {
+    if (this.audioDeviceName !== null) {
+      const entry = Object.entries(devices).find(
+        ([, name]) => name === this.audioDeviceName
+      )
+      if (entry) return Number(entry[0])
+    }
+    return this.audioDevice
+  }
+
+  /** @deprecated Use resolveAudioDevice(devices) instead. */
   public getAudioDevice() {
     return this.audioDevice
   }

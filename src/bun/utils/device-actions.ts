@@ -17,14 +17,17 @@ export const buildDeviceMenuItems = (
 export const handleDeviceAction = async (
   action: string,
   appConfig: AppConfig,
+  devices: Record<string, string>,
   onSelected?: (device: number) => void
 ) => {
   if (!action.startsWith(DEVICE_ACTION_PREFIX)) return
   try {
-    const selectedDevice = Number(action.split(`${DEVICE_ACTION_PREFIX}-`)[1])
-    await appConfig.setAudioDevice(selectedDevice)
+    const indexStr = action.split(`${DEVICE_ACTION_PREFIX}-`)[1]
+    const selectedDevice = Number(indexStr)
+    const deviceName = devices[indexStr]
+    await appConfig.setAudioDevice(selectedDevice, deviceName)
     onSelected?.(selectedDevice)
-    console.log('Selected device:', selectedDevice)
+    console.log('Selected device:', selectedDevice, deviceName)
   } catch (error) {
     console.error('Error selecting audio device:', error)
   }

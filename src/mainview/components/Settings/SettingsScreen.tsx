@@ -1,15 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type {
   AppSettings,
   ShortcutId,
   UpdateCheckState,
 } from "../../../shared/types";
-import { setShortcut, triggerUpdateCheck, triggerApplyUpdate } from "../../rpc";
+import {
+  setShortcut,
+  setAudioDevice,
+  fetchDevices,
+  triggerUpdateCheck,
+  triggerApplyUpdate,
+} from "../../rpc";
 import { appEvents } from "../../app-events";
 import { ShortcutPicker } from "./ShortcutPicker";
+import { DevicePicker } from "./DevicePicker";
 
 function updateStateLabel(state: UpdateCheckState, message?: string): string {
   switch (state) {
@@ -184,6 +192,12 @@ export function SettingsScreen({
   settings: AppSettings;
   onBack: () => void;
 }) {
+  const queryClient = useQueryClient();
+  const { data: deviceInfo } = useQuery({
+    queryKey: ["devices"],
+    queryFn: fetchDevices,
+  });
+
   const [updateState, setUpdateState] = useState<UpdateCheckState>("idle");
   const [updateMessage, setUpdateMessage] = useState<string | undefined>();
 
@@ -209,6 +223,18 @@ export function SettingsScreen({
   const handleShortcutChange = useCallback(async (id: ShortcutId) => {
     await setShortcut(id);
   }, []);
+
+  const handleDeviceChange = useCallback(
+    async (index: number) => {
+      if (!deviceInfo) return;
+      queryClient.setQueryData(["devices"], {
+        ...deviceInfo,
+        selectedDevice: index,
+      });
+      await setAudioDevice(index);
+    },
+    [deviceInfo, queryClient],
+  );
 
   const durationLabel =
     settings.maxRecordingDuration >= 60
@@ -271,11 +297,32 @@ export function SettingsScreen({
           </p>
         </motion.div>
 
-        {/* Recording Limit */}
+        {/* Input Device */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-8"
+        >
+          <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
+            Input Device
+          </h2>
+          <DevicePicker
+            devices={deviceInfo?.devices ?? {}}
+            selectedDevice={deviceInfo?.selectedDevice ?? 0}
+            onChange={handleDeviceChange}
+          />
+          <p className="mt-2.5 text-[10px] text-white/15 leading-relaxed">
+            The microphone used for dictation. Updates automatically when
+            devices are connected or disconnected.
+          </p>
+        </motion.div>
+
+        {/* Recording Limit */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="mb-8"
         >
           <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
@@ -311,7 +358,7 @@ export function SettingsScreen({
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ delay: 0.2, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         >
           <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
             Updates

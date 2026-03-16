@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "Codictate is a desktop app that transcribes your voice to text.",
   "scripts": {
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "dev": "electrobun dev --watch",
     "dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
     "hmr": "vite --port 5173",

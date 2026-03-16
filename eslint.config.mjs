@@ -5,7 +5,13 @@ import { defineConfig } from "eslint/config";
 
 export default defineConfig(
   {
-    ignores: ["node_modules/**", "build/**", "scripts/**"],
+    ignores: [
+      "node_modules/**",
+      "build/**",
+      "dist/**",
+      "artifacts/**",
+      "scripts/**",
+    ],
   },
   eslint.configs.recommended,
   tseslint.configs.recommended,

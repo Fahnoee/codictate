@@ -25,9 +25,12 @@ const SYSTEM_PREFS_URLS: Record<SettingsPane, string> = {
 interface WindowDeps {
   url: string
   appConfig: AppConfig
-  devices: Record<string, string>
+  /** Returns the live device list — called on every request so it's always fresh. */
+  getCurrentDevices: () => Record<string, string>
   getPermissions: () => Promise<PermissionState>
   onSettingsChanged: (shortcutId: ShortcutId) => Promise<void>
+  /** Called when the user selects a device from the settings screen. Should persist the choice and update menus. */
+  onAudioDeviceSelected?: (index: number) => Promise<void>
   onTriggerUpdateCheck?: () => void
   onApplyUpdate?: () => Promise<void>
   /** Called after a newly re-created window is ready to receive RPC messages. */
@@ -61,14 +64,27 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
       requests: {
         startMicSession: async () => true,
         getPermissions: deps.getPermissions,
-        getDevices: async () => ({
-          devices: deps.devices,
-          selectedDevice: deps.appConfig.getAudioDevice(),
-        }),
+        getDevices: async () => {
+          const current = deps.getCurrentDevices()
+          return {
+            devices: current,
+            selectedDevice: deps.appConfig.resolveAudioDevice(current),
+          }
+        },
         getSettings: async () => deps.appConfig.getSettings(),
         setSettings: async ({ shortcutId }) => {
           await deps.appConfig.setShortcutId(shortcutId)
           await deps.onSettingsChanged(shortcutId)
+          return true
+        },
+        setAudioDevice: async ({ index }) => {
+          await deps.onAudioDeviceSelected?.(index)
+          const current = deps.getCurrentDevices()
+          rpc.send.updateDevice({
+            devices: current,
+            selectedDevice: deps.appConfig.resolveAudioDevice(current),
+          })
+
           return true
         },
       },

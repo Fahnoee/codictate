@@ -11,7 +11,15 @@ export const setupApplicationMenu = (
   getOrCreateWindow: () => BrowserWindow,
   onDeviceSelected?: (device: number) => void,
   onOpenSettings?: () => void
-): { rebuildDeviceMenu: (selectedDevice: number) => void } => {
+): {
+  rebuildDeviceMenu: (selectedDevice: number) => void
+  updateDeviceList: (
+    newDevices: Record<string, string>,
+    selectedDevice: number
+  ) => void
+} => {
+  let currentDevices = devices
+
   const buildFullMenu = (selectedDevice: number) => [
     {
       submenu: [
@@ -40,13 +48,15 @@ export const setupApplicationMenu = (
       submenu: [
         {
           label: 'Microphone',
-          submenu: buildDeviceMenuItems(devices, selectedDevice),
+          submenu: buildDeviceMenuItems(currentDevices, selectedDevice),
         },
       ],
     },
   ]
 
-  ApplicationMenu.setApplicationMenu(buildFullMenu(appConfig.getAudioDevice()))
+  ApplicationMenu.setApplicationMenu(
+    buildFullMenu(appConfig.resolveAudioDevice(currentDevices))
+  )
 
   Electrobun.events.on('application-menu-clicked', (e) => {
     if (e.data.action === 'show-window') {
@@ -57,7 +67,7 @@ export const setupApplicationMenu = (
       onOpenSettings?.()
       return
     }
-    handleDeviceAction(e.data.action, appConfig, (device) => {
+    handleDeviceAction(e.data.action, appConfig, currentDevices, (device) => {
       ApplicationMenu.setApplicationMenu(buildFullMenu(device))
       onDeviceSelected?.(device)
     })
@@ -66,5 +76,12 @@ export const setupApplicationMenu = (
   return {
     rebuildDeviceMenu: (selectedDevice: number) =>
       ApplicationMenu.setApplicationMenu(buildFullMenu(selectedDevice)),
+    updateDeviceList: (
+      newDevices: Record<string, string>,
+      selectedDevice: number
+    ) => {
+      currentDevices = newDevices
+      ApplicationMenu.setApplicationMenu(buildFullMenu(selectedDevice))
+    },
   }
 }

@@ -39,9 +39,12 @@ export function ShortcutPicker({
                 : "border-white/6 bg-white/2 hover:border-white/10 hover:bg-white/3"
             }`}
           >
-            <div className="shrink-0 w-4 h-4 rounded-full border flex items-center justify-center transition-colors duration-200"
+            <div
+              className="shrink-0 w-4 h-4 rounded-full border flex items-center justify-center transition-colors duration-200"
               style={{
-                borderColor: isActive ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)",
+                borderColor: isActive
+                  ? "rgba(255,255,255,0.3)"
+                  : "rgba(255,255,255,0.1)",
               }}
             >
               {isActive && (
@@ -58,16 +61,20 @@ export function ShortcutPicker({
               {opt.keys.map((key, i) => (
                 <span key={key} className="flex items-center gap-1.5">
                   {i > 0 && (
-                    <span className="text-white/15 text-[10px] font-light">+</span>
+                    <span className="text-white/15 text-[10px] font-light">
+                      +
+                    </span>
                   )}
                   <Kbd>{key}</Kbd>
                 </span>
               ))}
             </div>
 
-            <span className={`text-[11px] ml-auto transition-colors duration-200 ${
-              isActive ? "text-white/40" : "text-white/20"
-            }`}>
+            <span
+              className={`text-[11px] ml-auto transition-colors duration-200 ${
+                isActive ? "text-white/40" : "text-white/20"
+              }`}
+            >
               {opt.label}
             </span>
           </motion.button>
