@@ -25,6 +25,7 @@ export type ShortcutId =
 export interface AppSettings {
   shortcutId: ShortcutId
   maxRecordingDuration: number
+  debugMode: boolean
 }
 
 export interface PermissionState {
@@ -49,12 +50,14 @@ export type WebviewRPCType = {
       getSettings: { params: {}; response: AppSettings }
       setSettings: { params: { shortcutId: ShortcutId }; response: boolean }
       setAudioDevice: { params: { index: number }; response: boolean }
+      setDebugMode: { params: { enabled: boolean }; response: boolean }
     }
     messages: {
       logBun: { msg: string }
       openSystemPreferences: { pane: SettingsPane }
       triggerUpdateCheck: {}
       triggerApplyUpdate: {}
+      copyDebugLog: {}
     }
   }>
   // Messages/requests handled by the browser (webview)

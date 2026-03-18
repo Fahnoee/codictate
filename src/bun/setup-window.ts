@@ -10,6 +10,7 @@ import type {
   UpdateCheckState,
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
+import { copyLogToClipboard } from './utils/logger'
 
 const SYSTEM_PREFS_URLS: Record<SettingsPane, string> = {
   inputMonitoring:
@@ -35,6 +36,7 @@ interface WindowDeps {
   onApplyUpdate?: () => Promise<void>
   /** Called after a newly re-created window is ready to receive RPC messages. */
   onNewWindowReady?: () => void
+  onSetDebugMode?: (enabled: boolean) => Promise<void>
 }
 
 export interface WindowHandle {
@@ -87,6 +89,10 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
 
           return true
         },
+        setDebugMode: async ({ enabled }) => {
+          await deps.onSetDebugMode?.(enabled)
+          return true
+        },
       },
       messages: {
         logBun: ({ msg }) => console.log('Bun Log:', msg),
@@ -95,6 +101,9 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         },
         triggerUpdateCheck: () => deps.onTriggerUpdateCheck?.(),
         triggerApplyUpdate: () => deps.onApplyUpdate?.(),
+        copyDebugLog: () => {
+          copyLogToClipboard().catch(console.error)
+        },
       },
     },
   })

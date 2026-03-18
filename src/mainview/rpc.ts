@@ -83,3 +83,11 @@ export function triggerUpdateCheck(): void {
 export function triggerApplyUpdate(): void {
   rpc.send.triggerApplyUpdate({})
 }
+
+export async function setDebugMode(enabled: boolean): Promise<boolean> {
+  return rpc.request.setDebugMode({ enabled })
+}
+
+export function copyDebugLog(): void {
+  rpc.send.copyDebugLog({})
+}

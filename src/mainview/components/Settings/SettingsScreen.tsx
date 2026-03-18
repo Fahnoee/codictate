@@ -14,6 +14,8 @@ import {
   fetchDevices,
   triggerUpdateCheck,
   triggerApplyUpdate,
+  setDebugMode,
+  copyDebugLog,
 } from "../../rpc";
 import { appEvents } from "../../app-events";
 import { ShortcutPicker } from "./ShortcutPicker";
@@ -200,6 +202,7 @@ export function SettingsScreen({
 
   const [updateState, setUpdateState] = useState<UpdateCheckState>("idle");
   const [updateMessage, setUpdateMessage] = useState<string | undefined>();
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
     return appEvents.on("updateCheckStatus", ({ state, message }) => {
@@ -222,6 +225,16 @@ export function SettingsScreen({
 
   const handleShortcutChange = useCallback(async (id: ShortcutId) => {
     await setShortcut(id);
+  }, []);
+
+  const handleDebugToggle = useCallback(async () => {
+    await setDebugMode(!settings.debugMode);
+  }, [settings.debugMode]);
+
+  const handleCopyLog = useCallback(() => {
+    copyDebugLog();
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
   }, []);
 
   const handleDeviceChange = useCallback(
@@ -354,11 +367,140 @@ export function SettingsScreen({
           </p>
         </motion.div>
 
-        {/* Updates */}
+        {/* Diagnostics */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-8"
+        >
+          <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
+            Diagnostics
+          </h2>
+          <div className="rounded-xl border border-white/6 bg-white/2 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              <div className="shrink-0 w-4 h-4 flex items-center justify-center">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={
+                    settings.debugMode ? "text-amber-400/70" : "text-white/15"
+                  }
+                >
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <span
+                  className={`block text-[13px] font-medium ${settings.debugMode ? "text-amber-400/80" : "text-white/40"}`}
+                >
+                  {settings.debugMode
+                    ? "Debug logging active"
+                    : "Debug logging"}
+                </span>
+              </div>
+              <button
+                onClick={handleDebugToggle}
+                className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                  settings.debugMode
+                    ? "bg-amber-500/30 border-amber-400/30"
+                    : "bg-white/5 border-white/10"
+                }`}
+                aria-label="Toggle debug logging"
+              >
+                <span
+                  className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                    settings.debugMode
+                      ? "left-4 bg-amber-400/90"
+                      : "left-0.5 bg-white/25"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {settings.debugMode && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="border-t border-white/5 px-4 py-3"
+                >
+                  <button
+                    onClick={handleCopyLog}
+                    className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium border transition-colors duration-200 cursor-pointer ${
+                      isCopied
+                        ? "bg-emerald-500/15 border-emerald-400/25 text-emerald-400/80"
+                        : "border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/5 text-white/40 hover:text-white/60"
+                    }`}
+                  >
+                    {isCopied ? (
+                      <>
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        Copied to clipboard
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect
+                            x="9"
+                            y="9"
+                            width="13"
+                            height="13"
+                            rx="2"
+                            ry="2"
+                          />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        Copy log to clipboard
+                      </>
+                    )}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          <p className="mt-2.5 text-[10px] text-white/15 leading-relaxed">
+            Records what happens during each dictation session. Automatically
+            stops after 5 minutes. Share the log with support to diagnose
+            issues.
+          </p>
+        </motion.div>
+
+        {/* Updates */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         >
           <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
             Updates

@@ -2,6 +2,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
 import type { ShortcutId, AppSettings } from '../../shared/types'
+import { enableDebug, disableDebug } from '../utils/logger'
 
 const CONFIG_DIR = join(
   homedir(),
@@ -19,11 +20,15 @@ export class AppConfig {
   private audioDeviceName: string | null
   private audioDevice: number
   private shortcutId: ShortcutId
+  // debugMode is never persisted as true — always written as false on disk
+  // so logging never silently resumes after a restart.
+  private debugMode: boolean
 
   constructor() {
     this.audioDeviceName = null
     this.audioDevice = 0
     this.shortcutId = 'option-space'
+    this.debugMode = false
   }
 
   // --- Persistence ---
@@ -53,6 +58,8 @@ export class AppConfig {
       audioDeviceName: this.audioDeviceName,
       audioDevice: this.audioDevice,
       shortcutId: this.shortcutId,
+      // Always write false — debug mode must never silently resume after restart
+      debugMode: false,
     }
   }
 
@@ -97,10 +104,25 @@ export class AppConfig {
     return this.shortcutId
   }
 
+  public async setDebugMode(enabled: boolean) {
+    this.debugMode = enabled
+    if (enabled) {
+      enableDebug()
+    } else {
+      disableDebug()
+    }
+    await this.save()
+  }
+
+  public getDebugMode(): boolean {
+    return this.debugMode
+  }
+
   public getSettings(): AppSettings {
     return {
       shortcutId: this.shortcutId,
       maxRecordingDuration: MAX_RECORDING_DURATION,
+      debugMode: this.debugMode,
     }
   }
 }

@@ -123,7 +123,10 @@ let commandThread = Thread {
         case "paste":
             // Small delay so the clipboard write is guaranteed to complete first
             Thread.sleep(forTimeInterval: 0.05)
+            let axOk = AXIsProcessTrusted()
             pasteViaKeyEvent()
+            let pasteResult = "{\"type\": \"paste_result\", \"success\": \(axOk), \"accessibility\": \(axOk)}"
+            outputQueue.async { print(pasteResult); fflush(stdout) }
 
         case "check_permissions":
             let micOk = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized

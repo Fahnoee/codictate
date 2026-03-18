@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import type { ShortcutId } from '../../../shared/types'
+import { log } from '../logger'
 
 export const KeyCode: Record<number, string> = {
   49: 'space',
@@ -185,6 +186,11 @@ export function startKeyboardListener(
               microphone: parsed.microphone ?? false,
               accessibility: parsed.accessibility ?? false,
             })
+          } else if (parsed.type === 'paste_result') {
+            log('paste', 'CGEvent paste result from KeyListener', {
+              success: parsed.success,
+              accessibility: parsed.accessibility,
+            })
           } else if (
             parsed.status === 'permission_requested' ||
             parsed.status === 'error'
@@ -212,21 +218,27 @@ export function startKeyboardListener(
 }
 
 export const copyToClipboard = async (text: string) => {
+  log('clipboard', 'writing to clipboard via pbcopy', {
+    charCount: text.length,
+  })
   const proc = Bun.spawn(['pbcopy'], { stdin: 'pipe' })
   proc.stdin.write(text)
   await proc.stdin.end()
   await proc.exited
+  log('clipboard', 'pbcopy exited', { exitCode: proc.exitCode })
 }
 
 // Uses the KeyListener's CGEvent-based paste if available (no System Events
 // permission needed). Falls back to osascript only if the listener isn't running.
 export const pasteToActiveWindow = async () => {
   if (keyListenerPaste) {
+    log('paste', 'sending paste command to KeyListener (CGEvent)')
     keyListenerPaste()
     return
   }
 
   // Fallback: requires Automation > System Events permission
+  log('paste', 'KeyListener unavailable — falling back to osascript')
   const proc = Bun.spawn(
     [
       'osascript',
@@ -236,4 +248,15 @@ export const pasteToActiveWindow = async () => {
     { stderr: 'pipe', stdout: 'pipe' }
   )
   await proc.exited
+
+  let stderrText = ''
+  try {
+    stderrText = await new Response(proc.stderr).text()
+  } catch {
+    // Ignore
+  }
+  log('paste', 'osascript exited', {
+    exitCode: proc.exitCode,
+    stderr: stderrText.trim() || undefined,
+  })
 }

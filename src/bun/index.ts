@@ -9,6 +9,7 @@ import { setupApplicationMenu } from './setup-menu'
 import { setupTray } from './setup-tray'
 import { setupRecording } from './setup-recording'
 import { setupWindow } from './setup-window'
+import { setOnAutoDisable } from './utils/logger'
 
 const DEV_SERVER_PORT = 5173
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`
@@ -98,10 +99,21 @@ const win = setupWindow({
     trayHandlers.rebuildDeviceMenu(index)
     menuHandlers.rebuildDeviceMenu(index)
   },
+  onSetDebugMode: async (enabled) => {
+    await UserAppConfig.setDebugMode(enabled)
+    win.send.updateSettings(UserAppConfig.getSettings())
+  },
   onTriggerUpdateCheck: () => checkForUpdates(),
   onApplyUpdate: onApplyUpdate,
   // Re-push app state whenever the window is re-opened after being closed.
   onNewWindowReady: () => pushInitialState(),
+})
+
+// When the 5-minute auto-disable fires, sync the state back to AppConfig and
+// push the updated settings so the UI toggle turns itself off.
+setOnAutoDisable(async () => {
+  await UserAppConfig.setDebugMode(false)
+  win.send.updateSettings(UserAppConfig.getSettings())
 })
 
 const onDeviceSelected = (device: number) => {

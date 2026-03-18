@@ -8,7 +8,6 @@
         "@tanstack/react-query": "^5.90.21",
         "electrobun": "1.15.1",
         "motion": "^12.36.0",
-        "pbcopy": "^0.0.1",
         "react": "19.2.4",
         "react-dom": "19.2.4",
       },
@@ -511,8 +510,6 @@
     "path-exists": ["path-exists@4.0.0", "", {}, "sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w=="],
 
     "path-key": ["path-key@3.1.1", "", {}, "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q=="],
-
-    "pbcopy": ["pbcopy@0.0.1", "", {}, "sha512-04t9Jov5Mo6e31uRRz5JcujgxKKHateawPJmJL6Nj7oabPFh2c4Tgwg0aRfnEIGk8oBerc89B8fGKqo3c/R45Q=="],
 
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 
