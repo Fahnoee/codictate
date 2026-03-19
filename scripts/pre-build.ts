@@ -1,8 +1,8 @@
-// Downloads static macOS binaries and models that are too large to commit to git.
-// Everything is cached in vendors/ (gitignored) so it only downloads once.
+// Downloads/builds binaries and models that are too large to commit to git.
+// Everything is cached in vendors/ (gitignored) so it only runs once.
 //
-// - ffmpeg:      static LGPL build from evermeet.cx
-// - whisper-cli: pre-built binary from whisper.cpp GitHub releases
+// - ffmpeg:          static LGPL build from evermeet.cx
+// - whisper-cli:     built from source (whisper.cpp no longer ships macOS binaries)
 // - ggml-base.en.bin: Whisper base English model from Hugging Face
 
 import { join } from "path";
@@ -52,9 +52,13 @@ async function vendorFfmpeg() {
 
 // ─── whisper-cli ─────────────────────────────────────────────────────────────
 
-// Pinned to a specific release so builds are reproducible.
+// whisper.cpp stopped shipping macOS binary releases after v1.7.4.
+// We build from source instead — this produces a fully static binary
+// (no dylib dependencies beyond macOS system frameworks) that works on any Mac.
+//
 // To upgrade: bump this version and delete vendors/whisper/whisper-cli.
-const WHISPER_VERSION = "1.7.4";
+// Requires: cmake (install with `brew install cmake` if missing)
+const WHISPER_VERSION = "1.8.3";
 const WHISPER_DIR = join(VENDORS_DIR, "whisper");
 const WHISPER_BINARY = join(WHISPER_DIR, "whisper-cli");
 
@@ -64,51 +68,88 @@ async function vendorWhisperCli() {
     return;
   }
 
-  mkdirSync(WHISPER_DIR, { recursive: true });
-
-  const arch = process.arch === "arm64" ? "arm64" : "x86_64";
-  const assetName = `whisper-blas-bin-macos-${arch}.zip`;
-  const url = `https://github.com/ggerganov/whisper.cpp/releases/download/v${WHISPER_VERSION}/${assetName}`;
-  const zipPath = join(WHISPER_DIR, "whisper.zip");
-  const extractDir = join(WHISPER_DIR, "extracted");
-
-  console.log(
-    `[pre-build] Downloading whisper-cli v${WHISPER_VERSION} (${arch})...`,
-  );
-  const dl = Bun.spawnSync(
-    ["curl", "-L", "--progress-bar", url, "-o", zipPath],
-    {
-      stdio: ["ignore", "inherit", "inherit"],
-    },
-  );
-  if (dl.exitCode !== 0)
+  // Verify cmake is available before doing any work
+  const cmakeCheck = Bun.spawnSync(["cmake", "--version"], { stdout: "pipe" });
+  if (cmakeCheck.exitCode !== 0)
     throw new Error(
-      `[pre-build] Failed to download whisper-cli from:\n  ${url}`,
+      "[pre-build] cmake not found. Install it with: brew install cmake",
     );
 
-  mkdirSync(extractDir, { recursive: true });
-  Bun.spawnSync(["unzip", "-o", zipPath, "-d", extractDir], {
+  mkdirSync(WHISPER_DIR, { recursive: true });
+
+  const sourceUrl = `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${WHISPER_VERSION}.tar.gz`;
+  const tarPath = join(WHISPER_DIR, "whisper-src.tar.gz");
+  const srcDir = join(WHISPER_DIR, "whisper-src");
+  const buildDir = join(WHISPER_DIR, "whisper-build");
+
+  console.log(
+    `[pre-build] Downloading whisper.cpp v${WHISPER_VERSION} source...`,
+  );
+  const dl = Bun.spawnSync(
+    ["curl", "-L", "--progress-bar", sourceUrl, "-o", tarPath],
+    { stdio: ["ignore", "inherit", "inherit"] },
+  );
+  if (dl.exitCode !== 0)
+    throw new Error("[pre-build] Failed to download whisper.cpp source");
+
+  mkdirSync(srcDir, { recursive: true });
+  Bun.spawnSync(["tar", "-xf", tarPath, "-C", srcDir, "--strip-components=1"], {
     stdio: ["ignore", "inherit", "inherit"],
   });
-  Bun.spawnSync(["rm", zipPath]);
+  Bun.spawnSync(["rm", "-f", tarPath]);
 
-  // The zip extracts to build/bin/whisper-cli — find it regardless of nesting
+  console.log("[pre-build] Configuring whisper-cli (static build)...");
+  const configure = Bun.spawnSync(
+    [
+      "cmake",
+      "-S", srcDir,
+      "-B", buildDir,
+      "-DCMAKE_BUILD_TYPE=Release",
+      // Build all internal libs as static — whisper-cli ends up with no
+      // external dylib deps beyond macOS system frameworks (Metal, libc++, etc.)
+      "-DBUILD_SHARED_LIBS=OFF",
+      "-DWHISPER_BUILD_TESTS=OFF",
+    ],
+    { stdio: ["ignore", "inherit", "inherit"] },
+  );
+  if (configure.exitCode !== 0) {
+    Bun.spawnSync(["rm", "-rf", srcDir, buildDir]);
+    throw new Error("[pre-build] cmake configure failed");
+  }
+
+  const cpuResult = Bun.spawnSync(["sysctl", "-n", "hw.ncpu"], {
+    stdout: "pipe",
+  });
+  const jobs = cpuResult.stdout.toString().trim() || "4";
+
+  console.log(
+    `[pre-build] Building whisper-cli (${jobs} cores, ~2-3 min first time)...`,
+  );
+  const build = Bun.spawnSync(
+    ["cmake", "--build", buildDir, "--target", "whisper-cli", "-j", jobs],
+    { stdio: ["ignore", "inherit", "inherit"] },
+  );
+  if (build.exitCode !== 0) {
+    Bun.spawnSync(["rm", "-rf", srcDir, buildDir]);
+    throw new Error("[pre-build] whisper-cli build failed");
+  }
+
   const findProc = Bun.spawnSync(
-    ["find", extractDir, "-name", "whisper-cli", "-type", "f"],
+    ["find", buildDir, "-name", "whisper-cli", "-type", "f"],
     { stdout: "pipe" },
   );
   const foundPath = findProc.stdout.toString().trim().split("\n")[0];
 
-  if (!foundPath)
-    throw new Error(
-      "[pre-build] whisper-cli binary not found inside the downloaded archive",
-    );
+  if (!foundPath) {
+    Bun.spawnSync(["rm", "-rf", srcDir, buildDir]);
+    throw new Error("[pre-build] whisper-cli binary not found after build");
+  }
 
   Bun.spawnSync(["cp", foundPath, WHISPER_BINARY]);
-  Bun.spawnSync(["rm", "-rf", extractDir]);
+  Bun.spawnSync(["rm", "-rf", srcDir, buildDir]);
 
   chmodSync(WHISPER_BINARY, 0o755);
-  console.log("[pre-build] whisper-cli vendored successfully");
+  console.log("[pre-build] whisper-cli built and vendored successfully");
 }
 
 // ─── ggml model ──────────────────────────────────────────────────────────────
