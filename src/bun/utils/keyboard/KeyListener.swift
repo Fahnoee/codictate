@@ -120,8 +120,16 @@ let commandThread = Thread {
         else { continue }
 
         switch command {
-        case "paste":
-            // Small delay so the clipboard write is guaranteed to complete first
+        case "set_clipboard":
+            guard let text = msg["text"] as? String else { break }
+            NSPasteboard.general.clearContents()
+            _ = NSPasteboard.general.setString(text, forType: .string)
+            outputQueue.async { print("{\"type\": \"clipboard_set\"}"); fflush(stdout) }
+
+        case "paste_text":
+            guard let text = msg["text"] as? String else { break }
+            NSPasteboard.general.clearContents()
+            _ = NSPasteboard.general.setString(text, forType: .string)
             Thread.sleep(forTimeInterval: 0.05)
             let axOk = AXIsProcessTrusted()
             pasteViaKeyEvent()

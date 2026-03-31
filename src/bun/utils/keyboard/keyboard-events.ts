@@ -1,5 +1,9 @@
 import { join } from 'node:path'
 import type { ShortcutId } from '../../../shared/types'
+import {
+  bindNativePasteboardWriter,
+  unbindNativePasteboardWriter,
+} from '../clipboard/native-pasteboard-bridge'
 import { log } from '../logger'
 
 export const KeyCode: Record<number, string> = {
@@ -106,9 +110,8 @@ export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
   },
 }
 
-// Set when the keyboard listener starts so pasteToActiveWindow can use
-// the already-trusted KeyListener process instead of osascript/System Events.
-let keyListenerPaste: (() => void) | null = null
+/** NSPasteboard + Cmd+V — Unicode-safe in bundled apps (no pbcopy / shell locale). */
+let keyListenerPasteText: ((text: string) => void) | null = null
 
 export function startKeyboardListener(
   onKeyDown: (event: KeyEvent) => void,
@@ -139,8 +142,13 @@ export function startKeyboardListener(
     }
   })
 
-  const paste = () => {
-    proc.stdin.write(JSON.stringify({ command: 'paste' }) + '\n')
+  const pasteText = (text: string) => {
+    proc.stdin.write(JSON.stringify({ command: 'paste_text', text }) + '\n')
+    proc.stdin.flush()
+  }
+
+  const setClipboardOnly = (text: string) => {
+    proc.stdin.write(JSON.stringify({ command: 'set_clipboard', text }) + '\n')
     proc.stdin.flush()
   }
 
@@ -149,7 +157,8 @@ export function startKeyboardListener(
     proc.stdin.flush()
   }
 
-  keyListenerPaste = paste
+  keyListenerPasteText = pasteText
+  bindNativePasteboardWriter(setClipboardOnly)
 
   const reader = proc.stdout.getReader()
   const decoder = new TextDecoder()
@@ -191,6 +200,8 @@ export function startKeyboardListener(
               success: parsed.success,
               accessibility: parsed.accessibility,
             })
+          } else if (parsed.type === 'clipboard_set') {
+            log('clipboard', 'NSPasteboard set (copy-only)')
           } else if (
             parsed.status === 'permission_requested' ||
             parsed.status === 'error'
@@ -209,54 +220,23 @@ export function startKeyboardListener(
       return procAlive
     },
     stop: () => {
-      keyListenerPaste = null
+      keyListenerPasteText = null
+      unbindNativePasteboardWriter()
       proc.kill()
     },
-    paste,
     checkPermissions,
   }
 }
 
-export const copyToClipboard = async (text: string) => {
-  log('clipboard', 'writing to clipboard via pbcopy', {
-    charCount: text.length,
-  })
-  const proc = Bun.spawn(['pbcopy'], { stdin: 'pipe' })
-  proc.stdin.write(text)
-  await proc.stdin.end()
-  await proc.exited
-  log('clipboard', 'pbcopy exited', { exitCode: proc.exitCode })
-}
-
-// Uses the KeyListener's CGEvent-based paste if available (no System Events
-// permission needed). Falls back to osascript only if the listener isn't running.
-export const pasteToActiveWindow = async () => {
-  if (keyListenerPaste) {
-    log('paste', 'sending paste command to KeyListener (CGEvent)')
-    keyListenerPaste()
+export const pasteTranscript = async (text: string) => {
+  if (!keyListenerPasteText) {
+    console.error(
+      '[pasteTranscript] KeyListener not running; cannot paste transcript.'
+    )
     return
   }
-
-  // Fallback: requires Automation > System Events permission
-  log('paste', 'KeyListener unavailable — falling back to osascript')
-  const proc = Bun.spawn(
-    [
-      'osascript',
-      '-e',
-      'tell application "System Events" to keystroke "v" using command down',
-    ],
-    { stderr: 'pipe', stdout: 'pipe' }
-  )
-  await proc.exited
-
-  let stderrText = ''
-  try {
-    stderrText = await new Response(proc.stderr).text()
-  } catch {
-    // Ignore
-  }
-  log('paste', 'osascript exited', {
-    exitCode: proc.exitCode,
-    stderr: stderrText.trim() || undefined,
+  log('paste', 'paste_text via KeyListener (NSPasteboard)', {
+    charCount: text.length,
   })
+  keyListenerPasteText(text)
 }

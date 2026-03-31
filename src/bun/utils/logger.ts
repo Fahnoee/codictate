@@ -1,6 +1,7 @@
 import { homedir } from 'os'
 import { join } from 'path'
 import { mkdirSync, appendFileSync } from 'fs'
+import { writeNativePasteboard } from './clipboard/native-pasteboard-bridge'
 
 const DEBUG_AUTO_DISABLE_MS = 5 * 60 * 1_000 // 5 minutes
 const RING_BUFFER_MAX = 500
@@ -96,8 +97,6 @@ export function isDebugEnabled(): boolean {
 
 export async function copyLogToClipboard() {
   const content = ringBuffer.join('\n')
-  const proc = Bun.spawn(['pbcopy'], { stdin: 'pipe' })
-  proc.stdin.write(content)
-  await proc.stdin.end()
-  await proc.exited
+  if (writeNativePasteboard(content)) return
+  console.warn('[logger] Copy debug log skipped (KeyListener not running yet).')
 }

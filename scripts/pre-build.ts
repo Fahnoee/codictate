@@ -3,7 +3,7 @@
 //
 // - ffmpeg:          static LGPL build from evermeet.cx
 // - whisper-cli:     built from source (whisper.cpp no longer ships macOS binaries)
-// - ggml-base.en.bin: Whisper base English model from Hugging Face
+// - ggml-small.bin (or base): Whisper multilingual model from Hugging Face
 
 import { join } from "path";
 import { existsSync, mkdirSync, chmodSync } from "fs";
@@ -154,22 +154,24 @@ async function vendorWhisperCli() {
 
 // ─── ggml model ──────────────────────────────────────────────────────────────
 
-const MODEL_PATH = join(WHISPER_DIR, "ggml-base.en.bin");
+// We landed on this model becuase it can detect
+// multiple languages and it is fast and very accurate.
+const MODEL_NAME = "ggml-large-v3-turbo-q5_0.bin";
+const MODEL_PATH = join(WHISPER_DIR, MODEL_NAME);
 
 async function vendorWhisperModel() {
   if (existsSync(MODEL_PATH)) {
-    console.log("[pre-build] ggml-base.en.bin already vendored, skipping");
+    console.log(`[pre-build] ${MODEL_NAME} already vendored, skipping`);
     return;
   }
 
   mkdirSync(WHISPER_DIR, { recursive: true });
 
   // Hosted on Hugging Face — same model the official whisper.cpp download script pulls
-  const url =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
+  const url = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_NAME}`;
 
   console.log(
-    "[pre-build] Downloading ggml-base.en.bin (~141 MB, this may take a moment)...",
+    `[pre-build] Downloading ${MODEL_NAME} (~547 MB, this may take a moment)...`,
   );
   const dl = Bun.spawnSync(
     ["curl", "-L", "--progress-bar", url, "-o", MODEL_PATH],
@@ -178,9 +180,9 @@ async function vendorWhisperModel() {
     },
   );
   if (dl.exitCode !== 0)
-    throw new Error("[pre-build] Failed to download ggml-base.en.bin");
+    throw new Error(`[pre-build] Failed to download ${MODEL_NAME}`);
 
-  console.log("[pre-build] ggml-base.en.bin vendored successfully");
+  console.log(`[pre-build] ${MODEL_NAME} vendored successfully`);
 }
 
 // ─── run ─────────────────────────────────────────────────────────────────────

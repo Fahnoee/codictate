@@ -18,7 +18,8 @@ export default {
       "src/bun/utils/keyboard/KeyListener": "native-helpers/KeyListener",
       // -- Whisper (vendored by preBuild, not committed to git)
       "vendors/whisper/whisper-cli": "native-helpers/whisper-cli",
-      "vendors/whisper/ggml-base.en.bin": "native-helpers/ggml-base.en.bin",
+      "vendors/whisper/ggml-large-v3-turbo-q5_0.bin":
+        "native-helpers/ggml-large-v3-turbo-q5_0.bin",
       // -- Sounds (src/assets/sounds → app/sounds)
       "src/assets/sounds/dictation-start.wav": "sounds/dictation-start.wav",
       "src/assets/sounds/dictation-stop.wav": "sounds/dictation-stop.wav",
