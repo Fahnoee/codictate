@@ -16,7 +16,7 @@
     "build:canary": "bun run build:native && vite build && electrobun build --env=canary",
     "build:native": "src/scripts/build-swift.sh",
     "start": "bun run build:native && vite build && electrobun dev",
-    "postbuild": "chmod +x build/dev-macos-arm64/react-tailwind-vite-dev.app/Contents/Resources/native-helpers/KeyListener"
+    "postbuild": "chmod +x build/dev-macos-arm64/react-tailwind-vite-dev.app/Contents/Resources/native-helpers/KeyListener build/dev-macos-arm64/react-tailwind-vite-dev.app/Contents/Resources/native-helpers/MicRecorder"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",

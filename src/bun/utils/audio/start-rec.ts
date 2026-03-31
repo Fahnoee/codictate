@@ -1,0 +1,85 @@
+import { AppConfig } from '../../AppConfig/AppConfig'
+import { speech2text, RECORDING_PATH } from '../whisper/speech2text'
+import { playEndSound } from '../sound/play-sound'
+import { findMicRecorderBinary } from './find-mic-recorder'
+import { findDevices } from './devices'
+import { log } from '../logger'
+
+const MAX_RECORD_SECONDS = 120
+
+export const startRecording = async (
+  appConfig: AppConfig,
+  onComplete: () => void,
+  onDone: () => void
+) => {
+  const micPath = await findMicRecorderBinary()
+
+  const currentDevices = await findDevices()
+  const resolved = appConfig.resolveAudioDevice(currentDevices)
+
+  const deviceExists = resolved.toString() in currentDevices
+  const device = deviceExists
+    ? resolved
+    : Number(Object.keys(currentDevices)[0] ?? '0')
+
+  if (!deviceExists) {
+    console.warn(
+      `[recording] device ${resolved} not available, falling back to device ${device} (${currentDevices[device.toString()] ?? 'unknown'})`
+    )
+  }
+
+  const deviceLabel = currentDevices[device.toString()]?.trim() || 'default'
+
+  log('mic', 'resolved audio device', {
+    index: device,
+    name: deviceLabel,
+    requestedIndex: resolved,
+    deviceExists,
+    binary: micPath,
+  })
+
+  const proc = Bun.spawn(
+    [
+      micPath,
+      'record',
+      RECORDING_PATH,
+      String(device),
+      String(MAX_RECORD_SECONDS),
+    ],
+    {
+      stderr: 'pipe',
+      stdin: 'ignore',
+      async onExit(proc, exitCode) {
+        let stderrText = ''
+        try {
+          stderrText = await new Response(proc.stderr).text()
+        } catch {
+          // Ignore
+        }
+
+        log('mic', 'exited', {
+          exitCode,
+          stderr: stderrText.slice(0, 500) || undefined,
+        })
+
+        onComplete()
+        const forceCancelled =
+          exitCode === 255 || exitCode === 143 || exitCode === 137
+        if (!forceCancelled) {
+          playEndSound()
+          await speech2text()
+        }
+        onDone()
+      },
+    }
+  )
+
+  log('mic', 'spawned', { pid: proc.pid })
+
+  return proc
+}
+
+export const stopRecording = async (recorder: ReturnType<typeof Bun.spawn>) => {
+  recorder.kill('SIGINT')
+  await recorder.exited
+}

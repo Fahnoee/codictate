@@ -63,7 +63,7 @@ src/
     utils/
       keyboard/         # Swift KeyListener + event definitions
       whisper/          # Transcription (whisper-cli)
-      ffmpeg/           # Audio recording + device detection
+      audio/            # MicRecorder (Swift) + spawn, device list
   mainview/             # React frontend (Vite)
     App.tsx
     components/
@@ -71,7 +71,7 @@ src/
       Ready/
       Settings/
 scripts/
-  pre-build.ts          # Downloads vendored binaries (whisper, ffmpeg)
+  pre-build.ts          # Downloads/builds vendored binaries (whisper model + whisper-cli)
   post-build.ts         # Patches .app bundle (plist, icon, binary rename)
   release.sh            # Release pipeline
 electrobun.config.ts    # App config, version, build settings

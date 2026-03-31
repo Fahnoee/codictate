@@ -1,4 +1,4 @@
-import { startRecording, stopRecording } from './utils/ffmpeg/start-rec'
+import { startRecording, stopRecording } from './utils/audio/start-rec'
 import {
   Key,
   SHORTCUTS,
@@ -16,22 +16,22 @@ export const setupRecording = (
   onStatusChange?: (status: AppStatus) => void,
   onPermissions?: (status: PermissionStatus) => void
 ) => {
-  let ffmpeg: ReturnType<typeof Bun.spawn> | null = null
+  let recorderProc: ReturnType<typeof Bun.spawn> | null = null
   const shortcut = SHORTCUTS[appConfig.getShortcutId()]
 
   const keyboard = startKeyboardListener(
     async (keyEvent) => {
       const isShortcut = shortcut.isMatch(keyEvent)
 
-      if (isShortcut && ffmpeg === null) {
+      if (isShortcut && recorderProc === null) {
         console.log('START RECORD')
         playStartSound()
         setTrayRecording()
         onStatusChange?.('recording')
-        ffmpeg = await startRecording(
+        recorderProc = await startRecording(
           appConfig,
           () => {
-            ffmpeg = null
+            recorderProc = null
             setTrayTranscribing()
             onStatusChange?.('transcribing')
           },
@@ -43,16 +43,16 @@ export const setupRecording = (
         return
       }
 
-      if (isShortcut && ffmpeg) {
+      if (isShortcut && recorderProc) {
         console.log('END RECORD')
-        await stopRecording(ffmpeg)
-        ffmpeg = null
+        await stopRecording(recorderProc)
+        recorderProc = null
         return
       }
 
-      if (keyEvent.keycode === Key.escape && ffmpeg) {
-        ffmpeg.kill()
-        ffmpeg = null
+      if (keyEvent.keycode === Key.escape && recorderProc) {
+        recorderProc.kill()
+        recorderProc = null
         setTrayIdle()
         onStatusChange?.('ready')
         console.log('Recording cancelled')

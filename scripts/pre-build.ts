@@ -1,7 +1,7 @@
 // Downloads/builds binaries and models that are too large to commit to git.
 // Everything is cached in vendors/ (gitignored) so it only runs once.
 //
-// - ffmpeg:          static LGPL build from evermeet.cx
+// - MicRecorder:     built from Swift via `bun run build:native` (Core Audio capture + device list)
 // - whisper-cli:     built from source (whisper.cpp no longer ships macOS binaries)
 // - ggml-small.bin (or base): Whisper multilingual model from Hugging Face
 
@@ -9,46 +9,6 @@ import { join } from "path";
 import { existsSync, mkdirSync, chmodSync } from "fs";
 
 const VENDORS_DIR = "./vendors";
-
-// ─── ffmpeg ──────────────────────────────────────────────────────────────────
-
-const FFMPEG_DIR = join(VENDORS_DIR, "ffmpeg");
-const FFMPEG_BINARY = join(FFMPEG_DIR, "ffmpeg");
-
-async function vendorFfmpeg() {
-  if (existsSync(FFMPEG_BINARY)) {
-    console.log("[pre-build] ffmpeg already vendored, skipping");
-    return;
-  }
-
-  mkdirSync(FFMPEG_DIR, { recursive: true });
-
-  // evermeet.cx: static LGPL-licensed macOS builds (arm64 / universal)
-  // /getrelease/ffmpeg/zip always resolves to the latest release
-  const url = "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip";
-  const zipPath = join(FFMPEG_DIR, "ffmpeg.zip");
-
-  console.log("[pre-build] Downloading ffmpeg...");
-  const dl = Bun.spawnSync(
-    ["curl", "-L", "--progress-bar", url, "-o", zipPath],
-    {
-      stdio: ["ignore", "inherit", "inherit"],
-    },
-  );
-  if (dl.exitCode !== 0)
-    throw new Error("[pre-build] Failed to download ffmpeg");
-
-  Bun.spawnSync(["unzip", "-o", zipPath, "-d", FFMPEG_DIR], {
-    stdio: ["ignore", "inherit", "inherit"],
-  });
-  Bun.spawnSync(["rm", zipPath]);
-
-  if (!existsSync(FFMPEG_BINARY))
-    throw new Error(`[pre-build] ffmpeg binary not found after extraction`);
-
-  chmodSync(FFMPEG_BINARY, 0o755);
-  console.log("[pre-build] ffmpeg vendored successfully");
-}
 
 // ─── whisper-cli ─────────────────────────────────────────────────────────────
 
@@ -194,7 +154,6 @@ if (process.platform !== "darwin") {
   process.exit(0);
 }
 
-await vendorFfmpeg();
 await vendorWhisperCli();
 await vendorWhisperModel();
 

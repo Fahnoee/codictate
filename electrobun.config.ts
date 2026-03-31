@@ -16,6 +16,7 @@ export default {
       "dist/assets": "views/mainview/assets",
       // -- custom key listener
       "src/bun/utils/keyboard/KeyListener": "native-helpers/KeyListener",
+      "src/bun/utils/audio/MicRecorder": "native-helpers/MicRecorder",
       // -- Whisper (vendored by preBuild, not committed to git)
       "vendors/whisper/whisper-cli": "native-helpers/whisper-cli",
       "vendors/whisper/ggml-large-v3-turbo-q5_0.bin":
@@ -28,8 +29,6 @@ export default {
       // -- Images (src/assets/images → app/images)
       "src/assets/images/MacTrayIcon.svg": "images/MacTrayIcon.svg",
       "src/assets/images/MacDocIcon.png": "images/MacDocIcon.png",
-      // -- ffmpeg (vendored static binary, downloaded by preBuild)
-      "vendors/ffmpeg/ffmpeg": "native-helpers/ffmpeg",
     },
     watchIgnore: ["dist/**"],
     mac: {
