@@ -48,16 +48,14 @@ export const startRecording = async (
   const ffmpeg = Bun.spawn(
     [
       ffmpegPath,
+      '-y',
       '-f',
       'avfoundation',
       '-i',
       `:${device}`,
-      '-sample_rate',
-      '44100',
-      RECORDING_PATH,
       '-t',
       '120',
-      '-y',
+      RECORDING_PATH,
     ],
     {
       stderr: 'pipe',
