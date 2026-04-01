@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "motion/react";
 import type { PermissionState } from "../../app-events";
 import type { SettingsPane } from "../../../shared/types";
 import { PermissionRow } from "./PermissionRow";
+import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 
 export function PermissionScreen({
   permissions,
@@ -20,9 +21,9 @@ export function PermissionScreen({
   const allGranted = grantedCount === 4;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#070810] text-white select-none px-6">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none px-6">
       <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
-      <div className="w-full max-w-[340px]">
+      <div className="w-full max-w-[410px]">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -38,10 +39,12 @@ export function PermissionScreen({
               />
             ))}
           </div>
-          <h1 className="text-[15px] font-semibold tracking-tight text-white/80">
-            Codictate
-          </h1>
-          <p className="text-[11px] text-white/25 mt-0.5">
+          <WordmarkCodictate
+            as="h1"
+            showMark
+            className="text-[23px] font-semibold tracking-tight text-white/80"
+          />
+          <p className="text-[19px] text-white/25 mt-0.5">
             A few things before we start
           </p>
         </motion.div>
@@ -53,10 +56,10 @@ export function PermissionScreen({
           className="mb-4"
         >
           <div className="flex justify-between items-center mb-1.5">
-            <span className="text-[10px] text-white/25 font-medium uppercase tracking-wider">
+            <span className="text-[18px] text-white/25 font-medium uppercase tracking-wider">
               Permissions
             </span>
-            <span className="text-[10px] text-white/25">
+            <span className="text-[18px] text-white/25">
               {grantedCount} / 4
             </span>
           </div>
@@ -112,7 +115,7 @@ export function PermissionScreen({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ delay: 0.5, duration: 0.3 }}
-              className="mt-5 text-[10px] text-white/15 text-center leading-relaxed"
+              className="mt-5 text-[18px] text-white/15 text-center leading-relaxed"
             >
               Updates live — return to this window after granting each
               permission.
@@ -129,7 +132,7 @@ export function PermissionScreen({
               animate={{ opacity: 1, y: 0 }}
               className="mt-5 flex flex-col items-center gap-1"
             >
-              <div className="text-[11px] text-emerald-400/70 font-medium">
+              <div className="text-[19px] text-emerald-400/70 font-medium">
                 All set — ready to dictate
               </div>
             </motion.div>

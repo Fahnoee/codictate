@@ -20,6 +20,11 @@ import {
 import { appEvents } from "../../app-events";
 import { ShortcutPicker } from "./ShortcutPicker";
 import { DevicePicker } from "./DevicePicker";
+import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
+
+/** Secondary copy under each block: readable, softer than card content. */
+const settingsHelperClass =
+  "mt-3 text-[18px] text-white/44 leading-relaxed font-sans font-normal";
 
 function updateStateLabel(state: UpdateCheckState, message?: string): string {
   switch (state) {
@@ -47,7 +52,7 @@ function updateStateTextClass(state: UpdateCheckState): string {
     case "error":
       return "text-orange-400/70";
     default:
-      return "text-white/40";
+      return "text-white/55";
   }
 }
 
@@ -63,7 +68,7 @@ function UpdateIcon({ state }: { state: UpdateCheckState }) {
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="text-white/30 animate-spin"
+        className="text-white/45 animate-spin"
       >
         <path d="M21 12a9 9 0 1 1-6.219-8.56" />
       </svg>
@@ -133,7 +138,7 @@ function UpdateIcon({ state }: { state: UpdateCheckState }) {
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="text-white/15"
+      className="text-white/38"
     >
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="17 8 12 3 7 8" />
@@ -158,7 +163,7 @@ function UpdateAction({
     return (
       <button
         onClick={onRestart}
-        className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/20 hover:border-blue-400/35 text-blue-300/90 transition-colors duration-200 cursor-pointer"
+        className="shrink-0 px-3 py-1.5 rounded-lg text-[19px] font-semibold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/20 hover:border-blue-400/35 text-blue-300/90 transition-colors duration-200 cursor-pointer"
       >
         Restart
       </button>
@@ -168,7 +173,7 @@ function UpdateAction({
     return (
       <button
         onClick={onCheck}
-        className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/5 text-white/35 hover:text-white/55 transition-colors duration-200 cursor-pointer"
+        className="shrink-0 px-3 py-1.5 rounded-lg text-[19px] font-medium border border-white/12 hover:border-white/20 bg-white/4 hover:bg-white/7 text-white/48 hover:text-white/68 transition-colors duration-200 cursor-pointer"
       >
         Retry
       </button>
@@ -180,7 +185,7 @@ function UpdateAction({
   return (
     <button
       onClick={onCheck}
-      className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium border border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/5 text-white/35 hover:text-white/55 transition-colors duration-200 cursor-pointer"
+      className="shrink-0 px-3 py-1.5 rounded-lg text-[19px] font-medium border border-white/12 hover:border-white/20 bg-white/4 hover:bg-white/7 text-white/48 hover:text-white/68 transition-colors duration-200 cursor-pointer"
     >
       Check
     </button>
@@ -255,9 +260,20 @@ export function SettingsScreen({
       : `${settings.maxRecordingDuration} seconds`;
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-[#070810] text-white select-none px-6 py-10">
+    <div className="flex flex-col items-center min-h-screen bg-codictate-page text-white select-none px-6 py-10">
       <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
-      <div className="w-full max-w-[380px]">
+      <div className="w-full max-w-[450px]">
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          className="flex justify-center mb-5"
+        >
+          <WordmarkCodictate
+            showMark
+            className="text-[21px] font-semibold tracking-tight text-white/68"
+          />
+        </motion.div>
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -267,7 +283,7 @@ export function SettingsScreen({
         >
           <button
             onClick={onBack}
-            className="flex items-center justify-center w-8 h-8 rounded-lg border border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/5 transition-colors duration-200 cursor-pointer"
+            className="flex items-center justify-center w-8 h-8 rounded-lg border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/7 transition-colors duration-200 cursor-pointer"
             aria-label="Back"
           >
             <svg
@@ -279,13 +295,13 @@ export function SettingsScreen({
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-white/35"
+              className="text-white/52"
             >
               <path d="M19 12H5" />
               <path d="m12 19-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="text-[15px] font-semibold tracking-tight text-white/70">
+          <h1 className="text-[23px] font-semibold tracking-tight text-white/82">
             Settings
           </h1>
         </motion.div>
@@ -297,14 +313,14 @@ export function SettingsScreen({
           transition={{ delay: 0.05, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="mb-8"
         >
-          <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
             Activation Shortcut
           </h2>
           <ShortcutPicker
             value={settings.shortcutId}
             onChange={handleShortcutChange}
           />
-          <p className="mt-2.5 text-[10px] text-white/15 leading-relaxed">
+          <p className={settingsHelperClass}>
             The keyboard shortcut used to start and stop dictation. Changing it
             takes effect immediately.
           </p>
@@ -317,7 +333,7 @@ export function SettingsScreen({
           transition={{ delay: 0.1, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="mb-8"
         >
-          <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
             Input Device
           </h2>
           <DevicePicker
@@ -325,7 +341,7 @@ export function SettingsScreen({
             selectedDevice={deviceInfo?.selectedDevice ?? 0}
             onChange={handleDeviceChange}
           />
-          <p className="mt-2.5 text-[10px] text-white/15 leading-relaxed">
+          <p className={settingsHelperClass}>
             The microphone used for dictation. Updates automatically when
             devices are connected or disconnected.
           </p>
@@ -338,10 +354,10 @@ export function SettingsScreen({
           transition={{ delay: 0.15, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="mb-8"
         >
-          <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
             Recording Limit
           </h2>
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/6 bg-white/2">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/11 bg-white/4">
             <svg
               width="14"
               height="14"
@@ -351,17 +367,17 @@ export function SettingsScreen({
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-white/20 shrink-0"
+              className="text-white/38 shrink-0"
             >
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-            <span className="text-[13px] text-white/50 font-medium">
+            <span className="text-[21px] text-white/65 font-medium">
               {durationLabel}
             </span>
-            <span className="text-[10px] text-white/15 ml-auto">auto-stop</span>
+            <span className="text-[18px] text-white/52 ml-auto">auto-stop</span>
           </div>
-          <p className="mt-2.5 text-[10px] text-white/15 leading-relaxed">
+          <p className={settingsHelperClass}>
             Recording will automatically stop after {durationLabel} to keep
             transcription fast and accurate.
           </p>
@@ -374,10 +390,10 @@ export function SettingsScreen({
           transition={{ delay: 0.2, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="mb-8"
         >
-          <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
             Diagnostics
           </h2>
-          <div className="rounded-xl border border-white/6 bg-white/2 overflow-hidden">
+          <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-3.5">
               <div className="shrink-0 w-4 h-4 flex items-center justify-center">
                 <svg
@@ -390,7 +406,7 @@ export function SettingsScreen({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   className={
-                    settings.debugMode ? "text-amber-400/70" : "text-white/15"
+                    settings.debugMode ? "text-amber-400/70" : "text-white/38"
                   }
                 >
                   <path d="M12 2L2 7l10 5 10-5-10-5z" />
@@ -400,7 +416,7 @@ export function SettingsScreen({
               </div>
               <div className="flex-1 min-w-0">
                 <span
-                  className={`block text-[13px] font-medium ${settings.debugMode ? "text-amber-400/80" : "text-white/40"}`}
+                  className={`block text-[21px] font-medium ${settings.debugMode ? "text-amber-400/80" : "text-white/58"}`}
                 >
                   {settings.debugMode
                     ? "Debug logging active"
@@ -412,7 +428,7 @@ export function SettingsScreen({
                 className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
                   settings.debugMode
                     ? "bg-amber-500/30 border-amber-400/30"
-                    : "bg-white/5 border-white/10"
+                    : "bg-white/7 border-white/14"
                 }`}
                 aria-label="Toggle debug logging"
               >
@@ -420,7 +436,7 @@ export function SettingsScreen({
                   className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
                     settings.debugMode
                       ? "left-4 bg-amber-400/90"
-                      : "left-0.5 bg-white/25"
+                      : "left-0.5 bg-white/40"
                   }`}
                 />
               </button>
@@ -433,14 +449,14 @@ export function SettingsScreen({
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="border-t border-white/5 px-4 py-3"
+                  className="border-t border-white/10 px-4 py-3"
                 >
                   <button
                     onClick={handleCopyLog}
-                    className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium border transition-colors duration-200 cursor-pointer ${
+                    className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[19px] font-medium border transition-colors duration-200 cursor-pointer ${
                       isCopied
                         ? "bg-emerald-500/15 border-emerald-400/25 text-emerald-400/80"
-                        : "border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/5 text-white/40 hover:text-white/60"
+                        : "border-white/12 hover:border-white/20 bg-white/4 hover:bg-white/7 text-white/52 hover:text-white/72"
                     }`}
                   >
                     {isCopied ? (
@@ -489,7 +505,7 @@ export function SettingsScreen({
               )}
             </AnimatePresence>
           </div>
-          <p className="mt-2.5 text-[10px] text-white/15 leading-relaxed">
+          <p className={settingsHelperClass}>
             Records what happens during each dictation session. Automatically
             stops after 5 minutes. Share the log with support to diagnose
             issues.
@@ -502,10 +518,10 @@ export function SettingsScreen({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         >
-          <h2 className="text-[10px] text-white/25 font-medium uppercase tracking-wider mb-3">
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
             Updates
           </h2>
-          <div className="rounded-xl border border-white/6 bg-white/2 overflow-hidden">
+          <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-3.5">
               {/* Status icon */}
               <div className="shrink-0 w-4 h-4 flex items-center justify-center">
@@ -521,7 +537,7 @@ export function SettingsScreen({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.18 }}
-                    className={`block text-[13px] font-medium ${updateStateTextClass(updateState)}`}
+                    className={`block text-[21px] font-medium ${updateStateTextClass(updateState)}`}
                   >
                     {updateStateLabel(updateState, updateMessage)}
                   </motion.span>
@@ -544,9 +560,9 @@ export function SettingsScreen({
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="border-t border-white/5 px-4 py-2.5"
+                  className="border-t border-white/10 px-4 py-2.5"
                 >
-                  <p className="text-[10px] text-orange-400/60 leading-relaxed">
+                  <p className="text-[18px] text-orange-300/85 leading-relaxed font-sans font-normal">
                     {updateMessage ??
                       "Something went wrong. Check your internet connection and try again."}
                   </p>

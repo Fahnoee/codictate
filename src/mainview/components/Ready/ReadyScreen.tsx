@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppStatus, AppSettings, DeviceInfo } from "../../../shared/types";
 import { Kbd } from "../Common/Kbd";
+import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 import { RecordingOrb } from "./RecordingOrb";
 
 const SHORTCUT_DISPLAY: Record<string, string[]> = {
@@ -43,7 +44,7 @@ export function ReadyScreen({
   );
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#070810] text-white select-none">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none">
       <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
@@ -60,9 +61,10 @@ export function ReadyScreen({
         transition={{ delay: 0.1, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className="flex flex-col items-center mb-10"
       >
-        <h1 className="text-[15px] font-semibold tracking-tight text-white/70">
-          Codictate
-        </h1>
+        <WordmarkCodictate
+          as="h1"
+          className="text-[30px] font-semibold tracking-[-0.02em] text-white/90"
+        />
         <AnimatePresence mode="wait">
           <motion.p
             key={status}
@@ -70,12 +72,12 @@ export function ReadyScreen({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.2 }}
-            className={`text-[11px] mt-0.5 font-medium ${
+            className={`text-[19px] mt-0.5 font-medium font-sans ${
               isRecording
-                ? "text-red-400/70"
+                ? "text-red-400/85"
                 : isTranscribing
-                  ? "text-amber-400/60"
-                  : "text-white/20"
+                  ? "text-amber-400/78"
+                  : "text-white/52"
             }`}
           >
             {isRecording
@@ -98,7 +100,7 @@ export function ReadyScreen({
             {displayKeys.map((key, i) => (
               <span key={key} className="flex items-center gap-1.5">
                 {i > 0 && (
-                  <span className="text-white/15 text-[10px] font-light">
+                  <span className="text-white/42 text-[18px] font-light">
                     +
                   </span>
                 )}
@@ -106,16 +108,16 @@ export function ReadyScreen({
               </span>
             ))}
           </div>
-          <span className="text-[10px] text-white/20">
+          <span className="text-[18px] text-white/50 font-sans">
             Start / stop recording
           </span>
         </div>
 
-        <div className="w-px h-3 bg-white/8" />
+        <div className="w-px h-3 bg-white/14" />
 
         <div className="flex flex-col items-center gap-2">
           <Kbd>Esc</Kbd>
-          <span className="text-[10px] text-white/20">Cancel</span>
+          <span className="text-[18px] text-white/50 font-sans">Cancel</span>
         </div>
       </motion.div>
 
@@ -125,7 +127,7 @@ export function ReadyScreen({
         animate={{ opacity: 1 }}
         transition={{ delay: 0.4, duration: 0.3 }}
         onClick={onOpenSettings}
-        className="absolute bottom-7 right-7 p-2 rounded-lg border border-white/6 hover:border-white/15 bg-white/3 hover:bg-white/5 transition-colors duration-200 cursor-pointer"
+        className="absolute bottom-7 right-7 p-2 rounded-lg border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/7 transition-colors duration-200 cursor-pointer"
         aria-label="Settings"
       >
         <svg
@@ -137,7 +139,7 @@ export function ReadyScreen({
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="text-white/25"
+          className="text-white/48"
         >
           <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
           <circle cx="12" cy="12" r="3" />
@@ -157,7 +159,7 @@ export function ReadyScreen({
               width="10"
               height="10"
               viewBox="0 0 10 10"
-              className="text-white/20 shrink-0"
+              className="text-white/45 shrink-0"
               fill="currentColor"
             >
               <rect x="3" y="0" width="4" height="6" rx="2" />
@@ -178,7 +180,7 @@ export function ReadyScreen({
                 strokeLinecap="round"
               />
             </svg>
-            <span className="text-[10px] text-white/20 max-w-[180px] truncate">
+            <span className="text-[18px] text-white/50 font-sans max-w-[240px] truncate">
               {micName}
             </span>
           </motion.div>

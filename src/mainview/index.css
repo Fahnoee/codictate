@@ -1,1 +1,23 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Iceland", ui-sans-serif, system-ui, sans-serif;
+  --font-brand: "Iceberg", "Iceland", ui-sans-serif, system-ui, sans-serif;
+  --color-codictate-page: hsl(0 0% 0%);
+  --color-codictate-canvas: hsl(200 10% 0%);
+  --color-codictate-foreground: hsl(200 10% 100%);
+  --color-codictate-paper: hsl(0 0% 65% / 0.2);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 23px;
+    @apply bg-codictate-page text-codictate-foreground antialiased;
+  }
+}

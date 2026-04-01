@@ -35,16 +35,16 @@ export function ShortcutPicker({
             onClick={() => onChange(opt.id)}
             className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors duration-200 cursor-pointer ${
               isActive
-                ? "border-white/20 bg-white/5"
-                : "border-white/6 bg-white/2 hover:border-white/10 hover:bg-white/3"
+                ? "border-white/26 bg-white/6"
+                : "border-white/11 bg-white/4 hover:border-white/16 hover:bg-white/6"
             }`}
           >
             <div
               className="shrink-0 w-4 h-4 rounded-full border flex items-center justify-center transition-colors duration-200"
               style={{
                 borderColor: isActive
-                  ? "rgba(255,255,255,0.3)"
-                  : "rgba(255,255,255,0.1)",
+                  ? "rgba(255,255,255,0.38)"
+                  : "rgba(255,255,255,0.18)",
               }}
             >
               {isActive && (
@@ -61,7 +61,7 @@ export function ShortcutPicker({
               {opt.keys.map((key, i) => (
                 <span key={key} className="flex items-center gap-1.5">
                   {i > 0 && (
-                    <span className="text-white/15 text-[10px] font-light">
+                    <span className="text-white/40 text-[18px] font-light">
                       +
                     </span>
                   )}
@@ -71,8 +71,8 @@ export function ShortcutPicker({
             </div>
 
             <span
-              className={`text-[11px] ml-auto transition-colors duration-200 ${
-                isActive ? "text-white/40" : "text-white/20"
+              className={`text-[19px] ml-auto font-sans transition-colors duration-200 ${
+                isActive ? "text-white/72" : "text-white/56"
               }`}
             >
               {opt.label}

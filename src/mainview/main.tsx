@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
+import "@fontsource/iceland/400.css";
+import "@fontsource/iceberg/400.css";
 import "./index.css";
 import App from "./App";
 // Importing queryClient also triggers the Electroview bridge initialisation in rpc.ts
