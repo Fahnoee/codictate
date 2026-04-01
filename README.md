@@ -10,7 +10,9 @@ Codictate puts your words wherever your cursor is with a local-first dictation w
 
 ## Support
 
-Codictate is free. If it saves you time or money compared to other tools, consider supporting the project:
+Codictate is free. If it saves you time or money compared to other tools, consider supporting the project.
+
+I'm saving toward an **Apple Developer Program** membership so the app can be **signed and notarized**. That means fewer Gatekeeper warnings and, for most people, no Terminal `xattr` step after install.
 
 [☕ ko-fi.com/emillykke](https://ko-fi.com/emillykke)
 
