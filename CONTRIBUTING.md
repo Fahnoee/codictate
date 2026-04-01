@@ -12,7 +12,7 @@ Thanks for contributing to Codictate.
 
 ```bash
 bun install
-bun run dev:hmr (or simpley bun run start)
+bun run dev:hmr (or simply bun run start)
 ```
 
 Requirements:
