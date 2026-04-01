@@ -8,6 +8,12 @@
 
 Codictate puts your words wherever your cursor is with a local-first dictation workflow built for macOS. No copy-pasting, no account, no cloud processing of your voice.
 
+## Support
+
+Codictate is free. If it saves you time or money compared to other tools, consider supporting the project:
+
+[☕ ko-fi.com/emillykke](https://ko-fi.com/emillykke)
+
 ## Features
 
 - Fully local transcription with Whisper
@@ -125,12 +131,6 @@ git add electrobun.config.ts version.json && git commit -m "release: vX.X.X"
 - [Code of conduct](CODE_OF_CONDUCT.md)
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
-
-## Support
-
-If Codictate saves you money on other tools, consider supporting the project:
-
-[☕ ko-fi.com/emillykke](https://ko-fi.com/emillykke)
 
 ## License
 
