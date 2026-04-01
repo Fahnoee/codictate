@@ -81,7 +81,11 @@ export const setupTray = (
       submenu: buildDeviceMenuItems(currentDevices, selectedDevice),
     },
     { type: 'divider' as const },
-    { type: 'normal' as const, label: 'Quit', action: 'quit' },
+    {
+      type: 'normal' as const,
+      label: 'Quit',
+      action: 'quit',
+    },
   ]
 
   tray.setMenu(buildMenu(appConfig.resolveAudioDevice(devices)))

@@ -8,15 +8,21 @@
 #   release         → stable first (bumps version), then canary starts the new cycle.
 #
 # Usage (from project root via package.json scripts):
-#   bun run release           → build & release both channels
-#   bun run release:canary    → build & release canary only
-#   bun run release:stable    → build & release stable only
+#   bun run release                 → both channels (stable + canary), default notes
+#   bun run release:canary          → canary only, default notes
+#   bun run release:stable          → stable only, default notes
+#   (Default GitHub body is still "Codictate <fullVersion>" when you omit -m / env.)
+#
+# Release notes (GitHub body; optional — same default as before when omitted):
+#   bun run release -- -m "Fixed tray flicker on wake"
+#   bun run release:stable -- --message $'## 0.0.8\n- …'
+#   ./scripts/release.sh canary -m "Experimental menu"
+#   -m / --message wins over CODICTATE_RELEASE_NOTES when both are set.
 #
 # Requires: gh CLI installed and authenticated (gh auth login)
 
 set -e
 
-CHANNEL="${1:-both}"
 REPO="EmilLykke/codictate-releases"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -24,12 +30,58 @@ CONFIG_FILE="${PROJECT_DIR}/electrobun.config.ts"
 VERSION_FILE="${PROJECT_DIR}/version.json"
 ARTIFACT_DIR="${PROJECT_DIR}/artifacts"
 
-# ── Validate ─────────────────────────────────────────────────────────────────
+# ── Args: channel + optional -m / --message ─────────────────────────────────
 
-if [ "$CHANNEL" != "both" ] && [ "$CHANNEL" != "canary" ] && [ "$CHANNEL" != "stable" ]; then
-  echo "Error: channel must be 'canary', 'stable', or omitted (both)."
+CHANNEL=""
+RELEASE_NOTES_FLAG=""
+
+usage_err() {
+  echo "Error: $1"
+  echo "Usage: $0 [stable|canary|both] [-m|--message <text>]"
+  echo "       $0 -m <text>   # channel defaults to both"
   exit 1
-fi
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -m|--message)
+      [ -z "${2:-}" ] && usage_err "$1 requires a value"
+      RELEASE_NOTES_FLAG="$2"
+      shift 2
+      ;;
+    --message=*)
+      RELEASE_NOTES_FLAG="${1#*=}"
+      shift
+      ;;
+    stable|canary|both)
+      [ -n "$CHANNEL" ] && usage_err "channel specified more than once"
+      CHANNEL="$1"
+      shift
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Codictate release — GitHub releases repo
+
+  scripts/release.sh [stable|canary|both] [-m|--message <text>]
+
+Examples:
+  bun run release -- -m "Fixed tray on wake"
+  bun run release:stable -- --message $'## 0.0.8\n- item'
+  CODICTATE_RELEASE_NOTES="…" bun run release:canary   # if -m not passed
+
+-m / --message overrides CODICTATE_RELEASE_NOTES when both are set.
+EOF
+      exit 0
+      ;;
+    *)
+      usage_err "unknown argument: $1"
+      ;;
+  esac
+done
+
+[ -z "$CHANNEL" ] && CHANNEL="both"
+
+# ── Validate ─────────────────────────────────────────────────────────────────
 
 if ! command -v gh &> /dev/null; then
   echo "Error: gh CLI not found. Install it with: brew install gh"
@@ -39,6 +91,14 @@ fi
 if [ ! -f "$VERSION_FILE" ]; then
   echo "Error: version.json not found at ${VERSION_FILE}"
   exit 1
+fi
+
+if [ -n "$RELEASE_NOTES_FLAG" ]; then
+  RELEASE_NOTES_BODY="$RELEASE_NOTES_FLAG"
+elif [ -n "${CODICTATE_RELEASE_NOTES:-}" ]; then
+  RELEASE_NOTES_BODY="$CODICTATE_RELEASE_NOTES"
+else
+  RELEASE_NOTES_BODY=""
 fi
 
 # ── Version helpers ───────────────────────────────────────────────────────────
@@ -118,20 +178,31 @@ release_channel() {
     TITLE="v${BASE_VERSION}"
   fi
 
+  local NOTES NOTES_FILE
+  if [ -n "${RELEASE_NOTES_BODY}" ]; then
+    NOTES="$RELEASE_NOTES_BODY"
+    echo "  Using custom release notes (${#NOTES} chars)"
+  else
+    NOTES="Codictate ${FULL_VERSION}"
+  fi
+  NOTES_FILE=$(mktemp)
+  printf '%s' "$NOTES" > "${NOTES_FILE}"
+
   # Stable = regular release (GitHub marks it as "Latest" automatically).
   # Canary = pre-release (never gets the "Latest" badge).
   if [ "$CH" = "canary" ]; then
     gh release create "${VERSIONED_TAG}" \
       --title "${TITLE}" \
-      --notes "Codictate ${FULL_VERSION}" \
+      --notes-file "${NOTES_FILE}" \
       --prerelease \
       --repo "${REPO}"
   else
     gh release create "${VERSIONED_TAG}" \
       --title "${TITLE}" \
-      --notes "Codictate ${FULL_VERSION}" \
+      --notes-file "${NOTES_FILE}" \
       --repo "${REPO}"
   fi
+  rm -f "${NOTES_FILE}"
 
   # Upload artifacts to the versioned release (permanent history / user downloads)
   for FILE in "${ARTIFACT_DIR}/${CH}-"*; do

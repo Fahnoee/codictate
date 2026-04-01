@@ -26,7 +26,11 @@ export const setupApplicationMenu = (
         { label: 'Show Window', action: 'show-window' },
         { label: 'Settings', action: 'open-settings' },
         { type: 'separator' as const },
-        { label: 'Quit Codictate', role: 'quit' as const },
+        {
+          label: 'Quit Codictate',
+          role: 'quit' as const,
+          accelerator: 'q',
+        },
       ],
     },
     {
