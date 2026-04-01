@@ -174,6 +174,8 @@ ensure_tag_pushed() {
 release_channel() {
   local CH="$1"
   local OVERRIDE_VERSION="$2"   # optional — forces a specific version (used by release:both)
+  # optional — when releasing canary after stable in the same run, mirror assets here (avoids gh "latest" / timing issues)
+  local EXPLICIT_STABLE_RELEASE_TAG="${3:-}"
   local BASE_VERSION CANARY_BUILD FULL_VERSION VERSIONED_TAG
 
   BASE_VERSION=$(read_version_field baseVersion)
@@ -224,43 +226,84 @@ release_channel() {
   NOTES_FILE=$(mktemp)
   printf '%s' "$NOTES" > "${NOTES_FILE}"
 
+  # Collect assets once. Passing them to `gh release create` uses GitHub's draft →
+  # upload → publish flow and avoids "release not found" races from a separate
+  # immediate `gh release upload` right after create.
+  local FILES_TO_UPLOAD=()
+  local FILE
+  for FILE in "${ARTIFACT_DIR}/${CH}-"*; do
+    [ -f "$FILE" ] || continue
+    FILES_TO_UPLOAD+=("$FILE")
+  done
+
   # Stable = regular release (GitHub marks it as "Latest" automatically).
   # Canary = pre-release (never gets the "Latest" badge).
   if [ "$CH" = "canary" ]; then
-    gh release create "${VERSIONED_TAG}" \
-      --title "${TITLE}" \
-      --notes-file "${NOTES_FILE}" \
-      --prerelease \
-      --verify-tag \
-      --repo "${REPO}"
+    if [ ${#FILES_TO_UPLOAD[@]} -gt 0 ]; then
+      gh release create "${VERSIONED_TAG}" \
+        --title "${TITLE}" \
+        --notes-file "${NOTES_FILE}" \
+        --prerelease \
+        --verify-tag \
+        --repo "${REPO}" \
+        "${FILES_TO_UPLOAD[@]}"
+    else
+      gh release create "${VERSIONED_TAG}" \
+        --title "${TITLE}" \
+        --notes-file "${NOTES_FILE}" \
+        --prerelease \
+        --verify-tag \
+        --repo "${REPO}"
+    fi
   else
-    gh release create "${VERSIONED_TAG}" \
-      --title "${TITLE}" \
-      --notes-file "${NOTES_FILE}" \
-      --verify-tag \
-      --repo "${REPO}"
+    if [ ${#FILES_TO_UPLOAD[@]} -gt 0 ]; then
+      gh release create "${VERSIONED_TAG}" \
+        --title "${TITLE}" \
+        --notes-file "${NOTES_FILE}" \
+        --verify-tag \
+        --repo "${REPO}" \
+        "${FILES_TO_UPLOAD[@]}"
+    else
+      gh release create "${VERSIONED_TAG}" \
+        --title "${TITLE}" \
+        --notes-file "${NOTES_FILE}" \
+        --verify-tag \
+        --repo "${REPO}"
+    fi
   fi
   rm -f "${NOTES_FILE}"
 
-  # Upload artifacts to the versioned release (permanent history / user downloads)
-  for FILE in "${ARTIFACT_DIR}/${CH}-"*; do
-    [ -f "$FILE" ] || continue
+  for FILE in "${FILES_TO_UPLOAD[@]}"; do
     echo "  → $(basename "$FILE") [versioned]"
-    gh release upload "${VERSIONED_TAG}" "$FILE" --repo "${REPO}"
   done
 
   # Also upload to the latest STABLE release so the in-app updater can always
   # find both canary-* and stable-* artifacts at releases/latest/download/.
   # For stable: this IS the versioned release we just created (already "latest").
-  # For canary: we find the current latest non-prerelease and add the canary files there.
-  if [ "$CH" = "canary" ]; then
+  # For canary: use the tag we just shipped stable with (both-channel), else resolve latest non-prerelease.
+  if [ "$CH" = "canary" ] && [ ${#FILES_TO_UPLOAD[@]} -gt 0 ]; then
     local LATEST_STABLE_TAG
-    LATEST_STABLE_TAG=$(gh release view --repo "${REPO}" --json tagName -q '.tagName' 2>/dev/null || true)
+    if [ -n "$EXPLICIT_STABLE_RELEASE_TAG" ]; then
+      LATEST_STABLE_TAG="$EXPLICIT_STABLE_RELEASE_TAG"
+    else
+      LATEST_STABLE_TAG=$(gh release view --repo "${REPO}" --json tagName -q '.tagName' 2>/dev/null || true)
+    fi
     if [ -n "$LATEST_STABLE_TAG" ]; then
-      for FILE in "${ARTIFACT_DIR}/${CH}-"*; do
-        [ -f "$FILE" ] || continue
+      for FILE in "${FILES_TO_UPLOAD[@]}"; do
         echo "  → $(basename "$FILE") [→ ${LATEST_STABLE_TAG} for updater]"
-        gh release upload "${LATEST_STABLE_TAG}" "$FILE" --clobber --repo "${REPO}"
+        local attempt=1
+        local max_attempts=5
+        while [ "$attempt" -le "$max_attempts" ]; do
+          if gh release upload "${LATEST_STABLE_TAG}" "$FILE" --clobber --repo "${REPO}"; then
+            break
+          fi
+          if [ "$attempt" -eq "$max_attempts" ]; then
+            echo "Error: could not upload $(basename "$FILE") to ${LATEST_STABLE_TAG} after ${max_attempts} attempts"
+            exit 1
+          fi
+          sleep 2
+          attempt=$((attempt + 1))
+        done
       done
     else
       echo "  ⚠ No stable release found yet — canary updater files not uploaded. Run release:stable first."
@@ -288,7 +331,7 @@ if [ "$CHANNEL" = "both" ]; then
   RELEASED_VERSION="$SHARED_VERSION"
   echo "Releasing v${SHARED_VERSION} to both stable and canary..."
   release_channel "stable" "$SHARED_VERSION"
-  release_channel "canary" "$SHARED_VERSION"
+  release_channel "canary" "$SHARED_VERSION" "v${SHARED_VERSION}"
   NEXT_BASE=$(bump_patch "$SHARED_VERSION")
   save_version "$NEXT_BASE" "0"
   echo ""
