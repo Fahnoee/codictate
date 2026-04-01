@@ -4,7 +4,7 @@ export default {
   app: {
     name: "Codictate",
     identifier: "com.codictate",
-    version: "0.0.8",
+    version: "0.0.9",
   },
   runtime: {
     // Keep the app alive when the window is closed — it lives in the tray
@@ -53,8 +53,7 @@ export default {
     // Electrobun fetches {baseUrl}/{channel}-{os}-{arch}-update.json
     // Both stable and canary artifacts are uploaded to the stable release,
     // so canary users can also find updates here.
-    baseUrl:
-      "https://github.com/EmilLykke/codictate-releases/releases/latest/download",
+    baseUrl: "https://github.com/EmilLykke/codictate/releases/latest/download",
   },
   scripts: {
     preBuild: "./scripts/pre-build.ts",

@@ -1,17 +1,27 @@
 {
   "name": "codictate",
-  "version": "1.0.0",
-  "description": "Codictate is a desktop app that transcribes your voice to text.",
+  "version": "0.0.9",
+  "description": "Local, private voice dictation (currently only for macOS).",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EmilLykke/codictate.git"
+  },
+  "homepage": "https://github.com/EmilLykke/codictate",
+  "bugs": {
+    "url": "https://github.com/EmilLykke/codictate/issues"
+  },
   "scripts": {
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "dev": "electrobun dev --watch",
-    "dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
+    "dev:hmr": "bun run build:native && concurrently \"bun run hmr\" \"bun run start\"",
     "hmr": "vite --port 5173",
     "build:all": "bun run build:stable && bun run build:canary",
     "release": "scripts/release.sh",
     "release:canary": "scripts/release.sh canary",
     "release:stable": "scripts/release.sh stable",
+    "release:bridge-migration": "bash scripts/release-bridge-migration.sh",
     "build:stable": "bun run build:native && vite build && electrobun build --env=stable",
     "build:canary": "bun run build:native && vite build && electrobun build --env=canary",
     "build:native": "src/scripts/build-swift.sh",

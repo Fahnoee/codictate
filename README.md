@@ -1,6 +1,58 @@
-# Codictate
+<div align="center">
+  <img src="logo.png" width="120" alt="Codictate" />
 
-macOS dictation app built with Electrobun, React, and Bun. Press a shortcut, speak, and your transcribed text is pasted wherever your cursor is.
+  # Codictate
+
+  **Local, private voice dictation for macOS - press a shortcut, speak, done.**
+</div>
+
+Codictate puts your words wherever your cursor is with a local-first dictation workflow built for macOS. No copy-pasting, no account, no cloud processing of your voice.
+
+## Features
+
+- Fully local transcription with Whisper
+- Global shortcut workflow for dictation into any app
+- No account, no login, no analytics
+- Optimized for Apple Silicon Macs
+
+## Download
+
+Go to [**Releases**](https://github.com/EmilLykke/codictate/releases) and download the latest `.dmg`.
+
+| Channel | Description |
+|---------|-------------|
+| **Stable** | Recommended for most users |
+| **Canary** | Latest changes, updated more frequently |
+
+## Installation
+
+First time installing? See the **[step-by-step installation guide](docs/INSTALL.md)** with screenshots for every step.
+
+The short version:
+
+1. Download the `.dmg` from [Releases](https://github.com/EmilLykke/codictate/releases)
+2. Drag **Codictate** to your Applications folder
+3. Run `xattr -cr /Applications/Codictate.app` in Terminal if macOS blocks it
+4. Grant the required permissions when prompted
+
+## Requirements
+
+- macOS 13 or later
+- Apple Silicon (M1 or later)
+- No internet connection required after install
+
+## Privacy
+
+- No account, no login
+- No data collection
+- No analytics
+- Everything runs locally on your device
+
+## Usage examples
+
+- Draft emails, Slack messages, and documents without leaving the keyboard
+- Dictate commit messages, issue comments, and notes while coding
+- Capture ideas into any text field with the same shortcut workflow
 
 ## Development
 
@@ -10,19 +62,28 @@ bun install
 # Dev (no HMR)
 bun run dev
 
-# Dev with HMR (recommended — Vite hot reload)
+# Dev with HMR
 bun run dev:hmr
 ```
+
+### Dev requirements
+
+- [Bun](https://bun.sh) v1.3+
+- [gh CLI](https://cli.github.com) for releases
+- [cmake](https://cmake.org) for building `whisper-cli`
+- Xcode Command Line Tools for Swift compilation
 
 ## Building
 
 ```bash
-bun run build:canary    # canary build
-bun run build:stable    # stable build
-bun run build:all       # both
+bun run build:canary
+bun run build:stable
+bun run build:all
 ```
 
-Builds require a `.env` file in the project root. Copy `.env.example` and fill in your values:
+Unsigned local builds do not require a `.env` file.
+
+If you want to sign or notarize your own builds, copy `.env.example` to `.env` and fill in the Apple developer credentials:
 
 ```bash
 cp .env.example .env
@@ -31,55 +92,61 @@ cp .env.example .env
 ## Releasing
 
 ```bash
-bun run release:canary    # bump version, build, publish canary
-bun run release:stable    # bump version, build, publish stable
-bun run release           # both channels
+bun run release:canary
+bun run release:stable
+bun run release
+```
+
+Optional release notes:
+
+```bash
+bun run release -- -m "Your changelog here"
+bun run release:stable -- -m "Your changelog here"
+bun run release:canary -- -m "Your changelog here"
 ```
 
 Each release:
-1. Bumps the patch version in `electrobun.config.ts`
-2. Runs the full build
-3. Creates a versioned GitHub release (e.g. `v0.0.2-canary`) with all artifacts
-4. Updates the fixed `canary` / `stable` pointer release with `update.json` for the in-app updater
+
+1. Builds the selected channel
+2. Creates and pushes the matching git tag
+3. Creates a versioned GitHub release in this repository
+4. Uploads artifacts from `artifacts/`
+5. Keeps updater assets available from the latest stable release
 
 After releasing, commit the version bump:
+
 ```bash
-git add electrobun.config.ts && git commit -m "chore: bump version to vX.X.X"
+git add electrobun.config.ts version.json && git commit -m "release: vX.X.X"
 ```
 
-Artifacts are published to [EmilLykke/codictate-releases](https://github.com/EmilLykke/codictate-releases).
+## Documentation and community
 
-## Project Structure
+- [Contributing guide](CONTRIBUTING.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
-```
+## Support
+
+If Codictate saves you money on other tools, consider supporting the project:
+
+[☕ ko-fi.com/emillykke](https://ko-fi.com/emillykke)
+
+## License
+
+Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+## Project structure
+
+```text
 src/
   bun/                  # Main process (Bun/Electrobun)
-    index.ts            # App entry point
-    setup-window.ts     # Window + RPC setup
-    setup-tray.ts       # Tray menu
-    setup-menu.ts       # Application menu
-    setup-recording.ts  # Keyboard listener + recording pipeline
-    AppConfig/          # User settings persistence
-    utils/
-      keyboard/         # Swift KeyListener + event definitions
-      whisper/          # Transcription (whisper-cli)
-      audio/            # MicRecorder (Swift) + spawn, device list
   mainview/             # React frontend (Vite)
-    App.tsx
-    components/
-      Permissions/
-      Ready/
-      Settings/
 scripts/
-  pre-build.ts          # Downloads/builds vendored binaries (whisper model + whisper-cli)
-  post-build.ts         # Patches .app bundle (plist, icon, binary rename)
+  pre-build.ts          # Vendored binary/model setup
+  post-build.ts         # App bundle patching
   release.sh            # Release pipeline
-electrobun.config.ts    # App config, version, build settings
+docs/
+  INSTALL.md            # User install guide
+  StepByStep/           # Install guide images
 ```
-
-## Requirements
-
-- macOS 13+, Apple Silicon
-- [Bun](https://bun.sh) v1.3+
-- [gh CLI](https://cli.github.com) (for releases)
-- Xcode Command Line Tools (for Swift compilation)

@@ -23,12 +23,23 @@
 
 set -e
 
-REPO="EmilLykke/codictate-releases"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="${PROJECT_DIR}/electrobun.config.ts"
 VERSION_FILE="${PROJECT_DIR}/version.json"
 ARTIFACT_DIR="${PROJECT_DIR}/artifacts"
+
+resolve_repo() {
+  local remote_url repo_path
+  remote_url="$(git -C "${PROJECT_DIR}" remote get-url origin 2>/dev/null || true)"
+  repo_path="${remote_url#git@github.com:}"
+  repo_path="${repo_path#https://github.com/}"
+  repo_path="${repo_path#http://github.com/}"
+  repo_path="${repo_path%.git}"
+  echo "${repo_path}"
+}
+
+REPO="${CODICTATE_RELEASE_REPO:-$(resolve_repo)}"
 
 # ── Args: channel + optional -m / --message ─────────────────────────────────
 
@@ -88,6 +99,12 @@ if ! command -v gh &> /dev/null; then
   exit 1
 fi
 
+if [ -z "${REPO}" ]; then
+  echo "Error: could not determine GitHub repo from git remote 'origin'"
+  echo "Set CODICTATE_RELEASE_REPO=owner/repo if you need to override it."
+  exit 1
+fi
+
 if [ ! -f "$VERSION_FILE" ]; then
   echo "Error: version.json not found at ${VERSION_FILE}"
   exit 1
@@ -134,6 +151,24 @@ bump_patch() {
   echo "${major}.${minor}.$((patch + 1))"
 }
 
+ensure_tag_pushed() {
+  local tag="$1"
+
+  if git -C "${PROJECT_DIR}" rev-parse -q --verify "refs/tags/${tag}" > /dev/null; then
+    echo "Tag exists locally: ${tag}"
+  else
+    git -C "${PROJECT_DIR}" tag -a "${tag}" -m "release: ${tag}"
+    echo "Created local tag: ${tag}"
+  fi
+
+  if git -C "${PROJECT_DIR}" ls-remote --exit-code --tags origin "refs/tags/${tag}" > /dev/null 2>&1; then
+    echo "Tag exists on origin: ${tag}"
+  else
+    git -C "${PROJECT_DIR}" push origin "refs/tags/${tag}"
+    echo "Pushed tag to origin: ${tag}"
+  fi
+}
+
 # ── Per-channel build + release ───────────────────────────────────────────────
 
 release_channel() {
@@ -171,6 +206,7 @@ release_channel() {
 
   echo ""
   echo "Creating release: ${VERSIONED_TAG}"
+  ensure_tag_pushed "${VERSIONED_TAG}"
   local TITLE
   if [ "$CH" = "canary" ]; then
     TITLE="v${BASE_VERSION} Canary ${CANARY_BUILD}"
@@ -195,11 +231,13 @@ release_channel() {
       --title "${TITLE}" \
       --notes-file "${NOTES_FILE}" \
       --prerelease \
+      --verify-tag \
       --repo "${REPO}"
   else
     gh release create "${VERSIONED_TAG}" \
       --title "${TITLE}" \
       --notes-file "${NOTES_FILE}" \
+      --verify-tag \
       --repo "${REPO}"
   fi
   rm -f "${NOTES_FILE}"
