@@ -1,4 +1,8 @@
-import { startRecording, stopRecording } from './utils/audio/start-rec'
+import {
+  startRecording,
+  stopRecording,
+  type RecordingSession,
+} from './utils/audio/start-rec'
 import {
   Key,
   SHORTCUTS,
@@ -17,6 +21,7 @@ export const setupRecording = (
   onPermissions?: (status: PermissionStatus) => void
 ) => {
   let recorderProc: ReturnType<typeof Bun.spawn> | null = null
+  let recordingSession: RecordingSession | null = null
   const shortcut = SHORTCUTS[appConfig.getShortcutId()]
 
   const keyboard = startKeyboardListener(
@@ -28,6 +33,7 @@ export const setupRecording = (
         playStartSound()
         setTrayRecording()
         onStatusChange?.('recording')
+        recordingSession = { discard: false }
         recorderProc = await startRecording(
           appConfig,
           () => {
@@ -36,9 +42,11 @@ export const setupRecording = (
             onStatusChange?.('transcribing')
           },
           () => {
+            recordingSession = null
             setTrayIdle()
             onStatusChange?.('ready')
-          }
+          },
+          recordingSession
         )
         return
       }
@@ -51,6 +59,7 @@ export const setupRecording = (
       }
 
       if (keyEvent.keycode === Key.escape && recorderProc) {
+        if (recordingSession) recordingSession.discard = true
         recorderProc.kill()
         recorderProc = null
         setTrayIdle()

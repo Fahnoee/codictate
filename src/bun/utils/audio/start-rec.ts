@@ -7,10 +7,14 @@ import { log } from '../logger'
 
 const MAX_RECORD_SECONDS = 120
 
+/** Set `discard: true` before killing the recorder so onExit skips transcription and UI handoff. */
+export type RecordingSession = { discard: boolean }
+
 export const startRecording = async (
   appConfig: AppConfig,
   onComplete: () => void,
-  onDone: () => void
+  onDone: () => void,
+  session: RecordingSession
 ) => {
   const micPath = await findMicRecorderBinary()
 
@@ -62,10 +66,12 @@ export const startRecording = async (
           stderr: stderrText.slice(0, 500) || undefined,
         })
 
-        onComplete()
         const forceCancelled =
           exitCode === 255 || exitCode === 143 || exitCode === 137
-        if (!forceCancelled) {
+        const skipPipeline = session.discard || forceCancelled
+
+        if (!skipPipeline) {
+          onComplete()
           playEndSound()
           await speech2text()
         }

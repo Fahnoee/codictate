@@ -3,7 +3,7 @@
 
   # Codictate
 
-  **Local, private voice dictation for macOS - press a shortcut, speak, done.**
+  **Local-first dictation for macOS: hit your shortcut, speak, and Codictate drops the text where your cursor is—on your machine, not in the cloud.**
 </div>
 
 Codictate puts your words wherever your cursor is with a local-first dictation workflow built for macOS. No copy-pasting, no account, no cloud processing of your voice.
