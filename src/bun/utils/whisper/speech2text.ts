@@ -4,6 +4,20 @@ import { log } from '../logger'
 
 export const RECORDING_PATH = '/tmp/codictate-recording.wav'
 
+/** Whisper often splits or mishears the product name — normalize before paste. */
+const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
+  [/\bcode\s+dictate\b/gi, 'Codictate'],
+  [/\bkodi\s+dicate\b/gi, 'Codictate'],
+]
+
+function fixBrandMishearings(text: string): string {
+  let t = text
+  for (const [pattern, replacement] of BRAND_TRANSCRIPT_FIXES) {
+    t = t.replace(pattern, replacement)
+  }
+  return t
+}
+
 export const transcribe = async (whisperLanguageCode: string | null) => {
   const binary = join(import.meta.dir, '../native-helpers/whisper-cli')
   // We landed on this model becuase it can detect
@@ -55,7 +69,8 @@ export const transcribe = async (whisperLanguageCode: string | null) => {
   }
 
   const stdoutBytes = await new Response(proc.stdout).arrayBuffer()
-  const transcript = new TextDecoder('utf-8').decode(stdoutBytes).trim()
+  const raw = new TextDecoder('utf-8').decode(stdoutBytes).trim()
+  const transcript = fixBrandMishearings(raw)
 
   log('whisper', 'transcription complete', {
     exitCode: proc.exitCode,

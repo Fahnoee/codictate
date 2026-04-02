@@ -5,6 +5,10 @@ import {
   buildDeviceMenuItems,
   handleDeviceAction,
 } from './utils/device-actions'
+import {
+  buildTranscriptionLanguageMenuItems,
+  handleTranscriptionLanguageAction,
+} from './utils/transcription-language-actions'
 
 export type TrayHandlers = {
   setTrayIdle: () => void
@@ -32,7 +36,9 @@ export const setupTray = (
   onDeviceSelected?: (device: number) => void,
   onOpenSettings?: () => void,
   onApplyUpdate?: () => void,
-  onCheckForUpdate?: () => void
+  onCheckForUpdate?: () => void,
+  /** After tray changes transcription language — sync webview (e.g. updateSettings). */
+  onTranscriptionLanguageChanged?: () => void
 ): TrayHandlers => {
   const tray = new Tray({
     image: trayIconPath,
@@ -80,6 +86,13 @@ export const setupTray = (
       label: 'Microphone',
       submenu: buildDeviceMenuItems(currentDevices, selectedDevice),
     },
+    {
+      type: 'normal' as const,
+      label: 'Transcription language',
+      submenu: buildTranscriptionLanguageMenuItems(
+        appConfig.getTranscriptionLanguageId()
+      ),
+    },
     { type: 'divider' as const },
     {
       type: 'normal' as const,
@@ -110,6 +123,10 @@ export const setupTray = (
         onDeviceSelected?.(device)
       }
     )
+    handleTranscriptionLanguageAction(event.data.action, appConfig, () => {
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+      onTranscriptionLanguageChanged?.()
+    })
   })
 
   return {

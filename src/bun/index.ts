@@ -107,6 +107,9 @@ const win = setupWindow({
   onApplyUpdate: onApplyUpdate,
   // Re-push app state whenever the window is re-opened after being closed.
   onNewWindowReady: () => pushInitialState(),
+  onTranscriptionMenuSync: () => {
+    trayHandlers.rebuildDeviceMenu(UserAppConfig.resolveAudioDevice(devices))
+  },
 })
 
 // When the 5-minute auto-disable fires, sync the state back to AppConfig and
@@ -160,7 +163,8 @@ trayHandlers = setupTray(
   onDeviceSelected,
   onOpenSettings,
   onApplyUpdate,
-  () => checkForUpdates()
+  () => checkForUpdates(),
+  () => win.send.updateSettings(UserAppConfig.getSettings())
 )
 
 let permissionPoll: ReturnType<typeof setInterval> | null = null

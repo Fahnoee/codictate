@@ -37,6 +37,8 @@ interface WindowDeps {
   /** Called after a newly re-created window is ready to receive RPC messages. */
   onNewWindowReady?: () => void
   onSetDebugMode?: (enabled: boolean) => Promise<void>
+  /** Refresh tray/menu checkmarks after language changes from the webview. */
+  onTranscriptionMenuSync?: () => void
 }
 
 export interface WindowHandle {
@@ -97,7 +99,10 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           const ok = await deps.appConfig.setTranscriptionLanguageId(
             transcriptionLanguageId
           )
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+            deps.onTranscriptionMenuSync?.()
+          }
           return ok
         },
       },
