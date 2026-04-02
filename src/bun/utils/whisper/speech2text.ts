@@ -1,3 +1,4 @@
+import { whisperCliLanguageArg } from '../../../shared/transcription-languages'
 import { pasteTranscript } from '../keyboard/keyboard-events'
 import { join } from 'node:path'
 import { log } from '../logger'
@@ -18,7 +19,9 @@ function fixBrandMishearings(text: string): string {
   return t
 }
 
-export const transcribe = async (whisperLanguageCode: string | null) => {
+export const transcribe = async (
+  whisperLanguageCode: string | null | undefined
+) => {
   const binary = join(import.meta.dir, '../native-helpers/whisper-cli')
   // We landed on this model becuase it can detect
   // multiple languages and it is fast and very accurate.
@@ -27,19 +30,21 @@ export const transcribe = async (whisperLanguageCode: string | null) => {
     '../native-helpers/ggml-large-v3-turbo-q5_0.bin'
   )
 
+  const lang = whisperCliLanguageArg(whisperLanguageCode)
+
   log('whisper', 'spawning whisper-cli', {
     binary,
     model,
-    whisperLanguageCode: whisperLanguageCode ?? 'auto (no flag)',
+    whisperLanguageCode: lang,
+    languageMode: lang === 'auto' ? 'auto-detect' : 'fixed',
   })
 
   const args = [
     binary,
     '-m',
     model,
-    ...(whisperLanguageCode !== null
-      ? ['--language', whisperLanguageCode]
-      : []),
+    '--language',
+    lang,
     '-f',
     RECORDING_PATH,
     '--no-prints',
@@ -81,7 +86,9 @@ export const transcribe = async (whisperLanguageCode: string | null) => {
   return transcript
 }
 
-export const speech2text = async (whisperLanguageCode: string | null) => {
+export const speech2text = async (
+  whisperLanguageCode: string | null | undefined
+) => {
   const transcript = await transcribe(whisperLanguageCode)
   await pasteTranscript(transcript)
 }

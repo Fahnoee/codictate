@@ -79,10 +79,32 @@ export function isValidTranscriptionLanguageId(id: string): boolean {
   return VALID_IDS.has(id)
 }
 
-/** `null` means auto-detect — omit `--language` when calling whisper-cli. */
+/**
+ * Maps a **settings / UI language id** (`transcriptionLanguageId`) to Whisper’s language token.
+ * - `'auto'` or unknown → `null` (caller should treat as “use auto-detect”).
+ * - `'da'`, `'en'`, … → whisper.cpp code (`'da'`, `'en'`, …).
+ *
+ * This is **not** the CLI argv value: whisper-cli defaults to English if `--language` is omitted,
+ * so the process layer must pass `--language auto` when this returns `null` — use {@link whisperCliLanguageArg}.
+ */
 export function whisperCodeForTranscriptionId(id: string): string | null {
-  if (id === 'auto') return null
-  return ID_TO_WHISPER.get(id) ?? null
+  if (id === 'auto' || id.trim() === '') return null
+  const code = ID_TO_WHISPER.get(id)
+  if (code == null) return null
+  const t = code.trim()
+  return t.length > 0 ? t : null
+}
+
+/**
+ * Exact value for whisper-cli `-l` / `--language`.
+ * Feeds on the output of {@link whisperCodeForTranscriptionId} (or `null` from config): `null` / empty / whitespace → **`"auto"`** so the binary does not fall back to its default **`en`**.
+ */
+export function whisperCliLanguageArg(
+  whisperCodeOrAuto: string | null | undefined
+): string {
+  if (whisperCodeOrAuto == null) return 'auto'
+  const t = whisperCodeOrAuto.trim()
+  return t.length > 0 ? t : 'auto'
 }
 
 /** Shared helper / tooltip copy for Settings and Ready screens. */
