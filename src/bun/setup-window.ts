@@ -105,6 +105,16 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           }
           return ok
         },
+        setMaxRecordingDuration: async ({ maxRecordingDuration }) => {
+          const ok =
+            await deps.appConfig.setMaxRecordingDurationSeconds(
+              maxRecordingDuration
+            )
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+          }
+          return ok
+        },
       },
       messages: {
         logBun: ({ msg }) => console.log('Bun Log:', msg),

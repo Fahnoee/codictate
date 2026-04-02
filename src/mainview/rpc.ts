@@ -94,6 +94,12 @@ export async function setTranscriptionLanguage(
   return rpc.request.setTranscriptionLanguage({ transcriptionLanguageId })
 }
 
+export async function setMaxRecordingDuration(
+  maxRecordingDuration: number
+): Promise<boolean> {
+  return rpc.request.setMaxRecordingDuration({ maxRecordingDuration })
+}
+
 export function copyDebugLog(): void {
   rpc.send.copyDebugLog({})
 }

@@ -5,8 +5,6 @@ import { findMicRecorderBinary } from './find-mic-recorder'
 import { findDevices } from './devices'
 import { log } from '../logger'
 
-const MAX_RECORD_SECONDS = 120
-
 /** Set `discard: true` before killing the recorder so onExit skips transcription and UI handoff. */
 export type RecordingSession = { discard: boolean }
 
@@ -42,13 +40,15 @@ export const startRecording = async (
     binary: micPath,
   })
 
+  const maxRecordSeconds = appConfig.getMaxRecordingDurationSeconds()
+
   const proc = Bun.spawn(
     [
       micPath,
       'record',
       RECORDING_PATH,
       String(device),
-      String(MAX_RECORD_SECONDS),
+      String(maxRecordSeconds),
     ],
     {
       stderr: 'pipe',

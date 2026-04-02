@@ -57,6 +57,10 @@ export type WebviewRPCType = {
         params: { transcriptionLanguageId: string }
         response: boolean
       }
+      setMaxRecordingDuration: {
+        params: { maxRecordingDuration: number }
+        response: boolean
+      }
     }
     messages: {
       logBun: { msg: string }

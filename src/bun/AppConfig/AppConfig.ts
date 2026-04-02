@@ -6,6 +6,11 @@ import {
   isValidTranscriptionLanguageId,
   whisperCodeForTranscriptionId,
 } from '../../shared/transcription-languages'
+import {
+  DEFAULT_MAX_RECORDING_DURATION_SECONDS,
+  isValidMaxRecordingDurationSeconds,
+  type RecordingDurationPresetSeconds,
+} from '../../shared/recording-duration-presets'
 import { enableDebug, disableDebug } from '../utils/logger'
 
 const CONFIG_DIR = join(
@@ -15,8 +20,6 @@ const CONFIG_DIR = join(
   'codictate'
 )
 const CONFIG_PATH = join(CONFIG_DIR, 'app-config.json')
-
-const MAX_RECORDING_DURATION = 120
 
 export class AppConfig {
   // Name is the primary key — stable across device list reorders.
@@ -28,6 +31,7 @@ export class AppConfig {
   // so logging never silently resumes after a restart.
   private debugMode: boolean
   private transcriptionLanguageId: string
+  private maxRecordingDuration: RecordingDurationPresetSeconds
 
   constructor() {
     this.audioDeviceName = null
@@ -35,6 +39,7 @@ export class AppConfig {
     this.shortcutId = 'option-space'
     this.debugMode = false
     this.transcriptionLanguageId = 'auto'
+    this.maxRecordingDuration = DEFAULT_MAX_RECORDING_DURATION_SECONDS
   }
 
   // --- Persistence ---
@@ -52,6 +57,12 @@ export class AppConfig {
         isValidTranscriptionLanguageId(raw.transcriptionLanguageId)
       ) {
         this.transcriptionLanguageId = raw.transcriptionLanguageId
+      }
+      if (
+        raw.maxRecordingDuration !== undefined &&
+        isValidMaxRecordingDurationSeconds(raw.maxRecordingDuration)
+      ) {
+        this.maxRecordingDuration = raw.maxRecordingDuration
       }
     } catch {
       // No config file yet, defaults will be used
@@ -71,6 +82,7 @@ export class AppConfig {
       audioDevice: this.audioDevice,
       shortcutId: this.shortcutId,
       transcriptionLanguageId: this.transcriptionLanguageId,
+      maxRecordingDuration: this.maxRecordingDuration,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -147,10 +159,23 @@ export class AppConfig {
     return this.debugMode
   }
 
+  public getMaxRecordingDurationSeconds(): number {
+    return this.maxRecordingDuration
+  }
+
+  public async setMaxRecordingDurationSeconds(
+    seconds: number
+  ): Promise<boolean> {
+    if (!isValidMaxRecordingDurationSeconds(seconds)) return false
+    this.maxRecordingDuration = seconds
+    await this.save()
+    return true
+  }
+
   public getSettings(): AppSettings {
     return {
       shortcutId: this.shortcutId,
-      maxRecordingDuration: MAX_RECORDING_DURATION,
+      maxRecordingDuration: this.maxRecordingDuration,
       debugMode: this.debugMode,
       transcriptionLanguageId: this.transcriptionLanguageId,
     }

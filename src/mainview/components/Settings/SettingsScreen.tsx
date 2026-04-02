@@ -9,6 +9,7 @@ import type {
   UpdateCheckState,
 } from "../../../shared/types";
 import { TRANSCRIPTION_LANGUAGE_HINT } from "../../../shared/transcription-languages";
+import { formatRecordingDurationLabel } from "../../../shared/recording-duration-presets";
 import {
   setShortcut,
   setAudioDevice,
@@ -17,12 +18,14 @@ import {
   triggerApplyUpdate,
   setDebugMode,
   setTranscriptionLanguage,
+  setMaxRecordingDuration,
   copyDebugLog,
 } from "../../rpc";
 import { appEvents } from "../../app-events";
 import { ShortcutPicker } from "./ShortcutPicker";
 import { DevicePicker } from "./DevicePicker";
 import { LanguagePicker } from "./LanguagePicker";
+import { RecordingLimitPicker } from "./RecordingLimitPicker";
 import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 
 /** Secondary copy under each block: readable, softer than card content. */
@@ -268,10 +271,20 @@ export function SettingsScreen({
     [queryClient, settings],
   );
 
-  const durationLabel =
-    settings.maxRecordingDuration >= 60
-      ? `${Math.floor(settings.maxRecordingDuration / 60)} minute${settings.maxRecordingDuration >= 120 ? "s" : ""}`
-      : `${settings.maxRecordingDuration} seconds`;
+  const handleMaxRecordingDurationChange = useCallback(
+    async (maxRecordingDuration: number) => {
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        maxRecordingDuration,
+      });
+      await setMaxRecordingDuration(maxRecordingDuration);
+    },
+    [queryClient, settings],
+  );
+
+  const durationLabel = formatRecordingDurationLabel(
+    settings.maxRecordingDuration,
+  );
 
   return (
     <div className="flex flex-col items-center min-h-screen bg-codictate-page text-white select-none px-6 py-10">
@@ -388,29 +401,17 @@ export function SettingsScreen({
           <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
             Recording Limit
           </h2>
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/11 bg-white/4">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-white/38 shrink-0"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span className="text-[21px] text-white/65 font-medium">
-              {durationLabel}
-            </span>
-            <span className="text-[18px] text-white/52 ml-auto">auto-stop</span>
-          </div>
+          <RecordingLimitPicker
+            valueSeconds={settings.maxRecordingDuration}
+            onChange={handleMaxRecordingDurationChange}
+          />
           <p className={settingsHelperClass}>
             Recording will automatically stop after {durationLabel} to keep
             transcription fast and accurate.
+          </p>
+          <p className={settingsHelperClass}>
+            Longer limits use a bit more disk space for the recording and can
+            make transcription take a little longer for very long clips.
           </p>
         </motion.div>
 
