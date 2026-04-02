@@ -4,9 +4,7 @@ import { log } from '../logger'
 
 export const RECORDING_PATH = '/tmp/codictate-recording.wav'
 
-const whisperLanguage = 'auto'
-
-export const transcribe = async () => {
+export const transcribe = async (whisperLanguageCode: string | null) => {
   const binary = join(import.meta.dir, '../native-helpers/whisper-cli')
   // We landed on this model becuase it can detect
   // multiple languages and it is fast and very accurate.
@@ -15,31 +13,35 @@ export const transcribe = async () => {
     '../native-helpers/ggml-large-v3-turbo-q5_0.bin'
   )
 
-  log('whisper', 'spawning whisper-cli', { binary, model, whisperLanguage })
+  log('whisper', 'spawning whisper-cli', {
+    binary,
+    model,
+    whisperLanguageCode: whisperLanguageCode ?? 'auto (no flag)',
+  })
 
-  const proc = Bun.spawn(
-    [
-      binary,
-      '-m',
-      model,
-      '-l',
-      whisperLanguage,
-      '-f',
-      RECORDING_PATH,
-      '--no-prints',
-      '-nt', // No timestamps
-    ],
-    {
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: {
-        ...process.env,
-        // Avoid C locale / missing UTF-8 so whisper-cli prints UTF-8 transcript
-        LC_ALL: 'en_US.UTF-8',
-        LANG: 'en_US.UTF-8',
-      },
-    }
-  )
+  const args = [
+    binary,
+    '-m',
+    model,
+    ...(whisperLanguageCode !== null
+      ? ['--language', whisperLanguageCode]
+      : []),
+    '-f',
+    RECORDING_PATH,
+    '--no-prints',
+    '-nt', // No timestamps
+  ]
+
+  const proc = Bun.spawn(args, {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: {
+      ...process.env,
+      // Avoid C locale / missing UTF-8 so whisper-cli prints UTF-8 transcript
+      LC_ALL: 'en_US.UTF-8',
+      LANG: 'en_US.UTF-8',
+    },
+  })
 
   await proc.exited
 
@@ -64,7 +66,7 @@ export const transcribe = async () => {
   return transcript
 }
 
-export const speech2text = async () => {
-  const transcript = await transcribe()
+export const speech2text = async (whisperLanguageCode: string | null) => {
+  const transcript = await transcribe(whisperLanguageCode)
   await pasteTranscript(transcript)
 }

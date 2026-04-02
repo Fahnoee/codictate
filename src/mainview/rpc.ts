@@ -88,6 +88,12 @@ export async function setDebugMode(enabled: boolean): Promise<boolean> {
   return rpc.request.setDebugMode({ enabled })
 }
 
+export async function setTranscriptionLanguage(
+  transcriptionLanguageId: string
+): Promise<boolean> {
+  return rpc.request.setTranscriptionLanguage({ transcriptionLanguageId })
+}
+
 export function copyDebugLog(): void {
   rpc.send.copyDebugLog({})
 }

@@ -8,6 +8,7 @@ import type {
   ShortcutId,
   UpdateCheckState,
 } from "../../../shared/types";
+import { TRANSCRIPTION_LANGUAGE_HINT } from "../../../shared/transcription-languages";
 import {
   setShortcut,
   setAudioDevice,
@@ -15,11 +16,13 @@ import {
   triggerUpdateCheck,
   triggerApplyUpdate,
   setDebugMode,
+  setTranscriptionLanguage,
   copyDebugLog,
 } from "../../rpc";
 import { appEvents } from "../../app-events";
 import { ShortcutPicker } from "./ShortcutPicker";
 import { DevicePicker } from "./DevicePicker";
+import { LanguagePicker } from "./LanguagePicker";
 import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 
 /** Secondary copy under each block: readable, softer than card content. */
@@ -254,6 +257,17 @@ export function SettingsScreen({
     [deviceInfo, queryClient],
   );
 
+  const handleTranscriptionLanguageChange = useCallback(
+    async (transcriptionLanguageId: string) => {
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        transcriptionLanguageId,
+      });
+      await setTranscriptionLanguage(transcriptionLanguageId);
+    },
+    [queryClient, settings],
+  );
+
   const durationLabel =
     settings.maxRecordingDuration >= 60
       ? `${Math.floor(settings.maxRecordingDuration / 60)} minute${settings.maxRecordingDuration >= 120 ? "s" : ""}`
@@ -345,6 +359,23 @@ export function SettingsScreen({
             The microphone used for dictation. Updates automatically when
             devices are connected or disconnected.
           </p>
+        </motion.div>
+
+        {/* Transcription language */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-8"
+        >
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+            Transcription Language
+          </h2>
+          <LanguagePicker
+            value={settings.transcriptionLanguageId}
+            onChange={handleTranscriptionLanguageChange}
+          />
+          <p className={settingsHelperClass}>{TRANSCRIPTION_LANGUAGE_HINT}</p>
         </motion.div>
 
         {/* Recording Limit */}

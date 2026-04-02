@@ -93,6 +93,13 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           await deps.onSetDebugMode?.(enabled)
           return true
         },
+        setTranscriptionLanguage: async ({ transcriptionLanguageId }) => {
+          const ok = await deps.appConfig.setTranscriptionLanguageId(
+            transcriptionLanguageId
+          )
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
       },
       messages: {
         logBun: ({ msg }) => console.log('Bun Log:', msg),

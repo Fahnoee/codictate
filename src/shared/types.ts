@@ -26,6 +26,8 @@ export interface AppSettings {
   shortcutId: ShortcutId
   maxRecordingDuration: number
   debugMode: boolean
+  /** `auto` = language detection; else a key from `TRANSCRIPTION_LANGUAGE_OPTIONS`. */
+  transcriptionLanguageId: string
 }
 
 export interface PermissionState {
@@ -51,6 +53,10 @@ export type WebviewRPCType = {
       setSettings: { params: { shortcutId: ShortcutId }; response: boolean }
       setAudioDevice: { params: { index: number }; response: boolean }
       setDebugMode: { params: { enabled: boolean }; response: boolean }
+      setTranscriptionLanguage: {
+        params: { transcriptionLanguageId: string }
+        response: boolean
+      }
     }
     messages: {
       logBun: { msg: string }

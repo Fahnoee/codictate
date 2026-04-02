@@ -2,6 +2,10 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
 import type { ShortcutId, AppSettings } from '../../shared/types'
+import {
+  isValidTranscriptionLanguageId,
+  whisperCodeForTranscriptionId,
+} from '../../shared/transcription-languages'
 import { enableDebug, disableDebug } from '../utils/logger'
 
 const CONFIG_DIR = join(
@@ -23,12 +27,14 @@ export class AppConfig {
   // debugMode is never persisted as true — always written as false on disk
   // so logging never silently resumes after a restart.
   private debugMode: boolean
+  private transcriptionLanguageId: string
 
   constructor() {
     this.audioDeviceName = null
     this.audioDevice = 0
     this.shortcutId = 'option-space'
     this.debugMode = false
+    this.transcriptionLanguageId = 'auto'
   }
 
   // --- Persistence ---
@@ -41,6 +47,12 @@ export class AppConfig {
         this.audioDeviceName = raw.audioDeviceName
       if (raw.audioDevice !== undefined) this.audioDevice = raw.audioDevice
       if (raw.shortcutId !== undefined) this.shortcutId = raw.shortcutId
+      if (
+        raw.transcriptionLanguageId !== undefined &&
+        isValidTranscriptionLanguageId(raw.transcriptionLanguageId)
+      ) {
+        this.transcriptionLanguageId = raw.transcriptionLanguageId
+      }
     } catch {
       // No config file yet, defaults will be used
     }
@@ -58,6 +70,7 @@ export class AppConfig {
       audioDeviceName: this.audioDeviceName,
       audioDevice: this.audioDevice,
       shortcutId: this.shortcutId,
+      transcriptionLanguageId: this.transcriptionLanguageId,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -100,6 +113,22 @@ export class AppConfig {
     await this.save()
   }
 
+  public async setTranscriptionLanguageId(id: string): Promise<boolean> {
+    if (!isValidTranscriptionLanguageId(id)) return false
+    this.transcriptionLanguageId = id
+    await this.save()
+    return true
+  }
+
+  public getTranscriptionLanguageId(): string {
+    return this.transcriptionLanguageId
+  }
+
+  /** Whisper `--language` value, or `null` when using auto-detect. */
+  public getTranscriptionWhisperCode(): string | null {
+    return whisperCodeForTranscriptionId(this.transcriptionLanguageId)
+  }
+
   public getShortcutId(): ShortcutId {
     return this.shortcutId
   }
@@ -123,6 +152,7 @@ export class AppConfig {
       shortcutId: this.shortcutId,
       maxRecordingDuration: MAX_RECORDING_DURATION,
       debugMode: this.debugMode,
+      transcriptionLanguageId: this.transcriptionLanguageId,
     }
   }
 }
