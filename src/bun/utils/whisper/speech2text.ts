@@ -5,10 +5,16 @@ import { log } from '../logger'
 
 export const RECORDING_PATH = '/tmp/codictate-recording.wav'
 
-/** Whisper often splits or mishears the product name — normalize before paste. */
+/**
+ * Whisper often splits or mishears the product name — normalize before paste.
+ * Order: phrase mishearings first, then codec+tate|tape (incl. Codec Tate, Codec Tape, glued forms), then any casing of codictate.
+ */
 const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
   [/\bcode\s+dictate\b/gi, 'Codictate'],
+  [/\bco\s+dictate\b/gi, 'Codictate'],
   [/\bkodi\s+dicate\b/gi, 'Codictate'],
+  [/\bcodec\s*t(?:ate|ape)\b/gi, 'Codictate'],
+  [/\bcodictate\b/gi, 'Codictate'],
 ]
 
 function fixBrandMishearings(text: string): string {
