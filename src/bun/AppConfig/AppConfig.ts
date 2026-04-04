@@ -11,6 +11,10 @@ import {
   isValidMaxRecordingDurationSeconds,
   type RecordingDurationPresetSeconds,
 } from '../../shared/recording-duration-presets'
+import {
+  DEFAULT_MODEL_ID,
+  isValidWhisperModelId,
+} from '../../shared/whisper-models'
 import { enableDebug, disableDebug } from '../utils/logger'
 
 const CONFIG_DIR = join(
@@ -32,6 +36,9 @@ export class AppConfig {
   private debugMode: boolean
   private transcriptionLanguageId: string
   private maxRecordingDuration: RecordingDurationPresetSeconds
+  private whisperModelId: string
+  private translateToEnglish: boolean
+  private translateDefaultLanguageId: string | null
 
   constructor() {
     this.audioDeviceName = null
@@ -40,6 +47,9 @@ export class AppConfig {
     this.debugMode = false
     this.transcriptionLanguageId = 'auto'
     this.maxRecordingDuration = DEFAULT_MAX_RECORDING_DURATION_SECONDS
+    this.whisperModelId = DEFAULT_MODEL_ID
+    this.translateToEnglish = false
+    this.translateDefaultLanguageId = null
   }
 
   // --- Persistence ---
@@ -64,6 +74,23 @@ export class AppConfig {
       ) {
         this.maxRecordingDuration = raw.maxRecordingDuration
       }
+      if (
+        raw.whisperModelId !== undefined &&
+        isValidWhisperModelId(raw.whisperModelId)
+      ) {
+        this.whisperModelId = raw.whisperModelId
+      }
+      if (raw.translateToEnglish !== undefined) {
+        this.translateToEnglish = Boolean(raw.translateToEnglish)
+      }
+      if (
+        raw.translateDefaultLanguageId !== undefined &&
+        raw.translateDefaultLanguageId !== null &&
+        isValidTranscriptionLanguageId(raw.translateDefaultLanguageId) &&
+        raw.translateDefaultLanguageId !== 'auto'
+      ) {
+        this.translateDefaultLanguageId = raw.translateDefaultLanguageId
+      }
     } catch {
       // No config file yet, defaults will be used
     }
@@ -83,6 +110,9 @@ export class AppConfig {
       shortcutId: this.shortcutId,
       transcriptionLanguageId: this.transcriptionLanguageId,
       maxRecordingDuration: this.maxRecordingDuration,
+      whisperModelId: this.whisperModelId,
+      translateToEnglish: this.translateToEnglish,
+      translateDefaultLanguageId: this.translateDefaultLanguageId,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -172,12 +202,50 @@ export class AppConfig {
     return true
   }
 
+  public getWhisperModelId(): string {
+    return this.whisperModelId
+  }
+
+  public async setWhisperModelId(id: string): Promise<boolean> {
+    if (!isValidWhisperModelId(id)) return false
+    this.whisperModelId = id
+    await this.save()
+    return true
+  }
+
+  public getTranslateToEnglish(): boolean {
+    return this.translateToEnglish
+  }
+
+  public async setTranslateToEnglish(enabled: boolean): Promise<void> {
+    this.translateToEnglish = enabled
+    await this.save()
+  }
+
+  public getTranslateDefaultLanguageId(): string | null {
+    return this.translateDefaultLanguageId
+  }
+
+  public async setTranslateDefaultLanguageId(
+    id: string | null
+  ): Promise<boolean> {
+    if (id !== null && (!isValidTranscriptionLanguageId(id) || id === 'auto')) {
+      return false
+    }
+    this.translateDefaultLanguageId = id
+    await this.save()
+    return true
+  }
+
   public getSettings(): AppSettings {
     return {
       shortcutId: this.shortcutId,
       maxRecordingDuration: this.maxRecordingDuration,
       debugMode: this.debugMode,
       transcriptionLanguageId: this.transcriptionLanguageId,
+      whisperModelId: this.whisperModelId,
+      translateToEnglish: this.translateToEnglish,
+      translateDefaultLanguageId: this.translateDefaultLanguageId,
     }
   }
 }

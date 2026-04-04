@@ -73,7 +73,11 @@ export const startRecording = async (
         if (!skipPipeline) {
           onComplete()
           playEndSound()
-          await speech2text(appConfig.getTranscriptionWhisperCode())
+          await speech2text(
+            appConfig.getTranscriptionWhisperCode(),
+            appConfig.getWhisperModelId(),
+            appConfig.getTranslateToEnglish()
+          )
         }
         onDone()
       },

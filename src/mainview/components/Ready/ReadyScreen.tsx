@@ -1,13 +1,23 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppStatus, AppSettings, DeviceInfo } from "../../../shared/types";
-import { setTranscriptionLanguage } from "../../rpc";
+import { setTranscriptionLanguage, setTranslateToEnglish } from "../../rpc";
+import {
+  WHISPER_MODELS,
+  TRANSLATE_MODEL_ID,
+} from "../../../shared/whisper-models";
+import { appEvents } from "../../app-events";
 import { Kbd } from "../Common/Kbd";
+import { InstantTooltip } from "../Common/InstantTooltip";
 import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
-import { LanguagePicker } from "../Settings/LanguagePicker";
+import {
+  LanguagePicker,
+  READY_BAR_PY_CLASS,
+  READY_BAR_TEXT_CLASS,
+} from "../Settings/LanguagePicker";
 import { TranscriptionLanguageHintButton } from "../Settings/TranscriptionLanguageHintButton";
 import { RecordingOrb } from "./RecordingOrb";
 
@@ -37,6 +47,28 @@ export function ReadyScreen({
   const queryClient = useQueryClient();
   const languageId = settings?.transcriptionLanguageId ?? "auto";
 
+  // Model availability — seeded from query cache, updated via events.
+  const [modelAvailability, setModelAvailability] = useState<
+    Record<string, boolean>
+  >(
+    () =>
+      queryClient.getQueryData<Record<string, boolean>>([
+        "modelAvailability",
+      ]) ??
+      Object.fromEntries(WHISPER_MODELS.map((m) => [m.id, m.bundled ?? false])),
+  );
+
+  useEffect(() => {
+    return appEvents.on("modelAvailability", ({ modelId, available }) => {
+      setModelAvailability((prev) => ({ ...prev, [modelId]: available }));
+    });
+  }, []);
+
+  const translateModelAvailable =
+    modelAvailability[TRANSLATE_MODEL_ID] ?? false;
+  const languageIsAuto = languageId === "auto";
+  const isTranslateOn = settings?.translateToEnglish ?? false;
+
   const handleLanguageChange = useCallback(
     async (transcriptionLanguageId: string) => {
       if (settings) {
@@ -49,6 +81,54 @@ export function ReadyScreen({
     },
     [queryClient, settings],
   );
+
+  const handleTranslateToggle = useCallback(async () => {
+    if (!settings || !isIdle) return;
+    if (isTranslateOn) {
+      // Turning off resets the language back to auto-detect.
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        translateToEnglish: false,
+        transcriptionLanguageId: "auto",
+      });
+      await setTranslateToEnglish(false);
+      await setTranscriptionLanguage("auto");
+      return;
+    }
+    // Model not available → open Settings so the user can download it.
+    if (!translateModelAvailable) {
+      onOpenSettings();
+      return;
+    }
+    // Language is auto but a default language is configured → apply it first.
+    if (languageIsAuto && settings.translateDefaultLanguageId) {
+      const defaultLang = settings.translateDefaultLanguageId;
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        transcriptionLanguageId: defaultLang,
+        translateToEnglish: true,
+      });
+      await setTranscriptionLanguage(defaultLang);
+      await setTranslateToEnglish(true);
+      return;
+    }
+    // Language not set and no default → do nothing; the LanguagePicker is on
+    // screen and the tooltip explains what to do.
+    if (languageIsAuto) return;
+    queryClient.setQueryData(["settings"], {
+      ...settings,
+      translateToEnglish: true,
+    });
+    await setTranslateToEnglish(true);
+  }, [
+    settings,
+    isIdle,
+    isTranslateOn,
+    translateModelAvailable,
+    languageIsAuto,
+    queryClient,
+    onOpenSettings,
+  ]);
 
   const micName = deviceInfo
     ? (deviceInfo.devices[String(deviceInfo.selectedDevice)] ?? "Default")
@@ -149,17 +229,18 @@ export function ReadyScreen({
         className="absolute bottom-7 left-6 right-6 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-3 pointer-events-none"
       >
         <div
-          className={`min-w-0 max-w-[min(100%,240px)] pointer-events-auto justify-self-start flex items-end gap-1.5 ${!isIdle ? "opacity-50" : ""}`}
+          className={`min-w-0 max-w-[min(100%,240px)] pointer-events-auto justify-self-start flex items-stretch gap-1.5 ${!isIdle ? "opacity-50" : ""}`}
         >
           <div className="min-w-0 flex-1">
             <LanguagePicker
+              compact
               value={languageId}
               onChange={handleLanguageChange}
-              className={`py-2.5 text-[17px] ${!isIdle ? "pointer-events-none" : ""}`}
+              className={!isIdle ? "pointer-events-none" : undefined}
             />
           </div>
           <TranscriptionLanguageHintButton
-            className={`mb-0.5 ${!isIdle ? "pointer-events-none opacity-60" : ""}`}
+            className={!isIdle ? "pointer-events-none opacity-60" : ""}
           />
         </div>
 
@@ -207,29 +288,68 @@ export function ReadyScreen({
           )}
         </AnimatePresence>
 
-        <motion.button
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4, duration: 0.3 }}
-          onClick={onOpenSettings}
-          className="pointer-events-auto justify-self-end p-2 rounded-lg border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/7 transition-colors duration-200 cursor-pointer"
-          aria-label="Settings"
+          className="pointer-events-auto justify-self-end flex items-stretch gap-1.5"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-white/48"
+          {settings !== undefined &&
+            (() => {
+              const hasDefaultLang = Boolean(
+                settings.translateDefaultLanguageId,
+              );
+              const tooltipText = isTranslateOn
+                ? "Translate mode active — click to disable"
+                : !translateModelAvailable
+                  ? "Download the Large model in Settings to enable translate mode"
+                  : languageIsAuto && !hasDefaultLang
+                    ? "Select a source language (or set a default in Settings) to enable translate mode"
+                    : "Translate mode — transcribe and translate to English";
+
+              const isDimmed =
+                !translateModelAvailable || (languageIsAuto && !hasDefaultLang);
+
+              return (
+                <InstantTooltip text={tooltipText} side="top">
+                  <button
+                    onClick={handleTranslateToggle}
+                    disabled={!isIdle}
+                    className={`inline-flex items-center ${READY_BAR_PY_CLASS} px-3.5 rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${READY_BAR_TEXT_CLASS} transition-[border-color,background-color,box-shadow] duration-200 disabled:opacity-50 disabled:pointer-events-none ${
+                      isTranslateOn
+                        ? "cursor-pointer border-blue-400/30 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400/80"
+                        : isDimmed
+                          ? "cursor-pointer border-white/8 bg-white/3 text-white/30 hover:border-white/14 hover:text-white/44"
+                          : "cursor-pointer border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/78 hover:text-white/88"
+                    }`}
+                    aria-label={tooltipText}
+                  >
+                    Translate mode
+                  </button>
+                </InstantTooltip>
+              );
+            })()}
+          <button
+            onClick={onOpenSettings}
+            className="inline-flex aspect-square w-10 shrink-0 self-stretch items-center justify-center rounded-lg border border-white/12 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 transition-[border-color,background-color,box-shadow] duration-200 cursor-pointer"
+            aria-label="Settings"
           >
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </motion.button>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-white/48"
+            >
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        </motion.div>
       </motion.div>
     </div>
   );

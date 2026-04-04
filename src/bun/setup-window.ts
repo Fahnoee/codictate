@@ -11,6 +11,8 @@ import type {
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
+import { modelManager } from './utils/whisper/model-manager'
+import { TRANSLATE_MODEL_ID } from '../shared/whisper-models'
 
 const SYSTEM_PREFS_URLS: Record<SettingsPane, string> = {
   inputMonitoring:
@@ -39,6 +41,8 @@ interface WindowDeps {
   onSetDebugMode?: (enabled: boolean) => Promise<void>
   /** Refresh tray/menu checkmarks after language changes from the webview. */
   onTranscriptionMenuSync?: () => void
+  /** Refresh tray checkmark after translate mode changes from the webview. */
+  onTranslateChanged?: () => void
 }
 
 export interface WindowHandle {
@@ -51,6 +55,16 @@ export interface WindowHandle {
     updateCheckStatus: (data: {
       state: UpdateCheckState
       message?: string
+    }) => void
+    updateModelDownloadProgress: (data: {
+      modelId: string
+      progressFraction: number
+      done: boolean
+      error?: string
+    }) => void
+    updateModelAvailability: (data: {
+      modelId: string
+      available: boolean
     }) => void
   }
   /**
@@ -115,6 +129,31 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           }
           return ok
         },
+        setWhisperModel: async ({ modelId }) => {
+          const ok = await deps.appConfig.setWhisperModelId(modelId)
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+          }
+          return ok
+        },
+        setTranslateDefaultLanguage: async ({ languageId }) => {
+          const ok = await deps.appConfig.setTranslateDefaultLanguageId(languageId)
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+          }
+          return ok
+        },
+        setTranslateToEnglish: async ({ enabled }) => {
+          if (enabled) {
+            // Translate mode requires the Large model and a specific source language.
+            if (!modelManager.isModelAvailable(TRANSLATE_MODEL_ID)) return false
+            if (deps.appConfig.getTranscriptionLanguageId() === 'auto') return false
+          }
+          await deps.appConfig.setTranslateToEnglish(enabled)
+          rpc.send.updateSettings(deps.appConfig.getSettings())
+          deps.onTranslateChanged?.()
+          return true
+        },
       },
       messages: {
         logBun: ({ msg }) => console.log('Bun Log:', msg),
@@ -125,6 +164,32 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         triggerApplyUpdate: () => deps.onApplyUpdate?.(),
         copyDebugLog: () => {
           copyLogToClipboard().catch(console.error)
+        },
+        downloadWhisperModel: ({ modelId }) => {
+          modelManager
+            .downloadModel(modelId, (progressFraction, done, error) => {
+              try {
+                rpc.send.updateModelDownloadProgress({
+                  modelId,
+                  progressFraction,
+                  done,
+                  error,
+                })
+                if (done && !error) {
+                  rpc.send.updateModelAvailability({ modelId, available: true })
+                  // If the translate model just became available, rebuild the tray menu.
+                  if (modelId === TRANSLATE_MODEL_ID) {
+                    deps.onTranslateChanged?.()
+                  }
+                }
+              } catch {
+                // Window may be closed during a long download
+              }
+            })
+            .catch(console.error)
+        },
+        cancelModelDownload: ({ modelId }) => {
+          modelManager.cancelDownload(modelId)
         },
       },
     },
@@ -167,6 +232,10 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
       updateSettings: (data) => rpc.send.updateSettings(data),
       openSettingsScreen: () => rpc.send.openSettingsScreen({}),
       updateCheckStatus: (data) => rpc.send.updateCheckStatus(data),
+      updateModelDownloadProgress: (data) =>
+        rpc.send.updateModelDownloadProgress(data),
+      updateModelAvailability: (data) =>
+        rpc.send.updateModelAvailability(data),
     },
     getOrCreateWindow,
   }

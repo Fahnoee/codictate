@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type {
@@ -11,6 +11,12 @@ import type {
 import { TRANSCRIPTION_LANGUAGE_HINT } from "../../../shared/transcription-languages";
 import { formatRecordingDurationLabel } from "../../../shared/recording-duration-presets";
 import {
+  WHISPER_MODELS,
+  TRANSLATE_MODEL_ID,
+  formatModelSize,
+  getWhisperModel,
+} from "../../../shared/whisper-models";
+import {
   setShortcut,
   setAudioDevice,
   fetchDevices,
@@ -20,12 +26,18 @@ import {
   setTranscriptionLanguage,
   setMaxRecordingDuration,
   copyDebugLog,
+  setWhisperModel,
+  setTranslateToEnglish,
+  setTranslateDefaultLanguage,
+  downloadWhisperModel,
+  cancelModelDownload,
 } from "../../rpc";
 import { appEvents } from "../../app-events";
 import { ShortcutPicker } from "./ShortcutPicker";
 import { DevicePicker } from "./DevicePicker";
 import { LanguagePicker } from "./LanguagePicker";
 import { RecordingLimitPicker } from "./RecordingLimitPicker";
+import { ModelPicker } from "./ModelPicker";
 import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 
 /** Secondary copy under each block: readable, softer than card content. */
@@ -215,6 +227,26 @@ export function SettingsScreen({
   const [updateMessage, setUpdateMessage] = useState<string | undefined>();
   const [isCopied, setIsCopied] = useState(false);
 
+  // Model availability: seed from query cache (populated at startup by pushInitialState),
+  // falling back to bundled-only defaults for models not yet reported.
+  const [modelAvailability, setModelAvailability] = useState<
+    Record<string, boolean>
+  >(() => {
+    const cached = queryClient.getQueryData<Record<string, boolean>>([
+      "modelAvailability",
+    ]);
+    const defaults = Object.fromEntries(
+      WHISPER_MODELS.map((m) => [m.id, m.bundled ?? false]),
+    );
+    return cached ? { ...defaults, ...cached } : defaults;
+  });
+  const [downloadProgress, setDownloadProgress] = useState<
+    Record<string, number>
+  >({});
+  // Tracks whether we started a download specifically to enable translate mode
+  const translatePendingRef = useRef(false);
+  const [translateDownloading, setTranslateDownloading] = useState(false);
+
   useEffect(() => {
     return appEvents.on("updateCheckStatus", ({ state, message }) => {
       setUpdateState(state);
@@ -224,6 +256,62 @@ export function SettingsScreen({
       }
     });
   }, []);
+
+  useEffect(() => {
+    return appEvents.on("modelAvailability", ({ modelId, available }) => {
+      setModelAvailability((prev) => ({ ...prev, [modelId]: available }));
+    });
+  }, []);
+
+  useEffect(() => {
+    const unsub = appEvents.on(
+      "modelDownloadProgress",
+      async ({ modelId, progressFraction, done, error }) => {
+        if (!done) {
+          setDownloadProgress((prev) => ({
+            ...prev,
+            [modelId]: progressFraction,
+          }));
+          return;
+        }
+
+        // Download finished (success or failure)
+        setDownloadProgress((prev) => {
+          const next = { ...prev };
+          delete next[modelId];
+          return next;
+        });
+
+        if (modelId === TRANSLATE_MODEL_ID) {
+          setTranslateDownloading(false);
+          if (!error && translatePendingRef.current) {
+            translatePendingRef.current = false;
+            await setTranslateToEnglish(true);
+            queryClient.setQueryData(["settings"], (old: AppSettings) => ({
+              ...old,
+              translateToEnglish: true,
+            }));
+          } else if (error) {
+            translatePendingRef.current = false;
+          }
+        }
+
+        if (!error) {
+          setModelAvailability((prev) => ({ ...prev, [modelId]: true }));
+          // Auto-select the model if user isn't already on it and we just
+          // downloaded it as part of a model picker action.
+          if (modelId !== TRANSLATE_MODEL_ID) {
+            await setWhisperModel(modelId);
+            queryClient.setQueryData(["settings"], (old: AppSettings) => ({
+              ...old,
+              whisperModelId: modelId,
+            }));
+          }
+        }
+      },
+    );
+    return unsub;
+  }, [queryClient]);
 
   const handleCheckForUpdates = useCallback(() => {
     setUpdateState("checking");
@@ -278,6 +366,73 @@ export function SettingsScreen({
         maxRecordingDuration,
       });
       await setMaxRecordingDuration(maxRecordingDuration);
+    },
+    [queryClient, settings],
+  );
+
+  const handleModelSelect = useCallback(
+    async (modelId: string) => {
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        whisperModelId: modelId,
+      });
+      await setWhisperModel(modelId);
+    },
+    [queryClient, settings],
+  );
+
+  const handleModelDownload = useCallback((modelId: string) => {
+    setDownloadProgress((prev) => ({ ...prev, [modelId]: 0 }));
+    downloadWhisperModel(modelId);
+  }, []);
+
+  const handleCancelDownload = useCallback((modelId: string) => {
+    cancelModelDownload(modelId);
+    setDownloadProgress((prev) => {
+      const next = { ...prev };
+      delete next[modelId];
+      return next;
+    });
+  }, []);
+
+  const handleTranslateToggle = useCallback(async () => {
+    if (settings.translateToEnglish) {
+      // Turning off resets the language back to auto-detect.
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        translateToEnglish: false,
+        transcriptionLanguageId: "auto",
+      });
+      await setTranslateToEnglish(false);
+      await setTranscriptionLanguage("auto");
+      return;
+    }
+
+    // Turning on: check if the translate model is available
+    if (modelAvailability[TRANSLATE_MODEL_ID]) {
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        translateToEnglish: true,
+      });
+      await setTranslateToEnglish(true);
+      return;
+    }
+
+    // Need to download the translate model first
+    translatePendingRef.current = true;
+    setTranslateDownloading(true);
+    setDownloadProgress((prev) => ({ ...prev, [TRANSLATE_MODEL_ID]: 0 }));
+    downloadWhisperModel(TRANSLATE_MODEL_ID);
+  }, [settings, queryClient, modelAvailability]);
+
+  const handleTranslateDefaultLanguageChange = useCallback(
+    async (languageId: string) => {
+      const id = languageId === "" ? null : languageId;
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        translateDefaultLanguageId: id,
+      });
+      await setTranslateDefaultLanguage(id);
     },
     [queryClient, settings],
   );
@@ -374,11 +529,36 @@ export function SettingsScreen({
           </p>
         </motion.div>
 
-        {/* Transcription language */}
+        {/* Transcription Model */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.12, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-8"
+        >
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+            Transcription Model
+          </h2>
+          <ModelPicker
+            value={settings.whisperModelId}
+            modelAvailability={modelAvailability}
+            downloadProgress={downloadProgress}
+            onSelect={handleModelSelect}
+            onDownload={handleModelDownload}
+            onCancelDownload={handleCancelDownload}
+          />
+          <p className={settingsHelperClass}>
+            Smaller models are faster but less accurate. All models shown are
+            multilingual. The Turbo model is bundled with the app — others are
+            downloaded on demand.
+          </p>
+        </motion.div>
+
+        {/* Transcription language */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.14, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="mb-8"
         >
           <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
@@ -389,6 +569,113 @@ export function SettingsScreen({
             onChange={handleTranscriptionLanguageChange}
           />
           <p className={settingsHelperClass}>{TRANSCRIPTION_LANGUAGE_HINT}</p>
+        </motion.div>
+
+        {/* Translate to English */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.16, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-8"
+        >
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+            Translate to English
+          </h2>
+          <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              <div className="flex-1 min-w-0">
+                <span
+                  className={`block text-[21px] font-medium ${settings.translateToEnglish ? "text-white/78" : "text-white/58"}`}
+                >
+                  {settings.translateToEnglish
+                    ? "Translation active"
+                    : "Translate to English"}
+                </span>
+              </div>
+              <button
+                onClick={handleTranslateToggle}
+                disabled={translateDownloading}
+                className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                  settings.translateToEnglish
+                    ? "bg-blue-500/30 border-blue-400/30"
+                    : "bg-white/7 border-white/14"
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                aria-label="Toggle translate to English"
+              >
+                <span
+                  className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                    settings.translateToEnglish
+                      ? "left-4 bg-blue-400/90"
+                      : "left-0.5 bg-white/40"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Download prompt when toggling on without the model */}
+            <AnimatePresence>
+              {translateDownloading && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="border-t border-white/10 px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <p className="text-[18px] text-white/55 font-sans leading-relaxed">
+                        Downloading the Large model (
+                        {formatModelSize(
+                          getWhisperModel(TRANSLATE_MODEL_ID)?.sizeMB ?? 1100,
+                        )}
+                        )…
+                      </p>
+                      <div className="mt-2 h-1 rounded-full bg-white/10 overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full bg-blue-400/60"
+                          animate={{
+                            width: `${Math.round((downloadProgress[TRANSLATE_MODEL_ID] ?? 0) * 100)}%`,
+                          }}
+                          transition={{ duration: 0.2 }}
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleCancelDownload(TRANSLATE_MODEL_ID)}
+                      className="shrink-0 px-2.5 py-1 rounded-lg text-[17px] font-medium border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/8 text-white/44 hover:text-white/64 transition-colors duration-200 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Default source language for translate mode */}
+          <div className="mt-3">
+            <p className="text-[17px] text-white/44 font-sans mb-2">
+              Default source language
+            </p>
+            <LanguagePicker
+              value={settings.translateDefaultLanguageId ?? ""}
+              onChange={handleTranslateDefaultLanguageChange}
+              allowEmpty
+              excludeAuto
+              ariaLabel="Default source language for translation"
+            />
+          </div>
+
+          <p className={settingsHelperClass}>
+            Speak in any language — Codictate will transcribe and translate to
+            English. Requires the Large model (
+            {formatModelSize(
+              getWhisperModel(TRANSLATE_MODEL_ID)?.sizeMB ?? 1100,
+            )}
+            ). Set a default source language to enable translate mode directly
+            from the main screen even when auto-detect is active.
+          </p>
         </motion.div>
 
         {/* Recording Limit */}

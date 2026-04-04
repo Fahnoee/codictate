@@ -15,6 +15,13 @@ type EventMap = {
   openSettings: SettingsPane
   openSettingsScreen: void
   updateCheckStatus: { state: UpdateCheckState; message?: string }
+  modelDownloadProgress: {
+    modelId: string
+    progressFraction: number
+    done: boolean
+    error?: string
+  }
+  modelAvailability: { modelId: string; available: boolean }
 }
 
 type Unsubscribe = () => void

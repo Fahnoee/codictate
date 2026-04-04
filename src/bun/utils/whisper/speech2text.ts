@@ -1,4 +1,6 @@
 import { whisperCliLanguageArg } from '../../../shared/transcription-languages'
+import { TRANSLATE_MODEL_ID } from '../../../shared/whisper-models'
+import { modelManager } from './model-manager'
 import { pasteTranscript } from '../keyboard/keyboard-events'
 import { join } from 'node:path'
 import { log } from '../logger'
@@ -27,15 +29,15 @@ function fixBrandMishearings(text: string): string {
 }
 
 export const transcribe = async (
-  whisperLanguageCode: string | null | undefined
+  whisperLanguageCode: string | null | undefined,
+  modelId: string,
+  translateToEnglish: boolean
 ) => {
   const binary = join(import.meta.dir, '../native-helpers/whisper-cli')
-  // We landed on this model becuase it can detect
-  // multiple languages and it is fast and very accurate.
-  const model = join(
-    import.meta.dir,
-    '../native-helpers/ggml-large-v3-turbo-q5_0.bin'
-  )
+
+  // Translate mode always uses the dedicated translation model.
+  const effectiveModelId = translateToEnglish ? TRANSLATE_MODEL_ID : modelId
+  const model = modelManager.getModelPath(effectiveModelId)
 
   const lang = whisperCliLanguageArg(whisperLanguageCode)
 
@@ -44,6 +46,8 @@ export const transcribe = async (
     model,
     whisperLanguageCode: lang,
     languageMode: lang === 'auto' ? 'auto-detect' : 'fixed',
+    modelId: effectiveModelId,
+    translateToEnglish,
   })
 
   const args = [
@@ -57,6 +61,10 @@ export const transcribe = async (
     '--no-prints',
     '-nt', // No timestamps
   ]
+
+  if (translateToEnglish) {
+    args.push('-tr')
+  }
 
   const proc = Bun.spawn(args, {
     stdout: 'pipe',
@@ -94,8 +102,14 @@ export const transcribe = async (
 }
 
 export const speech2text = async (
-  whisperLanguageCode: string | null | undefined
+  whisperLanguageCode: string | null | undefined,
+  modelId: string,
+  translateToEnglish: boolean
 ) => {
-  const transcript = await transcribe(whisperLanguageCode)
+  const transcript = await transcribe(
+    whisperLanguageCode,
+    modelId,
+    translateToEnglish
+  )
   await pasteTranscript(transcript)
 }

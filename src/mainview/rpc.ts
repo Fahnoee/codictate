@@ -12,8 +12,16 @@ import type {
 
 import type { AppStatus } from '../shared/types'
 import { appEvents } from './app-events'
+import { WHISPER_MODELS } from '../shared/whisper-models'
 
 export const queryClient = new QueryClient()
+
+// Seed model availability — bundled models are always available.
+// Non-bundled entries will be updated by updateModelAvailability messages from the backend.
+queryClient.setQueryData(
+  ['modelAvailability'],
+  Object.fromEntries(WHISPER_MODELS.map((m) => [m.id, m.bundled ?? false]))
+)
 
 // rpc is not exported — the inferred type references an internal electrobun path
 // that TypeScript cannot name in declaration files (TS2742). All external access
@@ -42,6 +50,27 @@ const rpc = Electroview.defineRPC<WebviewRPCType>({
         message?: string
       }) => {
         appEvents.emit('updateCheckStatus', data)
+      },
+      updateModelDownloadProgress: (data: {
+        modelId: string
+        progressFraction: number
+        done: boolean
+        error?: string
+      }) => {
+        appEvents.emit('modelDownloadProgress', data)
+      },
+      updateModelAvailability: (data: {
+        modelId: string
+        available: boolean
+      }) => {
+        queryClient.setQueryData(
+          ['modelAvailability'],
+          (old: Record<string, boolean> | undefined) => ({
+            ...old,
+            [data.modelId]: data.available,
+          })
+        )
+        appEvents.emit('modelAvailability', data)
       },
     },
   },
@@ -102,4 +131,26 @@ export async function setMaxRecordingDuration(
 
 export function copyDebugLog(): void {
   rpc.send.copyDebugLog({})
+}
+
+export async function setWhisperModel(modelId: string): Promise<boolean> {
+  return rpc.request.setWhisperModel({ modelId })
+}
+
+export async function setTranslateToEnglish(enabled: boolean): Promise<boolean> {
+  return rpc.request.setTranslateToEnglish({ enabled })
+}
+
+export async function setTranslateDefaultLanguage(
+  languageId: string | null
+): Promise<boolean> {
+  return rpc.request.setTranslateDefaultLanguage({ languageId })
+}
+
+export function downloadWhisperModel(modelId: string): void {
+  rpc.send.downloadWhisperModel({ modelId })
+}
+
+export function cancelModelDownload(modelId: string): void {
+  rpc.send.cancelModelDownload({ modelId })
 }

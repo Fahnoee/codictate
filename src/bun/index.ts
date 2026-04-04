@@ -10,6 +10,8 @@ import { setupTray } from './setup-tray'
 import { setupRecording } from './setup-recording'
 import { setupWindow } from './setup-window'
 import { setOnAutoDisable } from './utils/logger'
+import { modelManager } from './utils/whisper/model-manager'
+import { WHISPER_MODELS } from '../shared/whisper-models'
 
 const DEV_SERVER_PORT = 5173
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`
@@ -67,6 +69,15 @@ let menuHandlers: ReturnType<typeof setupApplicationMenu>
 const pushInitialState = () => {
   win.send.updateStatus({ status: 'ready' })
   win.send.updatePermissions(currentPermissions)
+  // Push availability for all non-bundled models so the UI knows what's downloaded.
+  for (const model of WHISPER_MODELS) {
+    if (!model.bundled) {
+      win.send.updateModelAvailability({
+        modelId: model.id,
+        available: modelManager.isModelAvailable(model.id),
+      })
+    }
+  }
   keyboard.checkPermissions()
 }
 
@@ -109,6 +120,9 @@ const win = setupWindow({
   onNewWindowReady: () => pushInitialState(),
   onTranscriptionMenuSync: () => {
     trayHandlers.rebuildDeviceMenu(UserAppConfig.resolveAudioDevice(devices))
+  },
+  onTranslateChanged: () => {
+    trayHandlers.syncTranslateState()
   },
 })
 
@@ -164,6 +178,7 @@ trayHandlers = setupTray(
   onOpenSettings,
   onApplyUpdate,
   () => checkForUpdates(),
+  () => win.send.updateSettings(UserAppConfig.getSettings()),
   () => win.send.updateSettings(UserAppConfig.getSettings())
 )
 

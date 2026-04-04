@@ -9,6 +9,8 @@ import {
   buildTranscriptionLanguageMenuItems,
   handleTranscriptionLanguageAction,
 } from './utils/transcription-language-actions'
+import { modelManager } from './utils/whisper/model-manager'
+import { TRANSLATE_MODEL_ID } from '../shared/whisper-models'
 
 export type TrayHandlers = {
   setTrayIdle: () => void
@@ -22,6 +24,7 @@ export type TrayHandlers = {
   setUpdateChecking: () => void
   showUpdateReady: () => void
   resetUpdateState: () => void
+  syncTranslateState: () => void
 }
 
 // Resolves to app/images/MacTrayIcon.png in the bundle.
@@ -38,7 +41,9 @@ export const setupTray = (
   onApplyUpdate?: () => void,
   onCheckForUpdate?: () => void,
   /** After tray changes transcription language — sync webview (e.g. updateSettings). */
-  onTranscriptionLanguageChanged?: () => void
+  onTranscriptionLanguageChanged?: () => void,
+  /** After tray toggles translate to English — sync webview. */
+  onTranslateToggled?: () => void
 ): TrayHandlers => {
   const tray = new Tray({
     image: trayIconPath,
@@ -75,6 +80,34 @@ export const setupTray = (
     }
   }
 
+  const buildTranslateMenuItem = (cfg: AppConfig) => {
+    const modelReady = modelManager.isModelAvailable(TRANSLATE_MODEL_ID)
+    const languageSet = cfg.getTranscriptionLanguageId() !== 'auto'
+
+    if (!modelReady) {
+      return {
+        type: 'normal' as const,
+        label: 'Translate to English — download Large model first',
+        action: 'noop',
+        checked: false,
+      }
+    }
+    if (!languageSet) {
+      return {
+        type: 'normal' as const,
+        label: 'Translate to English — select a language first',
+        action: 'noop',
+        checked: false,
+      }
+    }
+    return {
+      type: 'normal' as const,
+      label: 'Translate to English',
+      action: 'toggle-translate',
+      checked: cfg.getTranslateToEnglish(),
+    }
+  }
+
   const buildMenu = (selectedDevice: number) => [
     { type: 'normal' as const, label: 'Open Codictate', action: 'open' },
     { type: 'normal' as const, label: 'Settings', action: 'open-settings' },
@@ -93,6 +126,7 @@ export const setupTray = (
         appConfig.getTranscriptionLanguageId()
       ),
     },
+    buildTranslateMenuItem(appConfig),
     { type: 'divider' as const },
     {
       type: 'normal' as const,
@@ -127,6 +161,14 @@ export const setupTray = (
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
       onTranscriptionLanguageChanged?.()
     })
+    if (event.data.action === 'toggle-translate') {
+      void appConfig
+        .setTranslateToEnglish(!appConfig.getTranslateToEnglish())
+        .then(() => {
+          tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+          onTranslateToggled?.()
+        })
+    }
   })
 
   return {
@@ -152,6 +194,9 @@ export const setupTray = (
     },
     resetUpdateState: () => {
       updateState = 'idle'
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+    },
+    syncTranslateState: () => {
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
   }

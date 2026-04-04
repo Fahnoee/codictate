@@ -28,6 +28,15 @@ export interface AppSettings {
   debugMode: boolean
   /** `auto` = language detection; else a key from `TRANSCRIPTION_LANGUAGE_OPTIONS`. */
   transcriptionLanguageId: string
+  /** ID of the Whisper model to use for transcription. Defaults to `large-v3-turbo-q5_0` (bundled). */
+  whisperModelId: string
+  /** When true, Whisper translates speech to English using the large-v3-q5_0 model. */
+  translateToEnglish: boolean
+  /**
+   * Default source language applied automatically when translate mode is enabled
+   * while auto-detect is active. `null` means the user hasn't set one yet.
+   */
+  translateDefaultLanguageId: string | null
 }
 
 export interface PermissionState {
@@ -61,6 +70,12 @@ export type WebviewRPCType = {
         params: { maxRecordingDuration: number }
         response: boolean
       }
+      setWhisperModel: { params: { modelId: string }; response: boolean }
+      setTranslateToEnglish: { params: { enabled: boolean }; response: boolean }
+      setTranslateDefaultLanguage: {
+        params: { languageId: string | null }
+        response: boolean
+      }
     }
     messages: {
       logBun: { msg: string }
@@ -68,6 +83,8 @@ export type WebviewRPCType = {
       triggerUpdateCheck: {}
       triggerApplyUpdate: {}
       copyDebugLog: {}
+      downloadWhisperModel: { modelId: string }
+      cancelModelDownload: { modelId: string }
     }
   }>
   // Messages/requests handled by the browser (webview)
@@ -80,6 +97,13 @@ export type WebviewRPCType = {
       updateSettings: AppSettings
       openSettingsScreen: {}
       updateCheckStatus: { state: UpdateCheckState; message?: string }
+      updateModelDownloadProgress: {
+        modelId: string
+        progressFraction: number
+        done: boolean
+        error?: string
+      }
+      updateModelAvailability: { modelId: string; available: boolean }
     }
   }>
 }

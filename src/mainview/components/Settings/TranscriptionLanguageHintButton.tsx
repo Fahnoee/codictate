@@ -14,12 +14,12 @@ export function TranscriptionLanguageHintButton({
     <InstantTooltip text={TRANSCRIPTION_LANGUAGE_HINT} side={tooltipSide}>
       <button
         type="button"
-        className={`inline-flex items-center justify-center rounded-md border border-white/14 bg-white/[0.03] p-1.5 text-white/42 hover:text-white/58 hover:border-white/22 hover:bg-white/[0.05] transition-colors duration-200 cursor-pointer shrink-0 ${className}`}
+        className={`inline-flex aspect-square w-10 shrink-0 self-stretch items-center justify-center rounded-lg border border-white/12 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] text-white/42 hover:text-white/58 hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 transition-[border-color,background-color,box-shadow] duration-200 cursor-pointer ${className}`}
         aria-label={TRANSCRIPTION_LANGUAGE_HINT}
       >
         <svg
-          width="14"
-          height="14"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
