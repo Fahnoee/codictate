@@ -80,6 +80,10 @@ appEvents.on('openSettings', (pane: SettingsPane) => {
   rpc.send.openSystemPreferences({ pane })
 })
 
+export function triggerPermissionPrompt(pane: SettingsPane): void {
+  rpc.send.triggerPermissionPrompt({ pane })
+}
+
 // Initialize the Electroview bridge here so main.tsx doesn't need to import rpc.
 new Electroview({ rpc })
 

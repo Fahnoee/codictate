@@ -20,6 +20,8 @@ export function PermissionRow({
   pane,
   index,
   onOpen,
+  isActiveStep,
+  isLockedFutureStep,
 }: {
   granted: boolean;
   label: string;
@@ -27,7 +29,11 @@ export function PermissionRow({
   pane: SettingsPane;
   index: number;
   onOpen: (pane: SettingsPane) => void;
+  isActiveStep: boolean;
+  isLockedFutureStep: boolean;
 }) {
+  const showAllowButton = !granted && isActiveStep;
+
   return (
     <motion.div
       custom={index}
@@ -36,7 +42,11 @@ export function PermissionRow({
       animate="visible"
       layout
       className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors duration-300 ${
-        granted ? "border-white/6 bg-white/3" : "border-white/10 bg-white/2"
+        granted
+          ? "border-white/6 bg-white/3"
+          : isActiveStep
+            ? "border-white/18 bg-white/4"
+            : "border-white/10 bg-white/2"
       }`}
     >
       <div className="shrink-0 w-5 flex items-center justify-center">
@@ -82,10 +92,15 @@ export function PermissionRow({
         <p className="text-[19px] text-white/25 mt-0.5 leading-snug">
           {description}
         </p>
+        {isLockedFutureStep && (
+          <p className="text-[16px] text-white/12 mt-1 leading-snug">
+            Complete the step above first
+          </p>
+        )}
       </div>
 
       <AnimatePresence>
-        {!granted && (
+        {showAllowButton && (
           <motion.button
             initial={{ opacity: 0, x: 6 }}
             animate={{ opacity: 1, x: 0 }}

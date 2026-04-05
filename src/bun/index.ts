@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import Electrobun, { Updater, Utils } from 'electrobun/bun'
-import type { PermissionState } from '../shared/types'
+import type { PermissionState, SettingsPane } from '../shared/types'
 import { findDevices } from './utils/audio/devices'
 import { AppConfig } from './AppConfig/AppConfig'
 import { setupApplicationMenu } from './setup-menu'
@@ -16,6 +16,9 @@ import { WHISPER_MODELS, getTranslateReadiness } from '../shared/whisper-models'
 const DEV_SERVER_PORT = 5173
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`
 
+const INPUT_MONITORING_PREFS_URL =
+  'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent'
+
 function checkDocumentsPermission(): boolean {
   try {
     readdirSync(join(homedir(), 'Documents'))
@@ -23,6 +26,26 @@ function checkDocumentsPermission(): boolean {
   } catch {
     return false
   }
+}
+
+/** Only touch ~/Documents (TCC) once the flow has reached step 3, or all native perms are granted. */
+function shouldProbeDocuments(
+  p: Pick<PermissionState, 'inputMonitoring' | 'microphone' | 'accessibility'>
+): boolean {
+  const reachedDocumentsStep = p.inputMonitoring && p.accessibility
+  const allNativeGranted = p.inputMonitoring && p.microphone && p.accessibility
+  return reachedDocumentsStep || allNativeGranted
+}
+
+function mergeDocumentsField(
+  nativeSlice: Pick<
+    PermissionState,
+    'inputMonitoring' | 'microphone' | 'accessibility'
+  >,
+  previousDocuments: boolean
+): boolean {
+  if (shouldProbeDocuments(nativeSlice)) return checkDocumentsPermission()
+  return previousDocuments
 }
 
 async function getMainViewUrl(): Promise<string> {
@@ -107,7 +130,10 @@ const win = setupWindow({
   getPermissions: async () => {
     currentPermissions = {
       ...currentPermissions,
-      documents: checkDocumentsPermission(),
+      documents: mergeDocumentsField(
+        currentPermissions,
+        currentPermissions.documents
+      ),
     }
     if (keyboard.isAlive) keyboard.checkPermissions()
     return currentPermissions
@@ -136,6 +162,34 @@ const win = setupWindow({
   },
   onTranslateChanged: () => {
     trayHandlers.syncTranslateState()
+  },
+  onTriggerPermissionPrompt: (pane: SettingsPane) => {
+    if (pane === 'inputMonitoring') {
+      if (keyboard.isAlive) {
+        keyboard.requestInputMonitoringPrompt()
+      } else {
+        Bun.spawn(['open', INPUT_MONITORING_PREFS_URL])
+      }
+      return
+    }
+    if (!keyboard.isAlive) return
+    switch (pane) {
+      case 'accessibility':
+        keyboard.promptAccessibility()
+        break
+      case 'documents':
+        if (shouldProbeDocuments(currentPermissions)) {
+          currentPermissions = {
+            ...currentPermissions,
+            documents: checkDocumentsPermission(),
+          }
+          win.send.updatePermissions(currentPermissions)
+        }
+        break
+      case 'microphone':
+        keyboard.requestMicrophone()
+        break
+    }
   },
 })
 
@@ -196,8 +250,14 @@ trayHandlers = setupTray(
 )
 
 let permissionPoll: ReturnType<typeof setInterval> | null = null
+let lastKeyboardRespawnMs = 0
+const KEYBOARD_RESPAWN_MIN_MS = 30_000
+/** macOS often keeps CGPreflightListenEventAccess() false in a long-lived helper until the process is replaced after the user grants Input Monitoring. */
+const INPUT_MONITORING_TCC_REFRESH_GRACE_MS = 12_000
 
-function startKeyboard() {
+const appKeyboardBootTime = Date.now()
+
+function startKeyboard(options?: { requestListenAccessOnLaunch?: boolean }) {
   return setupRecording(
     UserAppConfig,
     trayHandlers,
@@ -207,7 +267,10 @@ function startKeyboard() {
     (nativePermissions) => {
       currentPermissions = {
         ...nativePermissions,
-        documents: checkDocumentsPermission(),
+        documents: mergeDocumentsField(
+          nativePermissions,
+          currentPermissions.documents
+        ),
       }
       win.send.updatePermissions(currentPermissions)
 
@@ -218,14 +281,43 @@ function startKeyboard() {
         }
       } else if (!permissionPoll) {
         permissionPoll = setInterval(() => {
+          if (allPermissionsGranted(currentPermissions)) {
+            if (permissionPoll) {
+              clearInterval(permissionPoll)
+              permissionPoll = null
+            }
+            return
+          }
+
+          const pastImGrace =
+            Date.now() - appKeyboardBootTime >=
+            INPUT_MONITORING_TCC_REFRESH_GRACE_MS
+
+          if (
+            pastImGrace &&
+            !currentPermissions.inputMonitoring &&
+            keyboard.isAlive
+          ) {
+            keyboard.stop()
+            keyboard = startKeyboard({ requestListenAccessOnLaunch: false })
+            return
+          }
+
           if (keyboard.isAlive) {
             keyboard.checkPermissions()
           } else {
-            keyboard = startKeyboard()
+            const now = Date.now()
+            if (now - lastKeyboardRespawnMs >= KEYBOARD_RESPAWN_MIN_MS) {
+              lastKeyboardRespawnMs = now
+              keyboard = startKeyboard({ requestListenAccessOnLaunch: false })
+            }
           }
         }, 3000)
       }
-    }
+    },
+    options?.requestListenAccessOnLaunch === false
+      ? { requestListenAccessOnLaunch: false }
+      : undefined
   )
 }
 

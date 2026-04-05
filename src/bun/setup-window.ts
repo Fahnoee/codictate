@@ -46,6 +46,8 @@ interface WindowDeps {
   onTranscriptionMenuSync?: () => void
   /** Refresh tray checkmark after translate mode changes from the webview. */
   onTranslateChanged?: () => void
+  /** Show one native permission prompt for the given privacy pane (sequential onboarding). */
+  onTriggerPermissionPrompt?: (pane: SettingsPane) => void
 }
 
 export interface WindowHandle {
@@ -189,6 +191,9 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         logBun: ({ msg }) => console.log('Bun Log:', msg),
         openSystemPreferences: ({ pane }) => {
           Bun.spawn(['open', SYSTEM_PREFS_URLS[pane]])
+        },
+        triggerPermissionPrompt: ({ pane }) => {
+          deps.onTriggerPermissionPrompt?.(pane)
         },
         triggerUpdateCheck: () => deps.onTriggerUpdateCheck?.(),
         triggerApplyUpdate: () => deps.onApplyUpdate?.(),

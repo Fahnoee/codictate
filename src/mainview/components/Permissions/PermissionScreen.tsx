@@ -1,8 +1,52 @@
+import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { PermissionState } from "../../app-events";
 import type { SettingsPane } from "../../../shared/types";
 import { PermissionRow } from "./PermissionRow";
 import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
+import { triggerPermissionPrompt } from "../../rpc";
+
+/** System prompts run in this order (Input Monitoring → Accessibility → Documents → Microphone). */
+export const PERMISSION_ORDER: SettingsPane[] = [
+  "inputMonitoring",
+  "accessibility",
+  "documents",
+  "microphone",
+];
+
+const ROWS: {
+  pane: SettingsPane;
+  label: string;
+  description: string;
+}[] = [
+  {
+    pane: "inputMonitoring",
+    label: "Input Monitoring",
+    description: "Detect the shortcut while the app is in background",
+  },
+  {
+    pane: "accessibility",
+    label: "Accessibility",
+    description: "Simulate keystrokes to paste transcription into other apps",
+  },
+  {
+    pane: "documents",
+    label: "Files & Folders",
+    description: "Save recordings and transcription history",
+  },
+  {
+    pane: "microphone",
+    label: "Microphone",
+    description: "Record your voice to transcribe into text",
+  },
+];
+
+function firstMissingPane(p: PermissionState): SettingsPane | null {
+  for (const pane of PERMISSION_ORDER) {
+    if (!p[pane]) return pane;
+  }
+  return null;
+}
 
 export function PermissionScreen({
   permissions,
@@ -11,14 +55,32 @@ export function PermissionScreen({
   permissions: PermissionState;
   onOpenSettings: (pane: SettingsPane) => void;
 }) {
-  const grantedCount = [
+  const grantedCount = PERMISSION_ORDER.filter(
+    (pane) => permissions[pane],
+  ).length;
+  const allGranted = grantedCount === 4;
+  const activePane = firstMissingPane(permissions);
+  const promptedPanes = useRef(new Set<SettingsPane>());
+
+  useEffect(() => {
+    for (const pane of PERMISSION_ORDER) {
+      if (permissions[pane]) promptedPanes.current.delete(pane);
+    }
+    if (allGranted || !activePane) return;
+    // Input Monitoring: KeyListener calls CGRequestListenEventAccess() on startup —
+    // do not auto-trigger here or we double-prompt; "Allow →" still re-requests.
+    if (activePane === "inputMonitoring") return;
+    if (promptedPanes.current.has(activePane)) return;
+    promptedPanes.current.add(activePane);
+    triggerPermissionPrompt(activePane);
+  }, [
+    activePane,
+    allGranted,
     permissions.inputMonitoring,
-    permissions.microphone,
     permissions.accessibility,
     permissions.documents,
-  ].filter(Boolean).length;
-
-  const allGranted = grantedCount === 4;
+    permissions.microphone,
+  ]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none px-6">
@@ -74,38 +136,38 @@ export function PermissionScreen({
         </motion.div>
 
         <div className="flex flex-col gap-1.5">
-          <PermissionRow
-            granted={permissions.inputMonitoring}
-            label="Input Monitoring"
-            description="Detect the shortcut while the app is in background"
-            pane="inputMonitoring"
-            index={0}
-            onOpen={onOpenSettings}
-          />
-          <PermissionRow
-            granted={permissions.microphone}
-            label="Microphone"
-            description="Record your voice to transcribe into text"
-            pane="microphone"
-            index={1}
-            onOpen={onOpenSettings}
-          />
-          <PermissionRow
-            granted={permissions.accessibility}
-            label="Accessibility"
-            description="Simulate keystrokes to paste transcription into other apps"
-            pane="accessibility"
-            index={2}
-            onOpen={onOpenSettings}
-          />
-          <PermissionRow
-            granted={permissions.documents}
-            label="Files & Folders"
-            description="Save recordings and transcription history"
-            pane="documents"
-            index={3}
-            onOpen={onOpenSettings}
-          />
+          {ROWS.map((row, index) => {
+            const granted = permissions[row.pane];
+            const isActiveStep = !allGranted && activePane === row.pane;
+            const isLockedFutureStep =
+              !granted &&
+              activePane !== null &&
+              PERMISSION_ORDER.indexOf(row.pane) >
+                PERMISSION_ORDER.indexOf(activePane);
+
+            return (
+              <PermissionRow
+                key={row.pane}
+                granted={granted}
+                label={row.label}
+                description={row.description}
+                pane={row.pane}
+                index={index}
+                onOpen={(pane) => {
+                  triggerPermissionPrompt(pane);
+                  // Opening System Settings immediately can steal focus and prevent the
+                  // Input Monitoring TCC sheet from appearing; defer that pane only.
+                  if (pane === "inputMonitoring") {
+                    window.setTimeout(() => onOpenSettings(pane), 800);
+                  } else {
+                    onOpenSettings(pane);
+                  }
+                }}
+                isActiveStep={isActiveStep}
+                isLockedFutureStep={isLockedFutureStep}
+              />
+            );
+          })}
         </div>
 
         <AnimatePresence>
@@ -117,10 +179,9 @@ export function PermissionScreen({
               transition={{ delay: 0.5, duration: 0.3 }}
               className="mt-5 text-[18px] text-white/15 text-center leading-relaxed"
             >
-              Updates live — return to this window after granting each
-              permission.
-              <br />
-              Input Monitoring requires an app restart.
+              One system prompt at a time — return here after each step. If the
+              shortcut still does not work after Input Monitoring, quit and
+              reopen the app once.
             </motion.p>
           )}
         </AnimatePresence>

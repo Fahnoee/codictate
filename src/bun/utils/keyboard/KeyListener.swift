@@ -1,42 +1,23 @@
+import ApplicationServices
+import AVFoundation
 import Cocoa
 import Foundation
-import AVFoundation
 
-// Input Monitoring is the correct permission for CGEvent.tapCreate on modern macOS.
-let hasPermission = CGPreflightListenEventAccess()
-
-// Request microphone proactively so the user sees the dialog at startup instead
-// of being surprised during the first recording.
-var micAuthorized = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-if !micAuthorized {
-    let sem = DispatchSemaphore(value: 0)
-    AVCaptureDevice.requestAccess(for: .audio) { granted in
-        micAuthorized = granted
-        sem.signal()
-    }
-    sem.wait()
-}
-
-let hasAccessibility = AXIsProcessTrusted()
-
-print("{\"status\": \"started\", \"inputMonitoring\": \(hasPermission), \"microphone\": \(micAuthorized), \"accessibility\": \(hasAccessibility)}")
-fflush(stdout)
-
-if !hasPermission {
-    CGRequestListenEventAccess()
-    print("{\"status\": \"permission_requested\", \"message\": \"Grant Input Monitoring in System Settings > Privacy & Security > Input Monitoring, then restart the app.\"}")
-    fflush(stdout)
-    exit(1)
-}
-
-// Read swallow rules from stdin (first line)
+// Read config from stdin (first line) before the command thread consumes stdin.
 var swallowRules: [[String: Any]] = []
+/// When false, skip CGRequestListenEventAccess on launch (Bun respawns this helper to
+/// refresh TCC after the user grants Input Monitoring — a second prompt must not fire).
+var requestListenAccessOnLaunch = true
 if let line = readLine(),
     let data = line.data(using: .utf8),
-    let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-    let rules = parsed["swallow"] as? [[String: Any]]
+    let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
 {
-    swallowRules = rules
+    if let rules = parsed["swallow"] as? [[String: Any]] {
+        swallowRules = rules
+    }
+    if let v = parsed["requestListenAccessOnLaunch"] as? Bool {
+        requestListenAccessOnLaunch = v
+    }
 }
 
 func shouldSwallow(keycode: Int64, option: Bool, command: Bool, control: Bool, shift: Bool) -> Bool {
@@ -72,45 +53,132 @@ func pasteViaKeyEvent() {
 // on pipe I/O — a stalled callback causes macOS to disable the tap.
 let outputQueue = DispatchQueue(label: "com.codictate.keylistener.output", qos: .userInteractive)
 
+let mainQueue = DispatchQueue.main
+
 // Stored after tap creation so the callback can re-enable it if macOS disables it.
 var globalTap: CFMachPort? = nil
+var tapRunLoopSource: CFRunLoopSource? = nil
+
+let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+    | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+
+func micAuthorized() -> Bool {
+    AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+}
+
+func emitPermissionsJSON() {
+    let im = CGPreflightListenEventAccess()
+    let mic = micAuthorized()
+    let ax = AXIsProcessTrusted()
+    let permMsg =
+        "{\"type\": \"permissions\", \"inputMonitoring\": \(im), \"microphone\": \(mic), \"accessibility\": \(ax)}"
+    outputQueue.async {
+        print(permMsg)
+        fflush(stdout)
+    }
+}
+
+/// Create / enable the CGEvent tap when Input Monitoring preflight passes. Main-thread only.
+func ensureTapIfListenAccessGranted() -> Bool {
+    assert(Thread.isMainThread)
+    guard CGPreflightListenEventAccess() else { return false }
+
+    if let existing = globalTap {
+        CGEvent.tapEnable(tap: existing, enable: true)
+        return true
+    }
+
+    guard
+        let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: eventMask,
+            callback: callback,
+            userInfo: nil
+        )
+    else {
+        outputQueue.async {
+            print(
+                "{\"type\": \"tap_create_failed\", \"message\": \"Failed to create event tap. Grant Input Monitoring in System Settings > Privacy & Security > Input Monitoring.\"}"
+            )
+            fflush(stdout)
+        }
+        return false
+    }
+
+    globalTap = tap
+    let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+    tapRunLoopSource = runLoopSource
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+    CGEvent.tapEnable(tap: tap, enable: true)
+    outputQueue.async {
+        print("{\"type\": \"tap_attached\"}")
+        fflush(stdout)
+    }
+    return true
+}
 
 func disableAndExit() {
-    // Disable the event tap so the keyboard is immediately restored, then stop
-    // the run loop so the process exits cleanly.
     if let t = globalTap { CGEvent.tapEnable(tap: t, enable: false) }
-    DispatchQueue.main.async { CFRunLoopStop(CFRunLoopGetCurrent()) }
+    globalTap = nil
+    if let src = tapRunLoopSource {
+        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), src, .commonModes)
+        tapRunLoopSource = nil
+    }
+    CFRunLoopStop(CFRunLoopGetCurrent())
 }
 
 // ── Signal safety ────────────────────────────────────────────────────────────
-//
-// Problem: when Bun exits (via _exit), two signals can reach this process
-// before the stdin-EOF is detected and disableAndExit() runs:
-//
-//   SIGPIPE  — outputQueue.async fires a write to the now-broken stdout pipe.
-//              The default handler kills the process instantly, leaving the
-//              CGEventTap active and freezing ALL keyboard input (incl. Spotlight).
-//
-//   SIGTERM  — keyboard.stop() in Bun calls proc.kill() which sends SIGTERM.
-//              The default handler also kills the process without cleanup.
-//
-// Fixes:
-//   • Ignore SIGPIPE so broken-pipe writes fail silently (EPIPE) rather than
-//     terminating the process prematurely.
-//   • Install a DispatchSource SIGTERM handler that calls disableAndExit()
-//     so the tap is always disabled before the process exits.
-
 signal(SIGPIPE, SIG_IGN)
 
-signal(SIGTERM, SIG_IGN) // block default handler so DispatchSource runs instead
+signal(SIGTERM, SIG_IGN)
 let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
 sigtermSource.setEventHandler { disableAndExit() }
 sigtermSource.resume()
 
+func callback(
+    _ proxy: CGEventTapProxy, _ type: CGEventType, _ event: CGEvent,
+    _ refcon: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        if let t = globalTap { CGEvent.tapEnable(tap: t, enable: true) }
+        return nil
+    }
+
+    if type == .keyDown || type == .flagsChanged {
+        let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+        let option = flags.contains(.maskAlternate)
+        let command = flags.contains(.maskCommand)
+        let control = flags.contains(.maskControl)
+        let shift = flags.contains(.maskShift)
+
+        if type == .flagsChanged {
+            let isPress: Bool
+            switch keycode {
+            case 58, 61: isPress = option
+            case 56, 60: isPress = shift
+            case 55, 54: isPress = command
+            case 59, 62: isPress = control
+            default: return Unmanaged.passRetained(event)
+            }
+            if !isPress { return Unmanaged.passRetained(event) }
+        }
+
+        let swallow = shouldSwallow(
+            keycode: keycode, option: option, command: command,
+            control: control, shift: shift)
+
+        let keyMsg = "{\"keycode\": \(keycode), \"option\": \(option), \"command\": \(command), \"control\": \(control), \"shift\": \(shift)}"
+        outputQueue.async { print(keyMsg); fflush(stdout) }
+
+        if swallow { return nil }
+    }
+    return Unmanaged.passRetained(event)
+}
+
 // Background thread: reads stdin commands from the Bun process.
-// CRITICAL: when readLine() returns nil, the parent Bun process has exited
-// (stdin pipe closed). Without cleanup, this process becomes a ghost that
-// holds an active event tap and freezes ALL keyboard input on the machine.
 let commandThread = Thread {
     while let line = readLine() {
         guard
@@ -137,95 +205,64 @@ let commandThread = Thread {
             outputQueue.async { print(pasteResult); fflush(stdout) }
 
         case "check_permissions":
-            let micOk = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-            let axOk = AXIsProcessTrusted()
-            let permMsg = "{\"type\": \"permissions\", \"inputMonitoring\": true, \"microphone\": \(micOk), \"accessibility\": \(axOk)}"
-            outputQueue.async { print(permMsg); fflush(stdout) }
+            mainQueue.async {
+                _ = ensureTapIfListenAccessGranted()
+                emitPermissionsJSON()
+            }
+
+        case "request_input_monitoring":
+            mainQueue.async {
+                CGRequestListenEventAccess()
+                _ = ensureTapIfListenAccessGranted()
+                emitPermissionsJSON()
+            }
+
+        case "prompt_accessibility":
+            mainQueue.async {
+                let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+                let opts: [String: Any] = [promptKey: true]
+                _ = AXIsProcessTrustedWithOptions(opts as CFDictionary)
+                emitPermissionsJSON()
+            }
+
+        case "request_microphone":
+            if micAuthorized() {
+                mainQueue.async { emitPermissionsJSON() }
+            } else {
+                AVCaptureDevice.requestAccess(for: .audio) { _ in
+                    mainQueue.async { emitPermissionsJSON() }
+                }
+            }
 
         case "quit":
-            disableAndExit()
+            mainQueue.async { disableAndExit() }
 
         default:
             break
         }
     }
 
-    // stdin EOF — Bun parent has exited. Restore keyboard immediately.
-    disableAndExit()
+    mainQueue.async { disableAndExit() }
 }
 commandThread.start()
 
-func callback(
-    _ proxy: CGEventTapProxy, _ type: CGEventType, _ event: CGEvent,
-    _ refcon: UnsafeMutableRawPointer?
-) -> Unmanaged<CGEvent>? {
-    // macOS disables an active tap whose callback stalls. Re-enable immediately
-    // so the keyboard is never permanently broken.
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        if let t = globalTap { CGEvent.tapEnable(tap: t, enable: true) }
-        return nil
-    }
+let imStart = CGPreflightListenEventAccess()
+let micStart = micAuthorized()
+let axStart = AXIsProcessTrusted()
+print(
+    "{\"status\": \"started\", \"inputMonitoring\": \(imStart), \"microphone\": \(micStart), \"accessibility\": \(axStart)}"
+)
+fflush(stdout)
 
-    if type == .keyDown || type == .flagsChanged {
-        let keycode = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
-        let option = flags.contains(.maskAlternate)
-        let command = flags.contains(.maskCommand)
-        let control = flags.contains(.maskControl)
-        let shift = flags.contains(.maskShift)
-
-        // flagsChanged fires on both press AND release of a modifier key.
-        // We only want to emit/swallow on the press (when the modifier flag
-        // just became SET). Detect a release by checking whether the modifier
-        // corresponding to this keycode is now absent in the flags.
-        if type == .flagsChanged {
-            let isPress: Bool
-            switch keycode {
-            case 58, 61: isPress = option    // left / right option
-            case 56, 60: isPress = shift     // left / right shift
-            case 55, 54: isPress = command   // left / right command
-            case 59, 62: isPress = control   // left / right control
-            default: return Unmanaged.passRetained(event)
-            }
-            if !isPress { return Unmanaged.passRetained(event) }
-        }
-
-        // Decide swallow synchronously (fast array scan, no I/O) so the
-        // callback returns in microseconds before dispatching the output.
-        let swallow = shouldSwallow(
-            keycode: keycode, option: option, command: command,
-            control: control, shift: shift)
-
-        let keyMsg = "{\"keycode\": \(keycode), \"option\": \(option), \"command\": \(command), \"control\": \(control), \"shift\": \(shift)}"
-        outputQueue.async { print(keyMsg); fflush(stdout) }
-
-        if swallow { return nil }
-    }
-    return Unmanaged.passRetained(event)
+// First launch: show the Input Monitoring system prompt. Respawned helpers use
+// requestListenAccessOnLaunch=false so we only refresh TCC / attach the tap.
+if requestListenAccessOnLaunch && !imStart {
+    CGRequestListenEventAccess()
 }
 
-let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-    | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+_ = ensureTapIfListenAccessGranted()
+emitPermissionsJSON()
 
-guard let tap = CGEvent.tapCreate(
-    tap: .cgSessionEventTap,
-    place: .headInsertEventTap,
-    options: .defaultTap,
-    eventsOfInterest: eventMask,
-    callback: callback,
-    userInfo: nil
-) else {
-    print("{\"status\": \"error\", \"message\": \"Failed to create event tap. Grant Input Monitoring in System Settings > Privacy & Security > Input Monitoring and restart the app.\"}")
-    fflush(stdout)
-    exit(1)
-}
-
-globalTap = tap
-
-let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-CGEvent.tapEnable(tap: tap, enable: true)
 CFRunLoopRun()
 
-// CFRunLoopRun() returned — run loop was stopped by disableAndExit(). Clean exit.
 exit(0)

@@ -46,6 +46,11 @@ export interface PermissionStatus {
   accessibility: boolean
 }
 
+export type StartKeyboardListenerOptions = {
+  /** When false, KeyListener will not call CGRequestListenEventAccess() on launch (TCC refresh respawn). Default true. */
+  requestListenAccessOnLaunch?: boolean
+}
+
 export interface ShortcutDefinition {
   displayKeys: string[]
   swallowRule: KeyEvent
@@ -116,13 +121,19 @@ let keyListenerPasteText: ((text: string) => void) | null = null
 export function startKeyboardListener(
   onKeyDown: (event: KeyEvent) => void,
   swallowRules: KeyEvent[] = [],
-  onPermissions?: (status: PermissionStatus) => void
+  onPermissions?: (status: PermissionStatus) => void,
+  options?: StartKeyboardListenerOptions
 ) {
   const binaryPath = join(import.meta.dir, '../native-helpers/KeyListener')
   const proc = Bun.spawn([binaryPath], { stdout: 'pipe', stdin: 'pipe' })
   let procAlive = true
 
-  const config = JSON.stringify({ swallow: swallowRules })
+  const requestListenAccessOnLaunch =
+    options?.requestListenAccessOnLaunch !== false
+  const config = JSON.stringify({
+    swallow: swallowRules,
+    requestListenAccessOnLaunch,
+  })
   proc.stdin.write(config + '\n')
   proc.stdin.flush()
 
@@ -154,6 +165,23 @@ export function startKeyboardListener(
 
   const checkPermissions = () => {
     proc.stdin.write(JSON.stringify({ command: 'check_permissions' }) + '\n')
+    proc.stdin.flush()
+  }
+
+  const requestInputMonitoringPrompt = () => {
+    proc.stdin.write(
+      JSON.stringify({ command: 'request_input_monitoring' }) + '\n'
+    )
+    proc.stdin.flush()
+  }
+
+  const promptAccessibility = () => {
+    proc.stdin.write(JSON.stringify({ command: 'prompt_accessibility' }) + '\n')
+    proc.stdin.flush()
+  }
+
+  const requestMicrophone = () => {
+    proc.stdin.write(JSON.stringify({ command: 'request_microphone' }) + '\n')
     proc.stdin.flush()
   }
 
@@ -202,6 +230,12 @@ export function startKeyboardListener(
             })
           } else if (parsed.type === 'clipboard_set') {
             log('clipboard', 'NSPasteboard set (copy-only)')
+          } else if (parsed.type === 'tap_attached') {
+            console.log('[KeyListener] Event tap attached')
+          } else if (parsed.type === 'tap_create_failed') {
+            console.error(
+              `[KeyListener] ${parsed.message ?? 'tap_create_failed'}`
+            )
           } else if (
             parsed.status === 'permission_requested' ||
             parsed.status === 'error'
@@ -225,6 +259,9 @@ export function startKeyboardListener(
       proc.kill()
     },
     checkPermissions,
+    requestInputMonitoringPrompt,
+    promptAccessibility,
+    requestMicrophone,
   }
 }
 

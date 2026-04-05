@@ -8,6 +8,7 @@ import {
   SHORTCUTS,
   startKeyboardListener,
   type PermissionStatus,
+  type StartKeyboardListenerOptions,
 } from './utils/keyboard/keyboard-events'
 import { playStartSound } from './utils/sound/play-sound'
 import { AppConfig } from './AppConfig/AppConfig'
@@ -18,7 +19,8 @@ export const setupRecording = (
   appConfig: AppConfig,
   { setTrayIdle, setTrayRecording, setTrayTranscribing }: TrayHandlers,
   onStatusChange?: (status: AppStatus) => void,
-  onPermissions?: (status: PermissionStatus) => void
+  onPermissions?: (status: PermissionStatus) => void,
+  keyboardOptions?: StartKeyboardListenerOptions
 ) => {
   let recorderProc: ReturnType<typeof Bun.spawn> | null = null
   let recordingSession: RecordingSession | null = null
@@ -68,7 +70,8 @@ export const setupRecording = (
       }
     },
     [shortcut.swallowRule],
-    onPermissions
+    onPermissions,
+    keyboardOptions
   )
 
   return keyboard

@@ -80,6 +80,7 @@ export type WebviewRPCType = {
     messages: {
       logBun: { msg: string }
       openSystemPreferences: { pane: SettingsPane }
+      triggerPermissionPrompt: { pane: SettingsPane }
       triggerUpdateCheck: {}
       triggerApplyUpdate: {}
       copyDebugLog: {}
