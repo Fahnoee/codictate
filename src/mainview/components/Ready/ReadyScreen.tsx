@@ -85,14 +85,13 @@ export function ReadyScreen({
   const handleTranslateToggle = useCallback(async () => {
     if (!settings || !isIdle) return;
     if (isTranslateOn) {
-      // Turning off resets the language back to auto-detect.
+      // Turning off — optimistically update UI; backend atomically resets lang to auto.
       queryClient.setQueryData(["settings"], {
         ...settings,
         translateToEnglish: false,
         transcriptionLanguageId: "auto",
       });
       await setTranslateToEnglish(false);
-      await setTranscriptionLanguage("auto");
       return;
     }
     // Model not available → open Settings so the user can download it.

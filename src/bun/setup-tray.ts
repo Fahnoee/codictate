@@ -176,8 +176,7 @@ export const setupTray = (
           }
           await appConfig.setTranslateToEnglish(true)
         } else {
-          await appConfig.setTranslateToEnglish(false)
-          await appConfig.setTranscriptionLanguageId('auto')
+          await appConfig.setTranslateOff()
         }
         tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
         onTranslateToggled?.()

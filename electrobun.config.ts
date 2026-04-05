@@ -3,7 +3,7 @@ import type { ElectrobunConfig } from "electrobun";
 export default {
   app: {
     name: "Codictate",
-    identifier: "com.codictate",
+    identifier: "app.codictate",
     version: "0.0.10",
   },
   runtime: {

@@ -427,14 +427,13 @@ export function SettingsScreen({
 
   const handleTranslateToggle = useCallback(async () => {
     if (settings.translateToEnglish) {
-      // Turning off resets the language back to auto-detect.
+      // Turning off — optimistically update UI; backend atomically resets lang to auto.
       queryClient.setQueryData(["settings"], {
         ...settings,
         translateToEnglish: false,
         transcriptionLanguageId: "auto",
       });
       await setTranslateToEnglish(false);
-      await setTranscriptionLanguage("auto");
       return;
     }
 

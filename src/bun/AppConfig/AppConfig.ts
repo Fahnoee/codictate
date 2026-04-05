@@ -222,6 +222,17 @@ export class AppConfig {
     await this.save()
   }
 
+  /**
+   * Atomically disables translate mode and resets the transcription language to
+   * auto-detect in a single save — prevents the window where disk has
+   * { translateToEnglish: false, transcriptionLanguageId: "da" }.
+   */
+  public async setTranslateOff(): Promise<void> {
+    this.translateToEnglish = false
+    this.transcriptionLanguageId = 'auto'
+    await this.save()
+  }
+
   public getTranslateDefaultLanguageId(): string | null {
     return this.translateDefaultLanguageId
   }

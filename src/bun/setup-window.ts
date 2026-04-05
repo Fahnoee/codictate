@@ -148,18 +148,28 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           if (enabled) {
             // Translate mode requires the Large model and a resolvable source language
             // (fixed picker language or default source language in Settings — same as Ready).
-            if (!modelManager.isModelAvailable(TRANSLATE_MODEL_ID)) return false
+            if (!modelManager.isModelAvailable(TRANSLATE_MODEL_ID)) {
+              rpc.send.updateSettings(deps.appConfig.getSettings())
+              return false
+            }
             if (deps.appConfig.getTranscriptionLanguageId() === 'auto') {
               const fallback = deps.appConfig.getTranslateDefaultLanguageId()
-              if (!fallback) return false
+              if (!fallback) {
+                rpc.send.updateSettings(deps.appConfig.getSettings())
+                return false
+              }
               const ok =
                 await deps.appConfig.setTranscriptionLanguageId(fallback)
-              if (!ok) return false
+              if (!ok) {
+                rpc.send.updateSettings(deps.appConfig.getSettings())
+                return false
+              }
             }
-          }
-          await deps.appConfig.setTranslateToEnglish(enabled)
-          if (!enabled) {
-            await deps.appConfig.setTranscriptionLanguageId('auto')
+            await deps.appConfig.setTranslateToEnglish(true)
+          } else {
+            // Atomic: sets translateToEnglish=false and transcriptionLanguageId='auto'
+            // in a single save — no window where disk can have stale lang state.
+            await deps.appConfig.setTranslateOff()
           }
           rpc.send.updateSettings(deps.appConfig.getSettings())
           deps.onTranslateChanged?.()
