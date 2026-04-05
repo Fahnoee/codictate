@@ -82,7 +82,10 @@ export const setupTray = (
 
   const buildTranslateMenuItem = (cfg: AppConfig) => {
     const modelReady = modelManager.isModelAvailable(TRANSLATE_MODEL_ID)
-    const languageSet = cfg.getTranscriptionLanguageId() !== 'auto'
+    // Match Ready screen: fixed language OR default source language in Settings.
+    const hasSourceLanguage =
+      cfg.getTranscriptionLanguageId() !== 'auto' ||
+      cfg.getTranslateDefaultLanguageId() != null
 
     if (!modelReady) {
       return {
@@ -92,7 +95,7 @@ export const setupTray = (
         checked: false,
       }
     }
-    if (!languageSet) {
+    if (!hasSourceLanguage) {
       return {
         type: 'normal' as const,
         label: 'Translate to English — select a language first',
@@ -162,12 +165,23 @@ export const setupTray = (
       onTranscriptionLanguageChanged?.()
     })
     if (event.data.action === 'toggle-translate') {
-      void appConfig
-        .setTranslateToEnglish(!appConfig.getTranslateToEnglish())
-        .then(() => {
-          tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
-          onTranslateToggled?.()
-        })
+      const translateWasOn = appConfig.getTranslateToEnglish()
+      void (async () => {
+        if (!translateWasOn) {
+          if (appConfig.getTranscriptionLanguageId() === 'auto') {
+            const fallback = appConfig.getTranslateDefaultLanguageId()
+            if (fallback) {
+              await appConfig.setTranscriptionLanguageId(fallback)
+            }
+          }
+          await appConfig.setTranslateToEnglish(true)
+        } else {
+          await appConfig.setTranslateToEnglish(false)
+          await appConfig.setTranscriptionLanguageId('auto')
+        }
+        tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+        onTranslateToggled?.()
+      })()
     }
   })
 

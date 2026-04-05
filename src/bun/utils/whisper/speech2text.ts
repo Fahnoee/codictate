@@ -13,6 +13,7 @@ export const RECORDING_PATH = '/tmp/codictate-recording.wav'
  */
 const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
   [/\bcode\s+dictate\b/gi, 'Codictate'],
+  [/\bcoding\s*tate\b/gi, 'Codictate'],
   [/\bco(?:\s+|[-–—]\s*)dictate\b/gi, 'Codictate'],
   [/\bkodi\s+dicate\b/gi, 'Codictate'],
   [/\bcodec\s*t(?:ate|ape)\b/gi, 'Codictate'],

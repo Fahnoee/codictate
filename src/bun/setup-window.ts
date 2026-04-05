@@ -137,7 +137,8 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           return ok
         },
         setTranslateDefaultLanguage: async ({ languageId }) => {
-          const ok = await deps.appConfig.setTranslateDefaultLanguageId(languageId)
+          const ok =
+            await deps.appConfig.setTranslateDefaultLanguageId(languageId)
           if (ok) {
             rpc.send.updateSettings(deps.appConfig.getSettings())
           }
@@ -145,11 +146,21 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         },
         setTranslateToEnglish: async ({ enabled }) => {
           if (enabled) {
-            // Translate mode requires the Large model and a specific source language.
+            // Translate mode requires the Large model and a resolvable source language
+            // (fixed picker language or default source language in Settings — same as Ready).
             if (!modelManager.isModelAvailable(TRANSLATE_MODEL_ID)) return false
-            if (deps.appConfig.getTranscriptionLanguageId() === 'auto') return false
+            if (deps.appConfig.getTranscriptionLanguageId() === 'auto') {
+              const fallback = deps.appConfig.getTranslateDefaultLanguageId()
+              if (!fallback) return false
+              const ok =
+                await deps.appConfig.setTranscriptionLanguageId(fallback)
+              if (!ok) return false
+            }
           }
           await deps.appConfig.setTranslateToEnglish(enabled)
+          if (!enabled) {
+            await deps.appConfig.setTranscriptionLanguageId('auto')
+          }
           rpc.send.updateSettings(deps.appConfig.getSettings())
           deps.onTranslateChanged?.()
           return true
@@ -243,8 +254,7 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
       updateCheckStatus: (data) => rpc.send.updateCheckStatus(data),
       updateModelDownloadProgress: (data) =>
         rpc.send.updateModelDownloadProgress(data),
-      updateModelAvailability: (data) =>
-        rpc.send.updateModelAvailability(data),
+      updateModelAvailability: (data) => rpc.send.updateModelAvailability(data),
     },
     getOrCreateWindow,
   }
