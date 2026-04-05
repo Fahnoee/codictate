@@ -6,7 +6,7 @@ export function RecordingOrb({ status }: { status: AppStatus }) {
   const isTranscribing = status === "transcribing";
 
   return (
-    <div className="relative flex items-center justify-center w-20 h-20">
+    <div className="relative flex h-20 w-20 shrink-0 items-center justify-center">
       <AnimatePresence>
         {isRecording && (
           <motion.span
@@ -39,14 +39,14 @@ export function RecordingOrb({ status }: { status: AppStatus }) {
       </AnimatePresence>
 
       <motion.div
-        layout
-        className={`relative z-10 w-14 h-14 rounded-full border flex items-center justify-center transition-colors duration-500 ${
+        className={`relative z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border transition-colors duration-500 ${
           isRecording
             ? "border-red-500/25 bg-red-500/8"
             : isTranscribing
               ? "border-amber-400/20 bg-amber-400/5"
               : "border-white/8 bg-white/3"
         }`}
+        style={{ transformOrigin: "center center" }}
         animate={{
           scale: isRecording ? [1, 1.04, 1] : 1,
         }}

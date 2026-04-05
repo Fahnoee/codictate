@@ -5,6 +5,7 @@ import { appEvents, type PermissionState } from "./app-events";
 import { fetchPermissions, fetchDevices, fetchSettings } from "./rpc";
 import type { AppStatus, SettingsPane } from "../shared/types";
 import { PermissionScreen } from "./components/Permissions/PermissionScreen";
+import { ProductOnboardingScreen } from "./components/Onboarding/ProductOnboardingScreen";
 import { ReadyScreen } from "./components/Ready/ReadyScreen";
 import { SettingsScreen } from "./components/Settings/SettingsScreen";
 
@@ -65,7 +66,24 @@ export default function App() {
   const allPermissionsGranted =
     p.inputMonitoring && p.microphone && p.accessibility && p.documents;
 
+  const needsProductOnboarding =
+    allPermissionsGranted &&
+    settings !== undefined &&
+    settings.onboardingCompleted === false;
+
   if (!permissions) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-codictate-page">
+        <motion.div
+          animate={{ opacity: [0.2, 0.5, 0.2] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          className="w-1.5 h-1.5 rounded-full bg-white/20"
+        />
+      </div>
+    );
+  }
+
+  if (allPermissionsGranted && !settings) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-codictate-page">
         <motion.div
@@ -81,6 +99,8 @@ export default function App() {
     <>
       {!allPermissionsGranted ? (
         <PermissionScreen permissions={p} onOpenSettings={openSettings} />
+      ) : needsProductOnboarding && settings ? (
+        <ProductOnboardingScreen settings={settings} />
       ) : showSettings && settings ? (
         <SettingsScreen
           settings={settings}

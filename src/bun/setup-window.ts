@@ -186,6 +186,11 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           deps.onTranslateChanged?.()
           return true
         },
+        completeOnboarding: async () => {
+          await deps.appConfig.setOnboardingCompleted(true)
+          rpc.send.updateSettings(deps.appConfig.getSettings())
+          return true
+        },
       },
       messages: {
         logBun: ({ msg }) => console.log('Bun Log:', msg),

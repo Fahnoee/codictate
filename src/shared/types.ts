@@ -37,6 +37,8 @@ export interface AppSettings {
    * while auto-detect is active. `null` means the user hasn't set one yet.
    */
   translateDefaultLanguageId: string | null
+  /** First-run product onboarding after permissions; persisted, false until completed. */
+  onboardingCompleted: boolean
 }
 
 export interface PermissionState {
@@ -76,6 +78,7 @@ export type WebviewRPCType = {
         params: { languageId: string | null }
         response: boolean
       }
+      completeOnboarding: { params: {}; response: boolean }
     }
     messages: {
       logBun: { msg: string }

@@ -14,7 +14,7 @@ import {
   WHISPER_MODELS,
   DEFAULT_MODEL_ID,
   DEFAULT_TRANSLATE_DOWNLOAD_MODEL_ID,
-  TRANSLATE_MODEL_ID,
+  LARGE_V3_Q5_MODEL_ID,
   formatModelSize,
   getWhisperModel,
   getTranslateReadiness,
@@ -320,7 +320,10 @@ export function SettingsScreen({
         if (!error) {
           setModelAvailability((prev) => ({ ...prev, [modelId]: true }));
           // Auto-select when downloading from the model picker (not a translate-pending flow).
-          if (pendingTranslate !== modelId && modelId !== TRANSLATE_MODEL_ID) {
+          if (
+            pendingTranslate !== modelId &&
+            modelId !== LARGE_V3_Q5_MODEL_ID
+          ) {
             await setWhisperModel(modelId);
             queryClient.setQueryData(["settings"], (old: AppSettings) => ({
               ...old,

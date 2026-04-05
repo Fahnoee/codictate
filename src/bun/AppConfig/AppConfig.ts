@@ -39,6 +39,8 @@ export class AppConfig {
   private whisperModelId: string
   private translateToEnglish: boolean
   private translateDefaultLanguageId: string | null
+  /** False until first-run onboarding finishes; true for legacy configs missing the key. */
+  private onboardingCompleted: boolean
 
   constructor() {
     this.audioDeviceName = null
@@ -50,6 +52,7 @@ export class AppConfig {
     this.whisperModelId = DEFAULT_MODEL_ID
     this.translateToEnglish = false
     this.translateDefaultLanguageId = null
+    this.onboardingCompleted = false
   }
 
   // --- Persistence ---
@@ -91,6 +94,14 @@ export class AppConfig {
       ) {
         this.translateDefaultLanguageId = raw.translateDefaultLanguageId
       }
+      if (raw.onboardingCompleted === true) {
+        this.onboardingCompleted = true
+      } else if (raw.onboardingCompleted === false) {
+        this.onboardingCompleted = false
+      } else {
+        // Key absent: existing installs before this field shipped
+        this.onboardingCompleted = true
+      }
     } catch {
       // No config file yet, defaults will be used
     }
@@ -113,6 +124,7 @@ export class AppConfig {
       whisperModelId: this.whisperModelId,
       translateToEnglish: this.translateToEnglish,
       translateDefaultLanguageId: this.translateDefaultLanguageId,
+      onboardingCompleted: this.onboardingCompleted,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -257,6 +269,12 @@ export class AppConfig {
       whisperModelId: this.whisperModelId,
       translateToEnglish: this.translateToEnglish,
       translateDefaultLanguageId: this.translateDefaultLanguageId,
+      onboardingCompleted: this.onboardingCompleted,
     }
+  }
+
+  public async setOnboardingCompleted(completed: boolean): Promise<void> {
+    this.onboardingCompleted = completed
+    await this.save()
   }
 }

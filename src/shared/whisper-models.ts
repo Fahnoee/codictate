@@ -43,8 +43,8 @@ export const TRANSLATE_CAPABLE_MODEL_IDS = [
 export type TranslateCapableModelId =
   (typeof TRANSLATE_CAPABLE_MODEL_IDS)[number]
 
-/** @deprecated Use `TRANSLATE_CAPABLE_MODEL_IDS` — Large is one option, not the only one. */
-export const TRANSLATE_MODEL_ID = 'large-v3-q5_0'
+/** Large-accuracy model id (translate-capable). Use this instead of a generic “translate model” alias. */
+export const LARGE_V3_Q5_MODEL_ID: TranslateCapableModelId = 'large-v3-q5_0'
 
 /** When Turbo is selected and no translate model is on disk yet, prefer downloading Small first (smaller). */
 export const DEFAULT_TRANSLATE_DOWNLOAD_MODEL_ID: TranslateCapableModelId =

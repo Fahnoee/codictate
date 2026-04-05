@@ -4,6 +4,7 @@ import { useMemo, useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppStatus, AppSettings, DeviceInfo } from "../../../shared/types";
+import { shortcutDisplayKeys } from "../../../shared/shortcut-options";
 import {
   setTranscriptionLanguage,
   setTranslateToEnglish,
@@ -25,14 +26,6 @@ import {
 } from "../Settings/LanguagePicker";
 import { TranscriptionLanguageHintButton } from "../Settings/TranscriptionLanguageHintButton";
 import { RecordingOrb } from "./RecordingOrb";
-
-const SHORTCUT_DISPLAY: Record<string, string[]> = {
-  "option-space": ["⌥", "Space"],
-  "right-option": ["Right ⌥"],
-  "option-f1": ["⌥", "F1"],
-  "option-f2": ["⌥", "F2"],
-  "option-enter": ["⌥", "Enter"],
-};
 
 export function ReadyScreen({
   status,
@@ -163,11 +156,7 @@ export function ReadyScreen({
     : null;
 
   const displayKeys = useMemo(
-    () =>
-      SHORTCUT_DISPLAY[settings?.shortcutId ?? "option-space"] ?? [
-        "⌥",
-        "Space",
-      ],
+    () => shortcutDisplayKeys(settings?.shortcutId ?? "option-space"),
     [settings?.shortcutId],
   );
 
@@ -178,7 +167,7 @@ export function ReadyScreen({
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="mb-7"
+        className="mb-7 flex h-20 w-20 shrink-0 items-center justify-center"
       >
         <RecordingOrb status={status} />
       </motion.div>

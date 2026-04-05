@@ -2,21 +2,8 @@
 
 import { motion } from "motion/react";
 import type { ShortcutId } from "../../../shared/types";
+import { SHORTCUT_OPTIONS } from "../../../shared/shortcut-options";
 import { Kbd } from "../Common/Kbd";
-
-interface ShortcutOption {
-  id: ShortcutId;
-  keys: string[];
-  label: string;
-}
-
-const OPTIONS: ShortcutOption[] = [
-  { id: "option-space", keys: ["⌥", "Space"], label: "Option + Space" },
-  { id: "right-option", keys: ["Right ⌥"], label: "Right Option key" },
-  { id: "option-f1", keys: ["⌥", "F1"], label: "Option + F1" },
-  { id: "option-f2", keys: ["⌥", "F2"], label: "Option + F2" },
-  { id: "option-enter", keys: ["⌥", "Enter"], label: "Option + Enter" },
-];
 
 export function ShortcutPicker({
   value,
@@ -27,7 +14,7 @@ export function ShortcutPicker({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      {OPTIONS.map((opt) => {
+      {SHORTCUT_OPTIONS.map((opt) => {
         const isActive = opt.id === value;
         return (
           <motion.button

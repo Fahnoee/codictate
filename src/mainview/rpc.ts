@@ -127,6 +127,10 @@ export async function setTranscriptionLanguage(
   return rpc.request.setTranscriptionLanguage({ transcriptionLanguageId })
 }
 
+export async function completeOnboarding(): Promise<boolean> {
+  return rpc.request.completeOnboarding({})
+}
+
 export async function setMaxRecordingDuration(
   maxRecordingDuration: number
 ): Promise<boolean> {
