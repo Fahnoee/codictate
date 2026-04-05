@@ -191,6 +191,15 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         cancelModelDownload: ({ modelId }) => {
           modelManager.cancelDownload(modelId)
         },
+        deleteWhisperModel: ({ modelId }) => {
+          const deleted = modelManager.deleteModel(modelId)
+          if (deleted) {
+            rpc.send.updateModelAvailability({ modelId, available: false })
+            if (modelId === TRANSLATE_MODEL_ID) {
+              deps.onTranslateChanged?.()
+            }
+          }
+        },
       },
     },
   })

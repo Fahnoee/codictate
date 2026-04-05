@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "motion/react";
 import {
   WHISPER_MODELS,
@@ -13,6 +14,7 @@ export function ModelPicker({
   onSelect,
   onDownload,
   onCancelDownload,
+  onDelete,
 }: {
   value: string;
   modelAvailability: Record<string, boolean>;
@@ -20,7 +22,10 @@ export function ModelPicker({
   onSelect: (modelId: string) => void;
   onDownload: (modelId: string) => void;
   onCancelDownload: (modelId: string) => void;
+  onDelete: (modelId: string) => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
   return (
     <div className="flex flex-col gap-1">
       {WHISPER_MODELS.map((model) => {
@@ -29,6 +34,8 @@ export function ModelPicker({
           modelAvailability[model.id] ?? model.bundled ?? false;
         const progress = downloadProgress[model.id];
         const isDownloading = progress !== undefined;
+        const isDeletable = isAvailable && !model.bundled && !isSelected;
+        const isPendingDelete = confirmDelete === model.id;
 
         return (
           <motion.div
@@ -39,6 +46,10 @@ export function ModelPicker({
                 : "border-white/11 bg-white/4"
             } ${isAvailable && !isSelected ? "hover:border-white/16 hover:bg-white/6 cursor-pointer" : ""}`}
             onClick={() => {
+              if (confirmDelete) {
+                setConfirmDelete(null);
+                return;
+              }
               if (isAvailable) onSelect(model.id);
             }}
           >
@@ -94,7 +105,7 @@ export function ModelPicker({
               )}
             </div>
 
-            {/* Right side: size + download/cancel */}
+            {/* Right side: size + action buttons */}
             <div className="shrink-0 flex items-center gap-2">
               <span className="text-[17px] text-white/30 font-sans tabular-nums">
                 {formatModelSize(model.sizeMB)}
@@ -124,21 +135,62 @@ export function ModelPicker({
                 </button>
               )}
 
-              {isAvailable && !isDownloading && !model.bundled && (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-white/28"
+              {isDeletable && !isPendingDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDelete(model.id);
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-[17px] font-medium border border-white/8 hover:border-red-400/28 bg-white/3 hover:bg-red-500/10 text-white/28 hover:text-red-400/70 transition-colors duration-200 cursor-pointer"
+                  aria-label={`Remove ${model.label} model`}
                 >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
+                  Remove
+                </button>
               )}
+
+              {isDeletable && isPendingDelete && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[15px] text-white/40">Sure?</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete(null);
+                      onDelete(model.id);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[17px] font-medium border border-red-400/30 bg-red-500/15 hover:bg-red-500/25 text-red-400/80 hover:text-red-400 transition-colors duration-200 cursor-pointer"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete(null);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[17px] font-medium border border-white/10 bg-white/3 hover:bg-white/6 text-white/38 hover:text-white/58 transition-colors duration-200 cursor-pointer"
+                  >
+                    Keep
+                  </button>
+                </div>
+              )}
+
+              {isAvailable &&
+                !isDownloading &&
+                !model.bundled &&
+                isSelected && (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white/28"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
             </div>
           </motion.div>
         );

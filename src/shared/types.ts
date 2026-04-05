@@ -85,6 +85,7 @@ export type WebviewRPCType = {
       copyDebugLog: {}
       downloadWhisperModel: { modelId: string }
       cancelModelDownload: { modelId: string }
+      deleteWhisperModel: { modelId: string }
     }
   }>
   // Messages/requests handled by the browser (webview)

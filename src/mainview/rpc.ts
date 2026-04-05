@@ -154,3 +154,7 @@ export function downloadWhisperModel(modelId: string): void {
 export function cancelModelDownload(modelId: string): void {
   rpc.send.cancelModelDownload({ modelId })
 }
+
+export function deleteWhisperModel(modelId: string): void {
+  rpc.send.deleteWhisperModel({ modelId })
+}

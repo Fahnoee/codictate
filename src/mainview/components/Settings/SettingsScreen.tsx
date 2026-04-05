@@ -13,6 +13,7 @@ import { formatRecordingDurationLabel } from "../../../shared/recording-duration
 import {
   WHISPER_MODELS,
   TRANSLATE_MODEL_ID,
+  DEFAULT_MODEL_ID,
   formatModelSize,
   getWhisperModel,
 } from "../../../shared/whisper-models";
@@ -31,6 +32,7 @@ import {
   setTranslateDefaultLanguage,
   downloadWhisperModel,
   cancelModelDownload,
+  deleteWhisperModel,
 } from "../../rpc";
 import { appEvents } from "../../app-events";
 import { ShortcutPicker } from "./ShortcutPicker";
@@ -395,6 +397,34 @@ export function SettingsScreen({
     });
   }, []);
 
+  const handleModelDelete = useCallback(
+    async (modelId: string) => {
+      deleteWhisperModel(modelId);
+      setModelAvailability((prev) => ({ ...prev, [modelId]: false }));
+
+      // If the deleted model was selected, fall back to the default model.
+      if (settings.whisperModelId === modelId) {
+        queryClient.setQueryData(["settings"], {
+          ...settings,
+          whisperModelId: DEFAULT_MODEL_ID,
+        });
+        await setWhisperModel(DEFAULT_MODEL_ID);
+      }
+
+      // If the translate model was deleted and translate is on, turn it off.
+      if (modelId === TRANSLATE_MODEL_ID && settings.translateToEnglish) {
+        queryClient.setQueryData(["settings"], (old: AppSettings) => ({
+          ...old,
+          translateToEnglish: false,
+          transcriptionLanguageId: "auto",
+        }));
+        await setTranslateToEnglish(false);
+        await setTranscriptionLanguage("auto");
+      }
+    },
+    [settings, queryClient],
+  );
+
   const handleTranslateToggle = useCallback(async () => {
     if (settings.translateToEnglish) {
       // Turning off resets the language back to auto-detect.
@@ -546,6 +576,7 @@ export function SettingsScreen({
             onSelect={handleModelSelect}
             onDownload={handleModelDownload}
             onCancelDownload={handleCancelDownload}
+            onDelete={handleModelDelete}
           />
           <p className={settingsHelperClass}>
             Smaller models are faster but less accurate. All models shown are

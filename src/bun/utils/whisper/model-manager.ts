@@ -164,6 +164,21 @@ class ModelManager {
       log('model-manager', 'download cancelled', { modelId })
     }
   }
+
+  deleteModel(modelId: string): boolean {
+    const model = this.modelInfo(modelId)
+    if (!model || model.bundled) return false
+    const modelPath = join(MODELS_DIR, model.filename)
+    if (!existsSync(modelPath)) return false
+    try {
+      unlinkSync(modelPath)
+      log('model-manager', 'model deleted', { modelId })
+      return true
+    } catch (err) {
+      log('model-manager', 'delete failed', { modelId, error: String(err) })
+      return false
+    }
+  }
 }
 
 export const modelManager = new ModelManager()
