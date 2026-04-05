@@ -4,7 +4,7 @@ export default {
   app: {
     name: "Codictate",
     identifier: "app.codictate",
-    version: "0.0.11",
+    version: "0.0.12",
   },
   runtime: {
     // Keep the app alive when the window is closed — it lives in the tray
