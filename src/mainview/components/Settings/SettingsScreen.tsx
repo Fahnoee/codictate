@@ -1,10 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type {
   AppSettings,
+  DevAppPreviewRoute,
   ShortcutId,
   UpdateCheckState,
 } from "../../../shared/types";
@@ -49,6 +56,14 @@ import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 /** Secondary copy under each block: readable, softer than card content. */
 const settingsHelperClass =
   "mt-3 text-[18px] text-white/44 leading-relaxed font-sans font-normal";
+
+const devPreviewSelectClass =
+  "w-full appearance-none rounded-lg border font-medium text-white/78 outline-none " +
+  "border-white/12 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] " +
+  "hover:border-white/18 hover:bg-white/7 " +
+  "focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 " +
+  "cursor-pointer transition-[border-color,background-color,box-shadow] duration-200 " +
+  "[color-scheme:dark] pl-4 pr-11 py-3.5 text-[21px] leading-snug";
 
 function updateStateLabel(state: UpdateCheckState, message?: string): string {
   switch (state) {
@@ -219,9 +234,13 @@ function UpdateAction({
 export function SettingsScreen({
   settings,
   onBack,
+  devPreviewRoute = null,
+  onDevPreviewRouteChange,
 }: {
   settings: AppSettings;
   onBack: () => void;
+  devPreviewRoute?: DevAppPreviewRoute | null;
+  onDevPreviewRouteChange?: (route: DevAppPreviewRoute | null) => void;
 }) {
   const queryClient = useQueryClient();
   const { data: deviceInfo } = useQuery({
@@ -358,6 +377,16 @@ export function SettingsScreen({
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   }, []);
+
+  const handleDevPreviewRouteSelect = useCallback(
+    (e: ChangeEvent<HTMLSelectElement>) => {
+      const v = e.target.value;
+      onDevPreviewRouteChange?.(v === "" ? null : (v as DevAppPreviewRoute));
+    },
+    [onDevPreviewRouteChange],
+  );
+
+  const showDevTools = import.meta.env.DEV && onDevPreviewRouteChange != null;
 
   const handleDeviceChange = useCallback(
     async (index: number) => {
@@ -788,11 +817,72 @@ export function SettingsScreen({
           </p>
         </motion.div>
 
-        {/* Diagnostics */}
+        {/* Updates */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-8"
+        >
+          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+            Updates
+          </h2>
+          <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              {/* Status icon */}
+              <div className="shrink-0 w-4 h-4 flex items-center justify-center">
+                <UpdateIcon state={updateState} />
+              </div>
+
+              {/* Status text */}
+              <div className="flex-1 min-w-0">
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={updateState}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.18 }}
+                    className={`block text-[21px] font-medium ${updateStateTextClass(updateState)}`}
+                  >
+                    {updateStateLabel(updateState, updateMessage)}
+                  </motion.span>
+                </AnimatePresence>
+              </div>
+
+              {/* Action */}
+              <UpdateAction
+                state={updateState}
+                onCheck={handleCheckForUpdates}
+                onRestart={handleApplyUpdate}
+              />
+            </div>
+
+            {/* Error detail bar */}
+            <AnimatePresence>
+              {updateState === "error" && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="border-t border-white/10 px-4 py-2.5"
+                >
+                  <p className="text-[18px] text-orange-300/85 leading-relaxed font-sans font-normal">
+                    {updateMessage ??
+                      "Something went wrong. Check your internet connection and try again."}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
+
+        {/* Diagnostics */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="mb-8"
         >
           <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
@@ -917,65 +1007,64 @@ export function SettingsScreen({
           </p>
         </motion.div>
 
-        {/* Updates */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Updates
-          </h2>
-          <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3.5">
-              {/* Status icon */}
-              <div className="shrink-0 w-4 h-4 flex items-center justify-center">
-                <UpdateIcon state={updateState} />
-              </div>
-
-              {/* Status text */}
-              <div className="flex-1 min-w-0">
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={updateState}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.18 }}
-                    className={`block text-[21px] font-medium ${updateStateTextClass(updateState)}`}
-                  >
-                    {updateStateLabel(updateState, updateMessage)}
-                  </motion.span>
-                </AnimatePresence>
-              </div>
-
-              {/* Action */}
-              <UpdateAction
-                state={updateState}
-                onCheck={handleCheckForUpdates}
-                onRestart={handleApplyUpdate}
-              />
-            </div>
-
-            {/* Error detail bar */}
-            <AnimatePresence>
-              {updateState === "error" && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="border-t border-white/10 px-4 py-2.5"
+        {showDevTools && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: 0.3,
+              duration: 0.3,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            className="mb-8"
+          >
+            <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+              Development
+            </h2>
+            <div className="relative group">
+              <select
+                value={devPreviewRoute ?? ""}
+                onChange={handleDevPreviewRouteSelect}
+                className={devPreviewSelectClass}
+                aria-label="Preview root screen"
+              >
+                <option value="" className="bg-zinc-900 text-white/78">
+                  Default (normal routing)
+                </option>
+                <option value="permissions" className="bg-zinc-900 text-white">
+                  Permissions
+                </option>
+                <option value="onboarding" className="bg-zinc-900 text-white">
+                  Product onboarding
+                </option>
+                <option value="ready" className="bg-zinc-900 text-white">
+                  Ready (main)
+                </option>
+              </select>
+              <span
+                className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-white/38 transition-colors duration-200 group-hover:text-white/50 right-3.5"
+                aria-hidden
+              >
+                <svg
+                  className="size-[18px]"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  <p className="text-[18px] text-orange-300/85 leading-relaxed font-sans font-normal">
-                    {updateMessage ??
-                      "Something went wrong. Check your internet connection and try again."}
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </motion.div>
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </span>
+            </div>
+            <p className={settingsHelperClass}>
+              Vite dev only: jump to a root screen to iterate on UI. Choosing a
+              screen closes Settings; open Settings from the menu again to clear
+              the preview or pick Default routing here first.
+            </p>
+          </motion.div>
+        )}
       </div>
     </div>
   );

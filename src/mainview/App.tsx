@@ -3,7 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { appEvents, type PermissionState } from "./app-events";
 import { fetchPermissions, fetchDevices, fetchSettings } from "./rpc";
-import type { AppStatus, SettingsPane } from "../shared/types";
+import type {
+  AppStatus,
+  DevAppPreviewRoute,
+  SettingsPane,
+} from "../shared/types";
 import { PermissionScreen } from "./components/Permissions/PermissionScreen";
 import { ProductOnboardingScreen } from "./components/Onboarding/ProductOnboardingScreen";
 import { ReadyScreen } from "./components/Ready/ReadyScreen";
@@ -49,13 +53,20 @@ export default function App() {
 
   const [status, setStatus] = useState<AppStatus>("ready");
   const [showSettings, setShowSettings] = useState(false);
+  const [devPreviewRoute, setDevPreviewRoute] =
+    useState<DevAppPreviewRoute | null>(null);
+
+  const isDev = import.meta.env.DEV;
 
   useEffect(() => {
     return appEvents.on("status", (s) => setStatus(s));
   }, []);
 
   useEffect(() => {
-    return appEvents.on("openSettingsScreen", () => setShowSettings(true));
+    return appEvents.on("openSettingsScreen", () => {
+      setDevPreviewRoute(null);
+      setShowSettings(true);
+    });
   }, []);
 
   const openSettings = useCallback((pane: SettingsPane) => {
@@ -95,6 +106,27 @@ export default function App() {
     );
   }
 
+  if (isDev && devPreviewRoute !== null) {
+    if (devPreviewRoute === "permissions") {
+      return <PermissionScreen permissions={p} onOpenSettings={openSettings} />;
+    }
+    if (settings) {
+      if (devPreviewRoute === "onboarding") {
+        return <ProductOnboardingScreen settings={settings} />;
+      }
+      if (devPreviewRoute === "ready") {
+        return (
+          <ReadyScreen
+            status={status}
+            deviceInfo={deviceInfo}
+            settings={settings}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        );
+      }
+    }
+  }
+
   return (
     <>
       {!allPermissionsGranted ? (
@@ -105,6 +137,15 @@ export default function App() {
         <SettingsScreen
           settings={settings}
           onBack={() => setShowSettings(false)}
+          devPreviewRoute={isDev ? devPreviewRoute : undefined}
+          onDevPreviewRouteChange={
+            isDev
+              ? (route) => {
+                  setDevPreviewRoute(route);
+                  if (route !== null) setShowSettings(false);
+                }
+              : undefined
+          }
         />
       ) : (
         <ReadyScreen

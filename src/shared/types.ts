@@ -15,6 +15,9 @@ export type SettingsPane =
   | 'accessibility'
   | 'documents'
 
+/** Dev-only: force the main window to a root screen (Vite `import.meta.env.DEV`). */
+export type DevAppPreviewRoute = 'permissions' | 'onboarding' | 'ready'
+
 export type ShortcutId =
   | 'option-space'
   | 'right-option'

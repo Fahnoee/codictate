@@ -192,7 +192,7 @@ export function ProductOnboardingScreen({
                 <span className="font-bold">from</span>, when you use "Translate
                 Mode".
               </p>
-              <p className="text-[16px] text-white/28 text-center mb-4 leading-relaxed">
+              <p className="text-[20px] text-white/50 text-center mb-4 leading-relaxed">
                 You can change this anytime in settings.
               </p>
               <LanguagePicker
@@ -233,6 +233,7 @@ export function ProductOnboardingScreen({
                     </span>
                   ))}
                 </span>
+                <br />
                 And start dictating.
               </p>
               <p className="text-[18px] text-white/50 text-center mb-4 leading-relaxed">
