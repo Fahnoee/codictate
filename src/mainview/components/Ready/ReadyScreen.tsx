@@ -4,10 +4,15 @@ import { useMemo, useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppStatus, AppSettings, DeviceInfo } from "../../../shared/types";
-import { setTranscriptionLanguage, setTranslateToEnglish } from "../../rpc";
+import {
+  setTranscriptionLanguage,
+  setTranslateToEnglish,
+  fetchSettings,
+} from "../../rpc";
 import {
   WHISPER_MODELS,
-  TRANSLATE_MODEL_ID,
+  getTranslateReadiness,
+  getWhisperModel,
 } from "../../../shared/whisper-models";
 import { appEvents } from "../../app-events";
 import { Kbd } from "../Common/Kbd";
@@ -47,7 +52,7 @@ export function ReadyScreen({
   const queryClient = useQueryClient();
   const languageId = settings?.transcriptionLanguageId ?? "auto";
 
-  // Model availability — seeded from query cache, updated via events.
+  // Model availability - seeded from query cache, updated via events.
   const [modelAvailability, setModelAvailability] = useState<
     Record<string, boolean>
   >(
@@ -64,10 +69,20 @@ export function ReadyScreen({
     });
   }, []);
 
-  const translateModelAvailable =
-    modelAvailability[TRANSLATE_MODEL_ID] ?? false;
   const languageIsAuto = languageId === "auto";
   const isTranslateOn = settings?.translateToEnglish ?? false;
+
+  const translateReadiness = useMemo(() => {
+    if (!settings) return null;
+    const isModelAvail = (id: string) =>
+      modelAvailability[id] ?? getWhisperModel(id)?.bundled ?? false;
+    return getTranslateReadiness(
+      settings.whisperModelId,
+      settings.transcriptionLanguageId,
+      settings.translateDefaultLanguageId,
+      isModelAvail,
+    );
+  }, [settings, modelAvailability]);
 
   const handleLanguageChange = useCallback(
     async (transcriptionLanguageId: string) => {
@@ -85,7 +100,7 @@ export function ReadyScreen({
   const handleTranslateToggle = useCallback(async () => {
     if (!settings || !isIdle) return;
     if (isTranslateOn) {
-      // Turning off — optimistically update UI; backend atomically resets lang to auto.
+      // Turning off - optimistically update UI; backend atomically resets lang to auto.
       queryClient.setQueryData(["settings"], {
         ...settings,
         translateToEnglish: false,
@@ -94,11 +109,21 @@ export function ReadyScreen({
       await setTranslateToEnglish(false);
       return;
     }
-    // Model not available → open Settings so the user can download it.
-    if (!translateModelAvailable) {
+
+    const isModelAvail = (id: string) =>
+      modelAvailability[id] ?? getWhisperModel(id)?.bundled ?? false;
+    const readiness = getTranslateReadiness(
+      settings.whisperModelId,
+      settings.transcriptionLanguageId,
+      settings.translateDefaultLanguageId,
+      isModelAvail,
+    );
+
+    if (readiness.kind !== "ready") {
       onOpenSettings();
       return;
     }
+
     // Language is auto but a default language is configured → apply it first.
     if (languageIsAuto && settings.translateDefaultLanguageId) {
       const defaultLang = settings.translateDefaultLanguageId;
@@ -108,23 +133,27 @@ export function ReadyScreen({
         translateToEnglish: true,
       });
       await setTranscriptionLanguage(defaultLang);
-      await setTranslateToEnglish(true);
+      const ok = await setTranslateToEnglish(true);
+      if (!ok) {
+        queryClient.setQueryData(["settings"], await fetchSettings());
+      }
       return;
     }
-    // Language not set and no default → do nothing; the LanguagePicker is on
-    // screen and the tooltip explains what to do.
-    if (languageIsAuto) return;
+
     queryClient.setQueryData(["settings"], {
       ...settings,
       translateToEnglish: true,
     });
-    await setTranslateToEnglish(true);
+    const ok = await setTranslateToEnglish(true);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+    }
   }, [
     settings,
     isIdle,
     isTranslateOn,
-    translateModelAvailable,
     languageIsAuto,
+    modelAvailability,
     queryClient,
     onOpenSettings,
   ]);
@@ -295,19 +324,21 @@ export function ReadyScreen({
         >
           {settings !== undefined &&
             (() => {
-              const hasDefaultLang = Boolean(
-                settings.translateDefaultLanguageId,
-              );
+              const r = translateReadiness?.kind;
               const tooltipText = isTranslateOn
-                ? "Translate mode active — click to disable"
-                : !translateModelAvailable
-                  ? "Download the Large model in Settings to enable translate mode"
-                  : languageIsAuto && !hasDefaultLang
-                    ? "Select a source language (or set a default in Settings) to enable translate mode"
-                    : "Translate mode — transcribe and translate to English";
+                ? "Translate mode active - click to disable"
+                : r === "need_download"
+                  ? "Download Small or Large in Settings - Turbo cannot translate"
+                  : r === "need_switch_model"
+                    ? "Switch transcription model to Small or Large in Settings"
+                    : r === "need_language"
+                      ? "Select a source language (or set a default in Settings) to enable translate mode"
+                      : "Translate mode - transcribe and translate to English";
 
               const isDimmed =
-                !translateModelAvailable || (languageIsAuto && !hasDefaultLang);
+                !isTranslateOn &&
+                (translateReadiness == null ||
+                  translateReadiness.kind !== "ready");
 
               return (
                 <InstantTooltip text={tooltipText} side="top">

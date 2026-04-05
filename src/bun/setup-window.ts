@@ -12,7 +12,10 @@ import type {
 import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
 import { modelManager } from './utils/whisper/model-manager'
-import { TRANSLATE_MODEL_ID } from '../shared/whisper-models'
+import {
+  isTranslateCapableModelId,
+  resolveTranslateModelId,
+} from '../shared/whisper-models'
 
 const SYSTEM_PREFS_URLS: Record<SettingsPane, string> = {
   inputMonitoring:
@@ -133,6 +136,7 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           const ok = await deps.appConfig.setWhisperModelId(modelId)
           if (ok) {
             rpc.send.updateSettings(deps.appConfig.getSettings())
+            deps.onTranslateChanged?.()
           }
           return ok
         },
@@ -141,14 +145,19 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
             await deps.appConfig.setTranslateDefaultLanguageId(languageId)
           if (ok) {
             rpc.send.updateSettings(deps.appConfig.getSettings())
+            deps.onTranslateChanged?.()
           }
           return ok
         },
         setTranslateToEnglish: async ({ enabled }) => {
           if (enabled) {
-            // Translate mode requires the Large model and a resolvable source language
-            // (fixed picker language or default source language in Settings — same as Ready).
-            if (!modelManager.isModelAvailable(TRANSLATE_MODEL_ID)) {
+            // Small or Large only (selected + on disk); Turbo cannot translate.
+            const selected = deps.appConfig.getWhisperModelId()
+            if (
+              resolveTranslateModelId(selected, (id) =>
+                modelManager.isModelAvailable(id)
+              ) === null
+            ) {
               rpc.send.updateSettings(deps.appConfig.getSettings())
               return false
             }
@@ -198,8 +207,7 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
                 })
                 if (done && !error) {
                   rpc.send.updateModelAvailability({ modelId, available: true })
-                  // If the translate model just became available, rebuild the tray menu.
-                  if (modelId === TRANSLATE_MODEL_ID) {
+                  if (isTranslateCapableModelId(modelId)) {
                     deps.onTranslateChanged?.()
                   }
                 }
@@ -216,7 +224,7 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           const deleted = modelManager.deleteModel(modelId)
           if (deleted) {
             rpc.send.updateModelAvailability({ modelId, available: false })
-            if (modelId === TRANSLATE_MODEL_ID) {
+            if (isTranslateCapableModelId(modelId)) {
               deps.onTranslateChanged?.()
             }
           }

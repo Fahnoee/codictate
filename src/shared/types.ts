@@ -30,7 +30,7 @@ export interface AppSettings {
   transcriptionLanguageId: string
   /** ID of the Whisper model to use for transcription. Defaults to `large-v3-turbo-q5_0` (bundled). */
   whisperModelId: string
-  /** When true, Whisper translates speech to English using the large-v3-q5_0 model. */
+  /** When true, Whisper translates speech to English using the selected Small or Large model (not Turbo). */
   translateToEnglish: boolean
   /**
    * Default source language applied automatically when translate mode is enabled

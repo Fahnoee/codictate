@@ -11,7 +11,7 @@ import { setupRecording } from './setup-recording'
 import { setupWindow } from './setup-window'
 import { setOnAutoDisable } from './utils/logger'
 import { modelManager } from './utils/whisper/model-manager'
-import { WHISPER_MODELS } from '../shared/whisper-models'
+import { WHISPER_MODELS, getTranslateReadiness } from '../shared/whisper-models'
 
 const DEV_SERVER_PORT = 5173
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`
@@ -45,6 +45,19 @@ const url = await getMainViewUrl()
 
 export const UserAppConfig = new AppConfig()
 await UserAppConfig.load()
+
+// Heal disk state if translate was left on without a runnable model/language combo.
+if (UserAppConfig.getTranslateToEnglish()) {
+  const readiness = getTranslateReadiness(
+    UserAppConfig.getWhisperModelId(),
+    UserAppConfig.getTranscriptionLanguageId(),
+    UserAppConfig.getTranslateDefaultLanguageId(),
+    (id) => modelManager.isModelAvailable(id)
+  )
+  if (readiness.kind !== 'ready') {
+    await UserAppConfig.setTranslateOff()
+  }
+}
 
 let devices = await findDevices()
 

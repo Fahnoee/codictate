@@ -12,15 +12,19 @@ import { TRANSCRIPTION_LANGUAGE_HINT } from "../../../shared/transcription-langu
 import { formatRecordingDurationLabel } from "../../../shared/recording-duration-presets";
 import {
   WHISPER_MODELS,
-  TRANSLATE_MODEL_ID,
   DEFAULT_MODEL_ID,
+  DEFAULT_TRANSLATE_DOWNLOAD_MODEL_ID,
+  TRANSLATE_MODEL_ID,
   formatModelSize,
   getWhisperModel,
+  getTranslateReadiness,
+  isTranslateCapableModelId,
 } from "../../../shared/whisper-models";
 import {
   setShortcut,
   setAudioDevice,
   fetchDevices,
+  fetchSettings,
   triggerUpdateCheck,
   triggerApplyUpdate,
   setDebugMode,
@@ -245,9 +249,11 @@ export function SettingsScreen({
   const [downloadProgress, setDownloadProgress] = useState<
     Record<string, number>
   >({});
-  // Tracks whether we started a download specifically to enable translate mode
-  const translatePendingRef = useRef(false);
-  const [translateDownloading, setTranslateDownloading] = useState(false);
+  /** Model id being downloaded to satisfy a translate toggle, if any. */
+  const translatePendingRef = useRef<string | null>(null);
+  const [translateDownloadModelId, setTranslateDownloadModelId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     return appEvents.on("updateCheckStatus", ({ state, message }) => {
@@ -284,25 +290,37 @@ export function SettingsScreen({
           return next;
         });
 
-        if (modelId === TRANSLATE_MODEL_ID) {
-          setTranslateDownloading(false);
-          if (!error && translatePendingRef.current) {
-            translatePendingRef.current = false;
-            await setTranslateToEnglish(true);
-            queryClient.setQueryData(["settings"], (old: AppSettings) => ({
-              ...old,
-              translateToEnglish: true,
-            }));
-          } else if (error) {
-            translatePendingRef.current = false;
+        const pendingTranslate = translatePendingRef.current;
+        if (pendingTranslate === modelId) {
+          setTranslateDownloadModelId(null);
+          translatePendingRef.current = null;
+          if (!error && isTranslateCapableModelId(modelId)) {
+            const current = queryClient.getQueryData<AppSettings>(["settings"]);
+            const sel = current?.whisperModelId ?? DEFAULT_MODEL_ID;
+            if (!isTranslateCapableModelId(sel) || sel !== modelId) {
+              await setWhisperModel(modelId);
+              queryClient.setQueryData(["settings"], (old: AppSettings) => ({
+                ...old,
+                whisperModelId: modelId,
+              }));
+            }
+            const ok = await setTranslateToEnglish(true);
+            if (ok) {
+              queryClient.setQueryData(["settings"], (old: AppSettings) => ({
+                ...old,
+                translateToEnglish: true,
+              }));
+            } else {
+              const fresh = await fetchSettings();
+              queryClient.setQueryData(["settings"], fresh);
+            }
           }
         }
 
         if (!error) {
           setModelAvailability((prev) => ({ ...prev, [modelId]: true }));
-          // Auto-select the model if user isn't already on it and we just
-          // downloaded it as part of a model picker action.
-          if (modelId !== TRANSLATE_MODEL_ID) {
+          // Auto-select when downloading from the model picker (not a translate-pending flow).
+          if (pendingTranslate !== modelId && modelId !== TRANSLATE_MODEL_ID) {
             await setWhisperModel(modelId);
             queryClient.setQueryData(["settings"], (old: AppSettings) => ({
               ...old,
@@ -390,6 +408,10 @@ export function SettingsScreen({
 
   const handleCancelDownload = useCallback((modelId: string) => {
     cancelModelDownload(modelId);
+    if (translatePendingRef.current === modelId) {
+      translatePendingRef.current = null;
+      setTranslateDownloadModelId(null);
+    }
     setDownloadProgress((prev) => {
       const next = { ...prev };
       delete next[modelId];
@@ -411,8 +433,11 @@ export function SettingsScreen({
         await setWhisperModel(DEFAULT_MODEL_ID);
       }
 
-      // If the translate model was deleted and translate is on, turn it off.
-      if (modelId === TRANSLATE_MODEL_ID && settings.translateToEnglish) {
+      if (
+        settings.translateToEnglish &&
+        isTranslateCapableModelId(modelId) &&
+        settings.whisperModelId === modelId
+      ) {
         queryClient.setQueryData(["settings"], (old: AppSettings) => ({
           ...old,
           translateToEnglish: false,
@@ -437,21 +462,43 @@ export function SettingsScreen({
       return;
     }
 
-    // Turning on: check if the translate model is available
-    if (modelAvailability[TRANSLATE_MODEL_ID]) {
+    const isModelAvail = (id: string) =>
+      modelAvailability[id] ?? getWhisperModel(id)?.bundled ?? false;
+
+    const readiness = getTranslateReadiness(
+      settings.whisperModelId,
+      settings.transcriptionLanguageId,
+      settings.translateDefaultLanguageId,
+      isModelAvail,
+    );
+
+    if (readiness.kind === "ready") {
       queryClient.setQueryData(["settings"], {
         ...settings,
         translateToEnglish: true,
       });
-      await setTranslateToEnglish(true);
+      const ok = await setTranslateToEnglish(true);
+      if (!ok) {
+        const fresh = await fetchSettings();
+        queryClient.setQueryData(["settings"], fresh);
+      }
       return;
     }
 
-    // Need to download the translate model first
-    translatePendingRef.current = true;
-    setTranslateDownloading(true);
-    setDownloadProgress((prev) => ({ ...prev, [TRANSLATE_MODEL_ID]: 0 }));
-    downloadWhisperModel(TRANSLATE_MODEL_ID);
+    if (readiness.kind === "need_download") {
+      const sel = settings.whisperModelId;
+      const target =
+        isTranslateCapableModelId(sel) && !isModelAvail(sel)
+          ? sel
+          : DEFAULT_TRANSLATE_DOWNLOAD_MODEL_ID;
+      translatePendingRef.current = target;
+      setTranslateDownloadModelId(target);
+      setDownloadProgress((prev) => ({ ...prev, [target]: 0 }));
+      downloadWhisperModel(target);
+      return;
+    }
+
+    // need_switch_model or need_language — handled in Settings UI / language pickers.
   }, [settings, queryClient, modelAvailability]);
 
   const handleTranslateDefaultLanguageChange = useCallback(
@@ -580,7 +627,9 @@ export function SettingsScreen({
           <p className={settingsHelperClass}>
             Smaller models are faster but less accurate. All models shown are
             multilingual. The Turbo model is bundled with the app — others are
-            downloaded on demand.
+            downloaded on demand. Translate to English uses the model selected
+            here when it is Small or Large — Turbo cannot translate, so switch
+            model to enable translation.
           </p>
         </motion.div>
 
@@ -624,7 +673,7 @@ export function SettingsScreen({
               </div>
               <button
                 onClick={handleTranslateToggle}
-                disabled={translateDownloading}
+                disabled={translateDownloadModelId !== null}
                 className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
                   settings.translateToEnglish
                     ? "bg-blue-500/30 border-blue-400/30"
@@ -644,7 +693,7 @@ export function SettingsScreen({
 
             {/* Download prompt when toggling on without the model */}
             <AnimatePresence>
-              {translateDownloading && (
+              {translateDownloadModelId !== null && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
@@ -655,9 +704,13 @@ export function SettingsScreen({
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
                       <p className="text-[18px] text-white/55 font-sans leading-relaxed">
-                        Downloading the Large model (
+                        Downloading the{" "}
+                        {getWhisperModel(translateDownloadModelId)?.label ??
+                          translateDownloadModelId}{" "}
+                        model (
                         {formatModelSize(
-                          getWhisperModel(TRANSLATE_MODEL_ID)?.sizeMB ?? 1100,
+                          getWhisperModel(translateDownloadModelId)?.sizeMB ??
+                            0,
                         )}
                         )…
                       </p>
@@ -665,14 +718,16 @@ export function SettingsScreen({
                         <motion.div
                           className="h-full rounded-full bg-blue-400/60"
                           animate={{
-                            width: `${Math.round((downloadProgress[TRANSLATE_MODEL_ID] ?? 0) * 100)}%`,
+                            width: `${Math.round((downloadProgress[translateDownloadModelId] ?? 0) * 100)}%`,
                           }}
                           transition={{ duration: 0.2 }}
                         />
                       </div>
                     </div>
                     <button
-                      onClick={() => handleCancelDownload(TRANSLATE_MODEL_ID)}
+                      onClick={() =>
+                        handleCancelDownload(translateDownloadModelId)
+                      }
                       className="shrink-0 px-2.5 py-1 rounded-lg text-[17px] font-medium border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/8 text-white/44 hover:text-white/64 transition-colors duration-200 cursor-pointer"
                     >
                       Cancel
@@ -699,12 +754,10 @@ export function SettingsScreen({
 
           <p className={settingsHelperClass}>
             Speak in any language — Codictate will transcribe and translate to
-            English. Requires the Large model (
-            {formatModelSize(
-              getWhisperModel(TRANSLATE_MODEL_ID)?.sizeMB ?? 1100,
-            )}
-            ). Set a default source language to enable translate mode directly
-            from the main screen even when auto-detect is active.
+            English using your selected Small or Large model (not Turbo). If
+            neither is installed, download one under Transcription Model. Set a
+            default source language to use translate from the main screen while
+            auto-detect is active.
           </p>
         </motion.div>
 

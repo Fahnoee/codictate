@@ -10,7 +10,7 @@ import {
   handleTranscriptionLanguageAction,
 } from './utils/transcription-language-actions'
 import { modelManager } from './utils/whisper/model-manager'
-import { TRANSLATE_MODEL_ID } from '../shared/whisper-models'
+import { getTranslateReadiness } from '../shared/whisper-models'
 
 export type TrayHandlers = {
   setTrayIdle: () => void
@@ -81,25 +81,34 @@ export const setupTray = (
   }
 
   const buildTranslateMenuItem = (cfg: AppConfig) => {
-    const modelReady = modelManager.isModelAvailable(TRANSLATE_MODEL_ID)
-    // Match Ready screen: fixed language OR default source language in Settings.
-    const hasSourceLanguage =
-      cfg.getTranscriptionLanguageId() !== 'auto' ||
-      cfg.getTranslateDefaultLanguageId() != null
+    const readiness = getTranslateReadiness(
+      cfg.getWhisperModelId(),
+      cfg.getTranscriptionLanguageId(),
+      cfg.getTranslateDefaultLanguageId(),
+      (id) => modelManager.isModelAvailable(id)
+    )
 
-    if (!modelReady) {
+    if (readiness.kind === 'need_language') {
       return {
         type: 'normal' as const,
-        label: 'Translate to English — download Large model first',
-        action: 'noop',
+        label: 'Translate to English — set language in Settings',
+        action: 'open-settings',
         checked: false,
       }
     }
-    if (!hasSourceLanguage) {
+    if (readiness.kind === 'need_download') {
       return {
         type: 'normal' as const,
-        label: 'Translate to English — select a language first',
-        action: 'noop',
+        label: 'Translate to English — download Small or Large in Settings',
+        action: 'open-settings',
+        checked: false,
+      }
+    }
+    if (readiness.kind === 'need_switch_model') {
+      return {
+        type: 'normal' as const,
+        label: 'Translate to English — switch to Small or Large in Settings',
+        action: 'open-settings',
         checked: false,
       }
     }
@@ -168,10 +177,29 @@ export const setupTray = (
       const translateWasOn = appConfig.getTranslateToEnglish()
       void (async () => {
         if (!translateWasOn) {
+          const readiness = getTranslateReadiness(
+            appConfig.getWhisperModelId(),
+            appConfig.getTranscriptionLanguageId(),
+            appConfig.getTranslateDefaultLanguageId(),
+            (id) => modelManager.isModelAvailable(id)
+          )
+          if (readiness.kind !== 'ready') {
+            onOpenSettings?.()
+            tray.setMenu(
+              buildMenu(appConfig.resolveAudioDevice(currentDevices))
+            )
+            return
+          }
           if (appConfig.getTranscriptionLanguageId() === 'auto') {
             const fallback = appConfig.getTranslateDefaultLanguageId()
             if (fallback) {
               await appConfig.setTranscriptionLanguageId(fallback)
+            } else {
+              onOpenSettings?.()
+              tray.setMenu(
+                buildMenu(appConfig.resolveAudioDevice(currentDevices))
+              )
+              return
             }
           }
           await appConfig.setTranslateToEnglish(true)

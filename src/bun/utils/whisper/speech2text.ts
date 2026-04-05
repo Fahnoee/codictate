@@ -1,5 +1,5 @@
 import { whisperCliLanguageArg } from '../../../shared/transcription-languages'
-import { TRANSLATE_MODEL_ID } from '../../../shared/whisper-models'
+import { resolveTranslateModelId } from '../../../shared/whisper-models'
 import { modelManager } from './model-manager'
 import { pasteTranscript } from '../keyboard/keyboard-events'
 import { join } from 'node:path'
@@ -36,8 +36,19 @@ export const transcribe = async (
 ) => {
   const binary = join(import.meta.dir, '../native-helpers/whisper-cli')
 
-  // Translate mode always uses the dedicated translation model.
-  const effectiveModelId = translateToEnglish ? TRANSLATE_MODEL_ID : modelId
+  const translateRunModelId = resolveTranslateModelId(modelId, (id) =>
+    modelManager.isModelAvailable(id)
+  )
+  const useTranslate = translateToEnglish && translateRunModelId !== null
+  if (translateToEnglish && translateRunModelId === null) {
+    log(
+      'whisper',
+      'translate requested but no translate-capable model selected or available — transcribing without -tr',
+      { transcriptionModelId: modelId }
+    )
+  }
+
+  const effectiveModelId = useTranslate ? translateRunModelId : modelId
   const model = modelManager.getModelPath(effectiveModelId)
 
   const lang = whisperCliLanguageArg(whisperLanguageCode)
@@ -48,7 +59,7 @@ export const transcribe = async (
     whisperLanguageCode: lang,
     languageMode: lang === 'auto' ? 'auto-detect' : 'fixed',
     modelId: effectiveModelId,
-    translateToEnglish,
+    translateToEnglish: useTranslate,
   })
 
   const args = [
@@ -63,7 +74,7 @@ export const transcribe = async (
     '-nt', // No timestamps
   ]
 
-  if (translateToEnglish) {
+  if (useTranslate) {
     args.push('-tr')
   }
 

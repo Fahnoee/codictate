@@ -137,7 +137,9 @@ export async function setWhisperModel(modelId: string): Promise<boolean> {
   return rpc.request.setWhisperModel({ modelId })
 }
 
-export async function setTranslateToEnglish(enabled: boolean): Promise<boolean> {
+export async function setTranslateToEnglish(
+  enabled: boolean
+): Promise<boolean> {
   return rpc.request.setTranslateToEnglish({ enabled })
 }
 
