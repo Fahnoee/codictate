@@ -30,3 +30,11 @@ run = ['move-node-to-workspace 7']
 Reload the config after editing: `aerospace reload-config`.
 
 **Note:** In `on-window-detected`, AeroSpace currently allows only a small set of commands (`layout floating`, `layout tiling`, `move-node-to-workspace`). See [AeroSpace issue #20](https://github.com/nikitabobko/AeroSpace/issues/20) for discussion of richer callbacks.
+
+## Known limitation
+
+With AeroSpace, the recording HUD can behave as if it belongs to the workspace where it was first created. In practice, that means it may show normally only on that initial workspace, while on other AeroSpace workspaces it can flicker or flash briefly instead of staying visible.
+
+This appears to be an interaction between AeroSpace workspace behavior and the tiny floating HUD window, not a general Codictate problem outside that setup.
+
+If you know a cleaner AeroSpace-side fix, contributions are welcome.

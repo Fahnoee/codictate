@@ -73,11 +73,10 @@ The public BrowserWindow documentation does **not** describe a separate “order
 
 ### Idle `when-active`: hide without `close()` (off-screen park)
 
-For **`recordingIndicatorMode === 'when-active'`**, when dictation finishes the status becomes **`ready`** and the HUD is no longer needed. **Calling `BrowserWindow.close()` on the HUD** causes macOS to assign **key window** to another window in the same app — almost always the **main Codictate window** — which steals focus from the app you were dictating into.
+For **`recordingIndicatorMode === 'when-active'`**, when dictation finishes the status becomes **`ready`** and the HUD is no longer needed. **Calling `BrowserWindow.close()` on the HUD** can cause macOS to assign key-window status to another window in the same app, typically the main Codictate window, which steals focus from the app you were dictating into.
 
-**Why not “just hide”?** Electrobun’s **[BrowserWindow](https://blackboard.sh/electrobun/docs/apis/browser-window)** API has **`close`**, **`focus` / `show`** (equivalent), **`minimize`**, etc., but **no** `hide` / `orderOut` / `setVisible(false)` for the native window. **`minimize()`** is a bad substitute (Dock, animations, focus quirks). So we **keep the window open** and **park** it: **`1×1` frame far off-screen** and **`setAlwaysOnTop(false)`**, then restore **`placeBottomRight`** on the next recording. That matches what a proper hide would achieve until the framework adds a first-class API.
+So in `when-active`, the HUD is kept alive and parked off-screen instead of being closed. The window is **closed** when the user sets the indicator to **`off`**, on **dispose**, or when `indicatorShouldExist` is false for reasons other than idle **`when-active` + `ready`**.
 
-The window is **closed** when the user sets the indicator to **`off`**, on **dispose**, or when `indicatorShouldExist` is false for reasons other than idle **`when-active` + `ready`**.
 
 ### RPC
 

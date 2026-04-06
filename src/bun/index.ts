@@ -154,6 +154,7 @@ const MAIN_WINDOW_MIN_SIZE = { width: 800, height: 660 } as const
 const win = setupWindow({
   url,
   appConfig: UserAppConfig,
+  openWindowOnLaunch: true,
   windowMinSize: MAIN_WINDOW_MIN_SIZE,
   getCurrentDevices: () => devices,
   getPermissions: async () => {
@@ -262,6 +263,10 @@ function startDeviceMonitor() {
 const onOpenSettings = () => {
   win.getOrCreateWindow(() => win.send.openSettingsScreen()).focus()
 }
+
+Electrobun.events.on('reopen', () => {
+  win.getOrCreateWindow().focus()
+})
 
 menuHandlers = setupApplicationMenu(
   devices,

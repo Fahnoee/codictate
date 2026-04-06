@@ -100,6 +100,7 @@ const SYSTEM_PREFS_URLS: Record<SettingsPane, string> = {
 interface WindowDeps {
   url: string
   appConfig: AppConfig
+  openWindowOnLaunch?: boolean
   /** Returns the live device list — called on every request so it's always fresh. */
   getCurrentDevices: () => Record<string, string>
   getPermissions: () => Promise<PermissionState>
@@ -145,6 +146,7 @@ export interface WindowHandle {
       available: boolean
     }) => void
   }
+  hasWindow: () => boolean
   /**
    * Returns (or creates) the main window.
    * `onAction` is invoked once the window is ready to receive messages —
@@ -349,10 +351,25 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
     return win
   }
 
-  let mainWindow = createMainWindow()
+  let mainWindow: BrowserWindow | null = deps.openWindowOnLaunch
+    ? createMainWindow()
+    : null
+
+  function hasWindow(): boolean {
+    return mainWindow !== null && Boolean(BrowserWindow.getById(mainWindow.id))
+  }
+
+  function sendIfWindowAlive<T>(send: () => T): T | undefined {
+    if (!hasWindow()) return undefined
+    try {
+      return send()
+    } catch {
+      return undefined
+    }
+  }
 
   function getOrCreateWindow(onAction?: () => void): BrowserWindow {
-    if (BrowserWindow.getById(mainWindow.id)) {
+    if (mainWindow !== null && BrowserWindow.getById(mainWindow.id)) {
       // Window already exists and its RPC bridge is live.
       onAction?.()
       return mainWindow
@@ -370,16 +387,24 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
 
   return {
     send: {
-      updateStatus: (data) => rpc.send.updateStatus(data),
-      updatePermissions: (data) => rpc.send.updatePermissions(data),
-      updateDevice: (data) => rpc.send.updateDevice(data),
-      updateSettings: (data) => rpc.send.updateSettings(data),
-      openSettingsScreen: () => rpc.send.openSettingsScreen({}),
-      updateCheckStatus: (data) => rpc.send.updateCheckStatus(data),
+      updateStatus: (data) =>
+        sendIfWindowAlive(() => rpc.send.updateStatus(data)),
+      updatePermissions: (data) =>
+        sendIfWindowAlive(() => rpc.send.updatePermissions(data)),
+      updateDevice: (data) =>
+        sendIfWindowAlive(() => rpc.send.updateDevice(data)),
+      updateSettings: (data) =>
+        sendIfWindowAlive(() => rpc.send.updateSettings(data)),
+      openSettingsScreen: () =>
+        sendIfWindowAlive(() => rpc.send.openSettingsScreen({})),
+      updateCheckStatus: (data) =>
+        sendIfWindowAlive(() => rpc.send.updateCheckStatus(data)),
       updateModelDownloadProgress: (data) =>
-        rpc.send.updateModelDownloadProgress(data),
-      updateModelAvailability: (data) => rpc.send.updateModelAvailability(data),
+        sendIfWindowAlive(() => rpc.send.updateModelDownloadProgress(data)),
+      updateModelAvailability: (data) =>
+        sendIfWindowAlive(() => rpc.send.updateModelAvailability(data)),
     },
+    hasWindow,
     getOrCreateWindow,
   }
 }

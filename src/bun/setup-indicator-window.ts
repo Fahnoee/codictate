@@ -1,9 +1,4 @@
-import {
-  BrowserWindow,
-  BrowserView,
-  Screen,
-  type Display,
-} from 'electrobun/bun'
+import { BrowserWindow, BrowserView, Screen } from 'electrobun/bun'
 import type {
   AppSettings,
   AppStatus,
@@ -15,11 +10,8 @@ import type {
 const INDICATOR_FRAME_PX = 72
 
 /**
- * Electrobun does not expose NSWindow-style hide/orderOut on `BrowserWindow`
- * (see BrowserWindow methods in the package — no `setHidden`). `minimize()` is
- * a poor fit (Dock tile, animations, focus side effects). Shrinking and moving
- * the window off-screen achieves “invisible without closing” without handing
- * key window to the main Codictate window.
+ * Keep the HUD alive but invisible so closing it does not hand key-window
+ * status back to the main Codictate window.
  */
 const PARKED_INDICATOR_FRAME = {
   x: -10_000,
@@ -27,6 +19,7 @@ const PARKED_INDICATOR_FRAME = {
   width: 1,
   height: 1,
 } as const
+
 export type IndicatorWindowHandle = {
   onAppStatus: (status: AppStatus) => void
   onConfigChanged: () => void
@@ -42,43 +35,13 @@ function indicatorShouldExist(
   return status === 'recording' || status === 'transcribing'
 }
 
-function pickIndicatorDisplay(): Display {
-  const displays = Screen.getAllDisplays()
-  if (displays.length === 0) return Screen.getPrimaryDisplay()
-
-  const cursor = Screen.getCursorScreenPoint()
-  const containingDisplay = displays.find((display) => {
-    const { x, y, width, height } = display.bounds
-    return (
-      cursor.x >= x &&
-      cursor.x < x + width &&
-      cursor.y >= y &&
-      cursor.y < y + height
-    )
-  })
-
-  if (containingDisplay) return containingDisplay
-
-  return displays.reduce((closest, display) => {
-    const closestCenterX = closest.bounds.x + closest.bounds.width / 2
-    const closestCenterY = closest.bounds.y + closest.bounds.height / 2
-    const displayCenterX = display.bounds.x + display.bounds.width / 2
-    const displayCenterY = display.bounds.y + display.bounds.height / 2
-    const closestDistance =
-      (cursor.x - closestCenterX) ** 2 + (cursor.y - closestCenterY) ** 2
-    const displayDistance =
-      (cursor.x - displayCenterX) ** 2 + (cursor.y - displayCenterY) ** 2
-    return displayDistance < closestDistance ? display : closest
-  })
-}
-
 function bottomRightFrame(): {
   x: number
   y: number
   width: number
   height: number
 } {
-  const { workArea } = pickIndicatorDisplay()
+  const { workArea } = Screen.getPrimaryDisplay()
   const margin = 16
   const x = Math.round(
     workArea.x + workArea.width - INDICATOR_FRAME_PX - margin
@@ -182,10 +145,6 @@ export function setupIndicatorWindow(deps: {
     win.setVisibleOnAllWorkspaces(true)
   }
 
-  /**
-   * Same as a real “hide” would do: window stays open but user never sees it.
-   * (True hide is unavailable on Electrobun’s BrowserWindow today.)
-   */
   function parkIndicatorWindow(win: BrowserWindow) {
     try {
       win.setAlwaysOnTop(false)
