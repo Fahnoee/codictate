@@ -8,6 +8,7 @@ import type {
   SettingsPane,
   ShortcutId,
   UpdateCheckState,
+  RecordingIndicatorMode,
 } from '../shared/types'
 
 import type { AppStatus } from '../shared/types'
@@ -141,6 +142,12 @@ export async function setMaxRecordingDuration(
   maxRecordingDuration: number
 ): Promise<boolean> {
   return rpc.request.setMaxRecordingDuration({ maxRecordingDuration })
+}
+
+export async function setRecordingIndicatorMode(
+  mode: RecordingIndicatorMode
+): Promise<boolean> {
+  return rpc.request.setRecordingIndicatorMode({ mode })
 }
 
 export function copyDebugLog(): void {

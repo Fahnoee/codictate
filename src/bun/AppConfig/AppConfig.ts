@@ -2,7 +2,11 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
 import { SHORTCUT_OPTIONS } from '../../shared/shortcut-options'
-import type { ShortcutId, AppSettings } from '../../shared/types'
+import type {
+  ShortcutId,
+  AppSettings,
+  RecordingIndicatorMode,
+} from '../../shared/types'
 import {
   isValidTranscriptionLanguageId,
   whisperCodeForTranscriptionId,
@@ -34,6 +38,21 @@ function isValidShortcutId(id: unknown): id is ShortcutId {
   return typeof id === 'string' && VALID_SHORTCUT_IDS.has(id as ShortcutId)
 }
 
+const RECORDING_INDICATOR_MODES = new Set<RecordingIndicatorMode>([
+  'off',
+  'always',
+  'when-active',
+])
+
+function isValidRecordingIndicatorMode(
+  id: unknown
+): id is RecordingIndicatorMode {
+  return (
+    typeof id === 'string' &&
+    RECORDING_INDICATOR_MODES.has(id as RecordingIndicatorMode)
+  )
+}
+
 export class AppConfig {
   // Name is the primary key — stable across device list reorders.
   // Index is stored as a fallback for configs that predate name storage.
@@ -51,6 +70,7 @@ export class AppConfig {
   private translateDefaultLanguageId: string | null
   /** False until first-run onboarding finishes; true for legacy configs missing the key. */
   private onboardingCompleted: boolean
+  private recordingIndicatorMode: RecordingIndicatorMode
 
   constructor() {
     this.audioDeviceName = null
@@ -64,6 +84,7 @@ export class AppConfig {
     this.translateToEnglish = false
     this.translateDefaultLanguageId = null
     this.onboardingCompleted = false
+    this.recordingIndicatorMode = 'when-active'
   }
 
   // --- Persistence ---
@@ -125,6 +146,12 @@ export class AppConfig {
         this.onboardingCompleted = true
       }
       if (
+        raw.recordingIndicatorMode !== undefined &&
+        isValidRecordingIndicatorMode(raw.recordingIndicatorMode)
+      ) {
+        this.recordingIndicatorMode = raw.recordingIndicatorMode
+      }
+      if (
         this.shortcutHoldOnlyId !== null &&
         this.shortcutHoldOnlyId === this.shortcutId
       ) {
@@ -154,6 +181,7 @@ export class AppConfig {
       translateToEnglish: this.translateToEnglish,
       translateDefaultLanguageId: this.translateDefaultLanguageId,
       onboardingCompleted: this.onboardingCompleted,
+      recordingIndicatorMode: this.recordingIndicatorMode,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -317,11 +345,25 @@ export class AppConfig {
       translateToEnglish: this.translateToEnglish,
       translateDefaultLanguageId: this.translateDefaultLanguageId,
       onboardingCompleted: this.onboardingCompleted,
+      recordingIndicatorMode: this.recordingIndicatorMode,
     }
   }
 
   public async setOnboardingCompleted(completed: boolean): Promise<void> {
     this.onboardingCompleted = completed
     await this.save()
+  }
+
+  public getRecordingIndicatorMode(): RecordingIndicatorMode {
+    return this.recordingIndicatorMode
+  }
+
+  public async setRecordingIndicatorMode(
+    mode: RecordingIndicatorMode
+  ): Promise<boolean> {
+    if (!RECORDING_INDICATOR_MODES.has(mode)) return false
+    this.recordingIndicatorMode = mode
+    await this.save()
+    return true
   }
 }

@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "motion/react";
 import type { AppStatus } from "../../../shared/types";
+import { VoiceActivityCore } from "../Common/VoiceActivityCore";
 
 export function RecordingOrb({ status }: { status: AppStatus }) {
   const isRecording = status === "recording";
@@ -56,58 +57,7 @@ export function RecordingOrb({ status }: { status: AppStatus }) {
             : { duration: 0.3 }
         }
       >
-        {isTranscribing ? (
-          <motion.div
-            className="flex items-end gap-[2px] h-4"
-            initial="hidden"
-            animate="visible"
-          >
-            {[0, 1, 2].map((i) => (
-              <motion.span
-                key={i}
-                className="block w-[3px] rounded-full bg-amber-400/60"
-                animate={{ scaleY: [0.3, 1, 0.3] }}
-                transition={{
-                  duration: 0.9,
-                  repeat: Infinity,
-                  delay: i * 0.15,
-                  ease: "easeInOut",
-                }}
-                style={{ height: "100%", transformOrigin: "bottom" }}
-              />
-            ))}
-          </motion.div>
-        ) : (
-          <motion.div
-            className="flex items-end gap-[2px] h-4"
-            animate={isRecording ? "active" : "idle"}
-          >
-            {[0.45, 0.75, 1, 0.7, 0.5].map((base, i) => (
-              <motion.span
-                key={i}
-                className={`block w-[3px] rounded-full transition-colors duration-500 ${isRecording ? "bg-red-400/70" : "bg-white/15"}`}
-                animate={
-                  isRecording
-                    ? {
-                        scaleY: [base, base * 0.4 + 0.1, base + 0.2, base],
-                      }
-                    : { scaleY: base }
-                }
-                transition={
-                  isRecording
-                    ? {
-                        duration: 0.6 + i * 0.07,
-                        repeat: Infinity,
-                        delay: i * 0.1,
-                        ease: "easeInOut",
-                      }
-                    : { duration: 0.4 }
-                }
-                style={{ height: "100%", transformOrigin: "bottom" }}
-              />
-            ))}
-          </motion.div>
-        )}
+        <VoiceActivityCore status={status} variant="ready" />
       </motion.div>
     </div>
   );

@@ -22,10 +22,10 @@
     "release:canary": "scripts/release.sh canary",
     "release:stable": "scripts/release.sh stable",
     "release:bridge-migration": "bash scripts/release-bridge-migration.sh",
-    "build:stable": "bun run build:native && vite build && electrobun build --env=stable",
-    "build:canary": "bun run build:native && vite build && electrobun build --env=canary",
+    "build:stable": "bun run build:native && vite build && bun run scripts/duplicate-dist-assets-for-indicator.ts && electrobun build --env=stable",
+    "build:canary": "bun run build:native && vite build && bun run scripts/duplicate-dist-assets-for-indicator.ts && electrobun build --env=canary",
     "build:native": "src/scripts/build-swift.sh",
-    "start": "bun run build:native && vite build && electrobun dev",
+    "start": "bun run build:native && vite build && bun run scripts/duplicate-dist-assets-for-indicator.ts && electrobun dev",
     "postbuild": "chmod +x build/dev-macos-arm64/react-tailwind-vite-dev.app/Contents/Resources/native-helpers/KeyListener build/dev-macos-arm64/react-tailwind-vite-dev.app/Contents/Resources/native-helpers/MicRecorder"
   },
   "dependencies": {

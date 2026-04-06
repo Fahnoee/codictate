@@ -119,6 +119,8 @@ interface WindowDeps {
   onTriggerPermissionPrompt?: (pane: SettingsPane) => void
   /** If set, the main window cannot be resized smaller than this (enforced on resize). */
   windowMinSize?: MainWindowMinSize
+  /** Indicator window should resync when the user changes recording indicator mode in Settings. */
+  onRecordingIndicatorModeChanged?: () => void
 }
 
 export interface WindowHandle {
@@ -272,6 +274,14 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           await deps.appConfig.setOnboardingCompleted(true)
           rpc.send.updateSettings(deps.appConfig.getSettings())
           return true
+        },
+        setRecordingIndicatorMode: async ({ mode }) => {
+          const ok = await deps.appConfig.setRecordingIndicatorMode(mode)
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+            deps.onRecordingIndicatorModeChanged?.()
+          }
+          return ok
         },
       },
       messages: {

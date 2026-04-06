@@ -9,6 +9,10 @@ import { setupApplicationMenu } from './setup-menu'
 import { setupTray } from './setup-tray'
 import { setupRecording } from './setup-recording'
 import { setupWindow } from './setup-window'
+import {
+  setupIndicatorWindow,
+  type IndicatorWindowHandle,
+} from './setup-indicator-window'
 import { setOnAutoDisable } from './utils/logger'
 import { modelManager } from './utils/whisper/model-manager'
 import { WHISPER_MODELS, getTranslateReadiness } from '../shared/whisper-models'
@@ -64,7 +68,23 @@ async function getMainViewUrl(): Promise<string> {
   return 'views://mainview/index.html'
 }
 
+async function getIndicatorViewUrl(): Promise<string> {
+  const channel = await Updater.localInfo.channel()
+  if (channel === 'dev') {
+    try {
+      await fetch(DEV_SERVER_URL, { method: 'HEAD' })
+      return `${DEV_SERVER_URL}/indicator.html`
+    } catch {
+      console.log(
+        "Vite dev server not running — indicator uses bundled views (run 'bun run dev:hmr' for HMR)."
+      )
+    }
+  }
+  return 'views://indicator/index.html'
+}
+
 const url = await getMainViewUrl()
+const indicatorUrl = await getIndicatorViewUrl()
 
 export const UserAppConfig = new AppConfig()
 await UserAppConfig.load()
@@ -102,8 +122,13 @@ let trayHandlers: ReturnType<typeof setupTray>
 // eslint-disable-next-line prefer-const
 let menuHandlers: ReturnType<typeof setupApplicationMenu>
 
+const indicatorRef: { current: IndicatorWindowHandle | null } = {
+  current: null,
+}
+
 const pushInitialState = () => {
   win.send.updateStatus({ status: 'ready' })
+  indicatorRef.current?.onAppStatus('ready')
   win.send.updatePermissions(currentPermissions)
   // Push availability for all non-bundled models so the UI knows what's downloaded.
   for (const model of WHISPER_MODELS) {
@@ -196,6 +221,14 @@ const win = setupWindow({
         break
     }
   },
+  onRecordingIndicatorModeChanged: () => {
+    indicatorRef.current?.onConfigChanged()
+  },
+})
+
+indicatorRef.current = setupIndicatorWindow({
+  url: indicatorUrl,
+  getSettings: () => UserAppConfig.getSettings(),
 })
 
 // When the 5-minute auto-disable fires, sync the state back to AppConfig and
@@ -268,6 +301,7 @@ function startKeyboard(options?: { requestListenAccessOnLaunch?: boolean }) {
     trayHandlers,
     (status) => {
       win.send.updateStatus({ status })
+      indicatorRef.current?.onAppStatus(status)
     },
     (nativePermissions) => {
       currentPermissions = {
@@ -336,6 +370,7 @@ startDeviceMonitor()
 Electrobun.events.on('before-quit', () => {
   trayHandlers.setTrayIdle()
   keyboard.stop()
+  indicatorRef.current?.dispose()
 })
 process.on('exit', () => keyboard.stop())
 

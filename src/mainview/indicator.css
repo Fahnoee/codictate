@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: transparent;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  #root {
+    pointer-events: none;
+  }
+}

@@ -18,6 +18,9 @@ export type SettingsPane =
 /** Dev-only: force the main window to a root screen (Vite `import.meta.env.DEV`). */
 export type DevAppPreviewRoute = 'permissions' | 'onboarding' | 'ready'
 
+/** Floating recording / activity chip on the desktop (separate transparent window). */
+export type RecordingIndicatorMode = 'off' | 'always' | 'when-active'
+
 export type ShortcutId =
   | 'option-space'
   | 'right-option'
@@ -55,6 +58,8 @@ export interface AppSettings {
   translateDefaultLanguageId: string | null
   /** First-run product onboarding after permissions; persisted, false until completed. */
   onboardingCompleted: boolean
+  /** Desktop activity indicator: off, always visible, or only while recording/transcribing. */
+  recordingIndicatorMode: RecordingIndicatorMode
 }
 
 export interface PermissionState {
@@ -101,6 +106,10 @@ export type WebviewRPCType = {
         response: boolean
       }
       completeOnboarding: { params: {}; response: boolean }
+      setRecordingIndicatorMode: {
+        params: { mode: RecordingIndicatorMode }
+        response: boolean
+      }
     }
     messages: {
       logBun: { msg: string }
@@ -131,6 +140,20 @@ export type WebviewRPCType = {
         error?: string
       }
       updateModelAvailability: { modelId: string; available: boolean }
+    }
+  }>
+}
+
+/** RPC for the small indicator `BrowserWindow` (bun → webview only). */
+export type IndicatorWebviewRPCType = {
+  bun: RPCSchema<{
+    requests: {}
+    messages: {}
+  }>
+  webview: RPCSchema<{
+    requests: {}
+    messages: {
+      updateStatus: { status: AppStatus }
     }
   }>
 }

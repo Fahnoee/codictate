@@ -14,6 +14,8 @@ export default {
     copy: {
       "dist/index.html": "views/mainview/index.html",
       "dist/assets": "views/mainview/assets",
+      "dist/indicator.html": "views/indicator/index.html",
+      "dist/indicator-bundled-assets": "views/indicator/assets",
       // -- custom key listener
       "src/bun/utils/keyboard/KeyListener": "native-helpers/KeyListener",
       "src/bun/utils/audio/MicRecorder": "native-helpers/MicRecorder",

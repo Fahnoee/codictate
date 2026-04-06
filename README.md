@@ -36,6 +36,8 @@ Go to [**Releases**](https://github.com/EmilLykke/codictate/releases) and downlo
 
 First time installing? See the **[step-by-step installation guide](docs/INSTALL.md)** with screenshots for every step.
 
+Using **[AeroSpace](https://github.com/nikitabobko/AeroSpace)**? See **[docs/AEROSPACE.md](docs/AEROSPACE.md)** for a small `on-window-detected` snippet so the recording HUD stays floating and does not steal focus/workspace behavior from your main Codictate rules.
+
 The short version:
 
 1. Download the `.dmg` from [Releases](https://github.com/EmilLykke/codictate/releases)
@@ -73,6 +75,8 @@ bun run dev
 # Dev with HMR
 bun run dev:hmr
 ```
+
+**Recording indicator (second window, Vite entry, Electrobun packaging):** see **[docs/RECORDING_INDICATOR.md](docs/RECORDING_INDICATOR.md)** for architecture and the “why” behind each step.
 
 ### Dev requirements
 
