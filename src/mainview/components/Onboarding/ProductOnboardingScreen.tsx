@@ -4,10 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppSettings, AppStatus, ShortcutId } from "../../../shared/types";
-import {
-  dictationShortcutBehaviorHint,
-  shortcutDisplayKeys,
-} from "../../../shared/shortcut-options";
+import { shortcutDisplayKeys } from "../../../shared/shortcut-options";
 import {
   completeOnboarding,
   setShortcut,
@@ -19,6 +16,7 @@ import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 import { ShortcutPicker } from "../Settings/ShortcutPicker";
 import { LanguagePicker } from "../Settings/LanguagePicker";
 import { RecordingOrb } from "../Ready/RecordingOrb";
+import { DictationShortcutBehaviorSummary } from "../Common/DictationShortcutBehaviorSummary";
 import { Kbd } from "../Common/Kbd";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -175,9 +173,9 @@ export function ProductOnboardingScreen({
                 value={shortcutDraft}
                 onChange={setShortcutDraft}
               />
-              <p className="text-[17px] text-white/44 text-center mt-3 leading-relaxed">
-                {dictationShortcutBehaviorHint()}
-              </p>
+              <div className="mt-3">
+                <DictationShortcutBehaviorSummary variant="onboarding" />
+              </div>
               <button
                 type="button"
                 disabled={busy}
@@ -248,10 +246,13 @@ export function ProductOnboardingScreen({
                 <br />
                 And start dictating.
               </p>
-              <p className="text-[18px] text-white/50 text-center mb-4 leading-relaxed">
-                {dictationShortcutBehaviorHint()} Codictate transcribes when you
-                stop.
-              </p>
+              <div className="mb-4 mt-1 flex flex-col items-center gap-3 text-center">
+                <DictationShortcutBehaviorSummary variant="onboarding" />
+                <p className="max-w-[min(320px,100%)] font-sans text-[17px] leading-relaxed text-white/46">
+                  Codictate pastes transcription when you finish (release or
+                  second tap).
+                </p>
+              </div>
 
               <div className="mb-3 grid w-full max-w-md grid-cols-[5rem_minmax(0,1fr)] items-center gap-x-4 mx-auto">
                 <div className="flex h-20 justify-center">

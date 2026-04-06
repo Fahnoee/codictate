@@ -36,7 +36,10 @@ export type ShortcutId =
   | 'control-enter'
 
 export interface AppSettings {
+  /** Tap-or-hold smart shortcut (500ms gate + second press to stop). */
   shortcutId: ShortcutId
+  /** Optional push-to-talk only; release always ends recording. Must differ from `shortcutId`. */
+  shortcutHoldOnlyId: ShortcutId | null
   maxRecordingDuration: number
   debugMode: boolean
   /** `auto` = language detection; else a key from `TRANSCRIPTION_LANGUAGE_OPTIONS`. */
@@ -74,7 +77,13 @@ export type WebviewRPCType = {
       getPermissions: { params: {}; response: PermissionState }
       getDevices: { params: {}; response: DeviceInfo }
       getSettings: { params: {}; response: AppSettings }
-      setSettings: { params: { shortcutId?: ShortcutId }; response: boolean }
+      setSettings: {
+        params: {
+          shortcutId?: ShortcutId
+          shortcutHoldOnlyId?: ShortcutId | null
+        }
+        response: boolean
+      }
       setAudioDevice: { params: { index: number }; response: boolean }
       setDebugMode: { params: { enabled: boolean }; response: boolean }
       setTranscriptionLanguage: {

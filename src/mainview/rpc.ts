@@ -105,6 +105,12 @@ export async function setShortcut(shortcutId: ShortcutId): Promise<boolean> {
   return rpc.request.setSettings({ shortcutId })
 }
 
+export async function setShortcutHoldOnly(
+  shortcutHoldOnlyId: ShortcutId | null
+): Promise<boolean> {
+  return rpc.request.setSettings({ shortcutHoldOnlyId })
+}
+
 export async function setAudioDevice(index: number): Promise<boolean> {
   return rpc.request.setAudioDevice({ index })
 }

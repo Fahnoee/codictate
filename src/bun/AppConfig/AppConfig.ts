@@ -40,6 +40,7 @@ export class AppConfig {
   private audioDeviceName: string | null
   private audioDevice: number
   private shortcutId: ShortcutId
+  private shortcutHoldOnlyId: ShortcutId | null
   // debugMode is never persisted as true — always written as false on disk
   // so logging never silently resumes after a restart.
   private debugMode: boolean
@@ -55,6 +56,7 @@ export class AppConfig {
     this.audioDeviceName = null
     this.audioDevice = 0
     this.shortcutId = 'option-space'
+    this.shortcutHoldOnlyId = null
     this.debugMode = false
     this.transcriptionLanguageId = 'auto'
     this.maxRecordingDuration = DEFAULT_MAX_RECORDING_DURATION_SECONDS
@@ -75,6 +77,15 @@ export class AppConfig {
       if (raw.audioDevice !== undefined) this.audioDevice = raw.audioDevice
       if (raw.shortcutId !== undefined && isValidShortcutId(raw.shortcutId)) {
         this.shortcutId = raw.shortcutId
+      }
+      if (
+        raw.shortcutHoldOnlyId !== undefined &&
+        raw.shortcutHoldOnlyId !== null &&
+        isValidShortcutId(raw.shortcutHoldOnlyId)
+      ) {
+        this.shortcutHoldOnlyId = raw.shortcutHoldOnlyId
+      } else if (raw.shortcutHoldOnlyId === null) {
+        this.shortcutHoldOnlyId = null
       }
       if (
         raw.transcriptionLanguageId !== undefined &&
@@ -113,6 +124,12 @@ export class AppConfig {
         // Key absent: existing installs before this field shipped
         this.onboardingCompleted = true
       }
+      if (
+        this.shortcutHoldOnlyId !== null &&
+        this.shortcutHoldOnlyId === this.shortcutId
+      ) {
+        this.shortcutHoldOnlyId = null
+      }
     } catch {
       // No config file yet, defaults will be used
     }
@@ -130,6 +147,7 @@ export class AppConfig {
       audioDeviceName: this.audioDeviceName,
       audioDevice: this.audioDevice,
       shortcutId: this.shortcutId,
+      shortcutHoldOnlyId: this.shortcutHoldOnlyId,
       transcriptionLanguageId: this.transcriptionLanguageId,
       maxRecordingDuration: this.maxRecordingDuration,
       whisperModelId: this.whisperModelId,
@@ -176,6 +194,17 @@ export class AppConfig {
   public async setShortcutId(id: ShortcutId): Promise<boolean> {
     if (!VALID_SHORTCUT_IDS.has(id)) return false
     this.shortcutId = id
+    if (this.shortcutHoldOnlyId === id) this.shortcutHoldOnlyId = null
+    await this.save()
+    return true
+  }
+
+  public async setShortcutHoldOnlyId(id: ShortcutId | null): Promise<boolean> {
+    if (id !== null) {
+      if (!VALID_SHORTCUT_IDS.has(id)) return false
+      if (id === this.shortcutId) return false
+    }
+    this.shortcutHoldOnlyId = id
     await this.save()
     return true
   }
@@ -198,6 +227,10 @@ export class AppConfig {
 
   public getShortcutId(): ShortcutId {
     return this.shortcutId
+  }
+
+  public getShortcutHoldOnlyId(): ShortcutId | null {
+    return this.shortcutHoldOnlyId
   }
 
   public async setDebugMode(enabled: boolean) {
@@ -276,6 +309,7 @@ export class AppConfig {
   public getSettings(): AppSettings {
     return {
       shortcutId: this.shortcutId,
+      shortcutHoldOnlyId: this.shortcutHoldOnlyId,
       maxRecordingDuration: this.maxRecordingDuration,
       debugMode: this.debugMode,
       transcriptionLanguageId: this.transcriptionLanguageId,

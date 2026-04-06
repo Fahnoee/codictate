@@ -28,17 +28,26 @@ function DropdownChevron({ open }: { open: boolean }) {
   );
 }
 
-export function ShortcutPicker({
+export function HoldOnlyShortcutPicker({
   value,
+  mainShortcutId,
   onChange,
 }: {
-  value: ShortcutId;
-  onChange: (id: ShortcutId) => void;
+  value: ShortcutId | null;
+  mainShortcutId: ShortcutId;
+  onChange: (id: ShortcutId | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const selected = shortcutOptionById(value);
-  const groups = shortcutOptionsGrouped();
+  const groups = shortcutOptionsGrouped()
+    .map(({ family, title, options }) => ({
+      family,
+      title,
+      options: options.filter((o) => o.id !== mainShortcutId),
+    }))
+    .filter((g) => g.options.length > 0);
+
+  const selected = value !== null ? shortcutOptionById(value) : null;
 
   useEffect(() => {
     if (!open) return;
@@ -56,7 +65,7 @@ export function ShortcutPicker({
     };
   }, [open]);
 
-  const pick = (id: ShortcutId) => {
+  const pick = (id: ShortcutId | null) => {
     onChange(id);
     setOpen(false);
   };
@@ -70,22 +79,32 @@ export function ShortcutPicker({
         aria-haspopup="listbox"
         className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-white/11 bg-white/4 px-4 py-3 text-left transition-colors duration-200 hover:border-white/16 hover:bg-white/6"
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {selected.keys.map((key, i) => (
-            <span
-              key={`${selected.id}-t-${i}`}
-              className="flex items-center gap-1.5"
-            >
-              {i > 0 && (
-                <span className="text-[18px] font-light text-white/40">+</span>
-              )}
-              <Kbd>{key}</Kbd>
+        {selected ? (
+          <>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              {selected.keys.map((key, i) => (
+                <span
+                  key={`${selected.id}-t-${i}`}
+                  className="flex items-center gap-1.5"
+                >
+                  {i > 0 && (
+                    <span className="text-[18px] font-light text-white/40">
+                      +
+                    </span>
+                  )}
+                  <Kbd>{key}</Kbd>
+                </span>
+              ))}
+            </div>
+            <span className="hidden min-w-0 max-w-[min(11rem,46%)] shrink-0 truncate text-right font-sans text-[17px] text-white/62 sm:block sm:text-[19px]">
+              {selected.label}
             </span>
-          ))}
-        </div>
-        <span className="hidden min-w-0 max-w-[min(11rem,46%)] shrink-0 truncate text-right font-sans text-[17px] text-white/62 sm:block sm:text-[19px]">
-          {selected.label}
-        </span>
+          </>
+        ) : (
+          <span className="min-w-0 flex-1 font-sans text-[17px] text-white/56 sm:text-[19px]">
+            None
+          </span>
+        )}
         <DropdownChevron open={open} />
       </motion.button>
 
@@ -98,13 +117,53 @@ export function ShortcutPicker({
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             className="absolute left-0 right-0 top-[calc(100%+8px)] z-120 overflow-hidden rounded-xl border border-white/12 bg-[#141416]/98 shadow-[0_16px_48px_rgba(0,0,0,0.55)] ring-1 ring-white/8 backdrop-blur-md"
             role="listbox"
-            aria-label="Choose shortcut"
+            aria-label="Choose hold-only shortcut"
           >
             <div
               className="max-h-[min(340px,52vh)] overflow-y-auto overflow-x-hidden pr-1 [scrollbar-gutter:stable]"
               style={{ scrollbarWidth: "thin" }}
             >
               <div className="flex flex-col gap-4 p-1">
+                <div>
+                  <motion.button
+                    type="button"
+                    role="option"
+                    aria-selected={value === null}
+                    onClick={() => pick(null)}
+                    className={`relative flex w-full cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-200 ${
+                      value === null
+                        ? "border-white/26 bg-white/6"
+                        : "border-white/11 bg-white/4 hover:border-white/16 hover:bg-white/6"
+                    }`}
+                  >
+                    <div
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors duration-200"
+                      style={{
+                        borderColor:
+                          value === null
+                            ? "rgba(255,255,255,0.38)"
+                            : "rgba(255,255,255,0.18)",
+                      }}
+                    >
+                      {value === null ? (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 500,
+                            damping: 25,
+                          }}
+                          className="h-2 w-2 rounded-full bg-white/60"
+                        />
+                      ) : null}
+                    </div>
+                    <span className="font-sans text-[17px] text-white/72 sm:text-[19px]">
+                      None
+                    </span>
+                  </motion.button>
+                </div>
+
                 {groups.map(({ family, title, options }) => (
                   <div key={family}>
                     <p className="px-3 pb-1.5 pt-2 text-[14px] font-medium uppercase tracking-wider text-white/36">

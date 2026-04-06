@@ -123,9 +123,13 @@ const onApplyUpdate = async () => {
   }
 }
 
+/** Main window cannot shrink below this (see `setup-window` resize clamp). */
+const MAIN_WINDOW_MIN_SIZE = { width: 800, height: 660 } as const
+
 const win = setupWindow({
   url,
   appConfig: UserAppConfig,
+  windowMinSize: MAIN_WINDOW_MIN_SIZE,
   getCurrentDevices: () => devices,
   getPermissions: async () => {
     currentPermissions = {
@@ -142,6 +146,7 @@ const win = setupWindow({
     keyboard.stop()
     keyboard = startKeyboard()
     win.send.updateSettings(UserAppConfig.getSettings())
+    trayHandlers.refreshTrayShortcutTitle()
   },
   onAudioDeviceSelected: async (index) => {
     const deviceName = devices[index.toString()]

@@ -11,11 +11,13 @@ import {
 } from './utils/transcription-language-actions'
 import { modelManager } from './utils/whisper/model-manager'
 import { getTranslateReadiness } from '../shared/whisper-models'
+import { shortcutTrayCompact } from '../shared/shortcut-options'
 
 export type TrayHandlers = {
   setTrayIdle: () => void
   setTrayRecording: () => void
   setTrayTranscribing: () => void
+  refreshTrayShortcutTitle: () => void
   rebuildDeviceMenu: (selectedDevice: number) => void
   updateDeviceList: (
     newDevices: Record<string, string>,
@@ -120,9 +122,22 @@ export const setupTray = (
     }
   }
 
+  const shortcutsMenuLabel = () => {
+    const h = appConfig.getShortcutId()
+    const hold = appConfig.getShortcutHoldOnlyId()
+    const main = shortcutTrayCompact(h)
+    if (hold === null) return `Shortcuts: ${main}`
+    return `Shortcuts: ${main} · ${shortcutTrayCompact(hold)}`
+  }
+
   const buildMenu = (selectedDevice: number) => [
     { type: 'normal' as const, label: 'Open Codictate', action: 'open' },
     { type: 'normal' as const, label: 'Settings', action: 'open-settings' },
+    {
+      type: 'normal' as const,
+      label: shortcutsMenuLabel(),
+      action: 'noop',
+    },
     { type: 'divider' as const },
     updateMenuItem(),
     { type: 'divider' as const },
@@ -149,15 +164,8 @@ export const setupTray = (
 
   tray.setMenu(buildMenu(appConfig.resolveAudioDevice(devices)))
 
-  let listeningDotsTimer: ReturnType<typeof setInterval> | null = null
-  let listeningDotPhase = 0
-
-  const clearListeningDots = () => {
-    if (listeningDotsTimer !== null) {
-      clearInterval(listeningDotsTimer)
-      listeningDotsTimer = null
-    }
-  }
+  type TrayVisualState = 'idle' | 'recording' | 'transcribing'
+  let trayVisualState: TrayVisualState = 'idle'
 
   tray.on('tray-clicked', (e) => {
     const event = e as { data: { action: string } }
@@ -170,6 +178,7 @@ export const setupTray = (
     if (event.data.action === 'check-for-update') onCheckForUpdate?.()
     if (event.data.action === 'restart-to-update') onApplyUpdate?.()
     if (event.data.action === 'quit') onQuit()
+    if (event.data.action === 'noop') return
     handleDeviceAction(
       event.data.action,
       appConfig,
@@ -222,24 +231,23 @@ export const setupTray = (
     }
   })
 
+  tray.setTitle('')
+
   return {
+    refreshTrayShortcutTitle: () => {
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+      if (trayVisualState === 'idle') tray.setTitle('')
+    },
     setTrayIdle: () => {
-      clearListeningDots()
+      trayVisualState = 'idle'
       tray.setTitle('')
     },
     setTrayRecording: () => {
-      clearListeningDots()
-      listeningDotPhase = 0
-      const tick = () => {
-        listeningDotPhase = (listeningDotPhase + 1) % 4
-        const dots = '.'.repeat(listeningDotPhase)
-        tray.setTitle(` Listening${dots}`)
-      }
-      tick()
-      listeningDotsTimer = setInterval(tick, 450)
+      trayVisualState = 'recording'
+      tray.setTitle(' Listening...')
     },
     setTrayTranscribing: () => {
-      clearListeningDots()
+      trayVisualState = 'transcribing'
       tray.setTitle(' …')
     },
     rebuildDeviceMenu: (selectedDevice: number) =>

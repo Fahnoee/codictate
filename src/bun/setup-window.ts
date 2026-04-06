@@ -16,6 +16,76 @@ import {
   resolveTranslateModelId,
 } from '../shared/whisper-models'
 
+export type MainWindowMinSize = { width: number; height: number }
+
+/** Wait this long after the last resize before clamping (avoids fighting each drag frame). */
+const MAIN_WINDOW_MIN_SIZE_DEBOUNCE_MS = 48
+
+type ResizeEventPayload = {
+  id: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function getResizeEventData(event: unknown): ResizeEventPayload | undefined {
+  const data = (event as { data?: ResizeEventPayload }).data
+  return data
+}
+
+/**
+ * Electrobun does not expose NSWindow minSize. Clamping synchronously on every
+ * `resize` event fights the user's drag. We debounce so the window only snaps
+ * to the minimum after resizing pauses; valid sizes clear any pending clamp.
+ */
+function attachMainWindowMinimumSize(
+  win: BrowserWindow,
+  min: MainWindowMinSize
+) {
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearDebounce = () => {
+    if (debounceTimer !== null) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
+    }
+  }
+
+  const applyClamp = () => {
+    debounceTimer = null
+    if (!BrowserWindow.getById(win.id)) return
+    if (win.isFullScreen()) return
+    const frame = win.getFrame()
+    const w = Math.round(frame.width)
+    const h = Math.round(frame.height)
+    const nw = Math.max(w, min.width)
+    const nh = Math.max(h, min.height)
+    if (nw !== w || nh !== h) {
+      win.setFrame(frame.x, frame.y, nw, nh)
+    }
+  }
+
+  win.on('resize', (event: unknown) => {
+    const data = getResizeEventData(event)
+    if (!data || data.id !== win.id) return
+    if (win.isFullScreen()) {
+      clearDebounce()
+      return
+    }
+
+    const w = Math.round(data.width)
+    const h = Math.round(data.height)
+    if (w >= min.width && h >= min.height) {
+      clearDebounce()
+      return
+    }
+
+    clearDebounce()
+    debounceTimer = setTimeout(applyClamp, MAIN_WINDOW_MIN_SIZE_DEBOUNCE_MS)
+  })
+}
+
 const SYSTEM_PREFS_URLS: Record<SettingsPane, string> = {
   inputMonitoring:
     'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
@@ -47,6 +117,8 @@ interface WindowDeps {
   onTranslateChanged?: () => void
   /** Show one native permission prompt for the given privacy pane (sequential onboarding). */
   onTriggerPermissionPrompt?: (pane: SettingsPane) => void
+  /** If set, the main window cannot be resized smaller than this (enforced on resize). */
+  windowMinSize?: MainWindowMinSize
 }
 
 export interface WindowHandle {
@@ -94,10 +166,19 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           }
         },
         getSettings: async () => deps.appConfig.getSettings(),
-        setSettings: async ({ shortcutId }) => {
-          if (shortcutId === undefined) return false
-          const ok = await deps.appConfig.setShortcutId(shortcutId)
-          if (!ok) return false
+        setSettings: async ({ shortcutId, shortcutHoldOnlyId }) => {
+          if (shortcutId === undefined && shortcutHoldOnlyId === undefined) {
+            return false
+          }
+          if (shortcutId !== undefined) {
+            const ok = await deps.appConfig.setShortcutId(shortcutId)
+            if (!ok) return false
+          }
+          if (shortcutHoldOnlyId !== undefined) {
+            const ok =
+              await deps.appConfig.setShortcutHoldOnlyId(shortcutHoldOnlyId)
+            if (!ok) return false
+          }
           await deps.onSettingsChanged()
           return true
         },
@@ -245,13 +326,17 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
   })
 
   function createMainWindow() {
-    return new BrowserWindow({
+    const win = new BrowserWindow({
       title: 'Codictate',
       url: deps.url,
       frame: { width: 900, height: 700, x: 200, y: 200 },
       titleBarStyle: 'hiddenInset',
       rpc,
     })
+    if (deps.windowMinSize) {
+      attachMainWindowMinimumSize(win, deps.windowMinSize)
+    }
+    return win
   }
 
   let mainWindow = createMainWindow()

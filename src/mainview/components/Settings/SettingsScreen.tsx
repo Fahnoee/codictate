@@ -15,7 +15,10 @@ import type {
   ShortcutId,
   UpdateCheckState,
 } from "../../../shared/types";
-import { dictationShortcutBehaviorHint } from "../../../shared/shortcut-options";
+import {
+  dictationShortcutBehaviorHint,
+  dictationHoldOnlyShortcutHint,
+} from "../../../shared/shortcut-options";
 import { TRANSCRIPTION_LANGUAGE_HINT } from "../../../shared/transcription-languages";
 import { formatRecordingDurationLabel } from "../../../shared/recording-duration-presets";
 import {
@@ -30,6 +33,7 @@ import {
 } from "../../../shared/whisper-models";
 import {
   setShortcut,
+  setShortcutHoldOnly,
   setAudioDevice,
   fetchDevices,
   fetchSettings,
@@ -48,6 +52,7 @@ import {
 } from "../../rpc";
 import { appEvents } from "../../app-events";
 import { ShortcutPicker } from "./ShortcutPicker";
+import { HoldOnlyShortcutPicker } from "./HoldOnlyShortcutPicker";
 import { DevicePicker } from "./DevicePicker";
 import { LanguagePicker } from "./LanguagePicker";
 import { RecordingLimitPicker } from "./RecordingLimitPicker";
@@ -370,8 +375,23 @@ export function SettingsScreen({
       queryClient.setQueryData(["settings"], {
         ...settings,
         shortcutId: id,
+        shortcutHoldOnlyId:
+          settings.shortcutHoldOnlyId === id
+            ? null
+            : settings.shortcutHoldOnlyId,
       });
       await setShortcut(id);
+    },
+    [queryClient, settings],
+  );
+
+  const handleHoldOnlyShortcutChange = useCallback(
+    async (id: ShortcutId | null) => {
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        shortcutHoldOnlyId: id,
+      });
+      await setShortcutHoldOnly(id);
     },
     [queryClient, settings],
   );
@@ -612,7 +632,7 @@ export function SettingsScreen({
           className="mb-8"
         >
           <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Activation Shortcut
+            Main shortcut
           </h2>
           <ShortcutPicker
             value={settings.shortcutId}
@@ -621,6 +641,17 @@ export function SettingsScreen({
           <p className={settingsHelperClass}>
             {dictationShortcutBehaviorHint()} Fn and Control combos vary by
             keyboard; macOS may use Fn for system shortcuts.
+          </p>
+          <h3 className="text-[15px] text-white/40 font-medium uppercase tracking-wider mt-6 mb-2">
+            Hold-only shortcut
+          </h3>
+          <HoldOnlyShortcutPicker
+            value={settings.shortcutHoldOnlyId}
+            mainShortcutId={settings.shortcutId}
+            onChange={handleHoldOnlyShortcutChange}
+          />
+          <p className={settingsHelperClass}>
+            {dictationHoldOnlyShortcutHint()}
           </p>
         </motion.div>
 

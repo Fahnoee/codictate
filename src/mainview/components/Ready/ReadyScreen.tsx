@@ -5,7 +5,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppStatus, AppSettings, DeviceInfo } from "../../../shared/types";
 import {
-  dictationShortcutBehaviorHint,
+  dictationReadyPttHintAfter,
+  dictationReadyPttHintBefore,
+  dictationReadyStartHintAfterTap,
+  dictationReadyStartHintBeforeHold,
+  dictationReadyStartHintBetween,
+  dictationShortcutSummaryHoldBody,
+  dictationShortcutSummaryHoldTitle,
+  dictationShortcutSummaryTapBody,
+  dictationShortcutSummaryTapTitle,
   shortcutDisplayKeys,
 } from "../../../shared/shortcut-options";
 import {
@@ -29,6 +37,74 @@ import {
 } from "../Settings/LanguagePicker";
 import { TranscriptionLanguageHintButton } from "../Settings/TranscriptionLanguageHintButton";
 import { RecordingOrb } from "./RecordingOrb";
+
+/** Keeps hint copy in a narrow measure so it stays near the keys, not full column width. */
+const READY_SHORTCUT_HINT_MAX_W_CLASS = "max-w-[min(100%,15.5rem)]";
+
+function UnderlinedDictationTerm({
+  label,
+  tooltipText,
+}: {
+  label: string;
+  tooltipText: string;
+}) {
+  return (
+    <InstantTooltip text={tooltipText}>
+      <span
+        tabIndex={0}
+        className="cursor-help font-medium text-white/72 underline decoration-white/45 decoration-2 underline-offset-[5px] transition-[color,text-decoration-color] hover:text-white/88 hover:decoration-white/70 focus-visible:rounded-sm focus-visible:text-white/88 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+      >
+        {label}
+      </span>
+    </InstantTooltip>
+  );
+}
+
+function DictationPttHoldHint({ className = "" }: { className?: string }) {
+  return (
+    <p
+      className={`mt-3 ${READY_SHORTCUT_HINT_MAX_W_CLASS} text-[15px] leading-snug text-white/50 font-sans text-balance text-center md:text-left ${className}`}
+    >
+      {dictationReadyPttHintBefore}
+      <UnderlinedDictationTerm
+        label={dictationShortcutSummaryHoldTitle}
+        tooltipText={dictationShortcutSummaryHoldBody}
+      />
+      {dictationReadyPttHintAfter}
+    </p>
+  );
+}
+
+function DictationShortcutStartHint({
+  align,
+  className = "",
+}: {
+  align: "center" | "end";
+  className?: string;
+}) {
+  const alignClass =
+    align === "end"
+      ? "text-center md:text-right md:ml-auto"
+      : "mx-auto text-center";
+
+  return (
+    <p
+      className={`mt-3 ${READY_SHORTCUT_HINT_MAX_W_CLASS} text-[15px] leading-snug text-white/50 font-sans text-balance ${alignClass} ${className}`}
+    >
+      {dictationReadyStartHintBeforeHold}
+      <UnderlinedDictationTerm
+        label={dictationShortcutSummaryHoldTitle}
+        tooltipText={dictationShortcutSummaryHoldBody}
+      />
+      {dictationReadyStartHintBetween}
+      <UnderlinedDictationTerm
+        label={dictationShortcutSummaryTapTitle}
+        tooltipText={dictationShortcutSummaryTapBody}
+      />
+      {dictationReadyStartHintAfterTap}
+    </p>
+  );
+}
 
 export function ReadyScreen({
   status,
@@ -163,6 +239,11 @@ export function ReadyScreen({
     [settings?.shortcutId],
   );
 
+  const holdDisplayKeys = useMemo(() => {
+    const id = settings?.shortcutHoldOnlyId;
+    return id ? shortcutDisplayKeys(id) : null;
+  }, [settings?.shortcutHoldOnlyId]);
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none">
       <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
@@ -213,25 +294,76 @@ export function ReadyScreen({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: isIdle ? 1 : 0.2, y: 0 }}
         transition={{ delay: 0.18, duration: 0.35 }}
-        className="flex flex-col items-center gap-5"
+        className="flex w-full max-w-full flex-col items-center gap-5"
       >
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            {displayKeys.map((key, i) => (
-              <span key={key} className="flex items-center gap-1.5">
-                {i > 0 && (
-                  <span className="text-white/42 text-[18px] font-light">
-                    +
-                  </span>
-                )}
-                <Kbd>{key}</Kbd>
+        {holdDisplayKeys ? (
+          <div className="mx-auto grid w-full max-w-[min(1080px,calc(100%-1.5rem))] grid-cols-1 gap-7 md:grid-cols-2 md:items-start md:gap-x-0 md:gap-y-0">
+            <div className="flex flex-col items-center gap-2 md:items-end md:pr-7">
+              <div className="flex w-full max-w-full flex-col gap-2 items-center md:w-fit md:items-end">
+                <span className="text-center text-[12px] font-semibold uppercase tracking-[0.12em] text-white/70 md:text-right">
+                  Main shortcut
+                </span>
+                <div className="flex flex-nowrap items-center justify-center gap-1.5 md:justify-end">
+                  {displayKeys.map((key, i) => (
+                    <span
+                      key={`main-${i}-${key}`}
+                      className="flex items-center gap-1.5"
+                    >
+                      {i > 0 && (
+                        <span className="text-white/42 text-[18px] font-light">
+                          +
+                        </span>
+                      )}
+                      <Kbd>{key}</Kbd>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <DictationShortcutStartHint align="end" />
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-white/10 pt-5 md:border-t-0 md:border-l md:border-white/12 md:pl-7 md:pt-0">
+              <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-white/70">
+                Push-to-talk
               </span>
-            ))}
+              <div className="flex flex-nowrap items-center gap-1.5">
+                {holdDisplayKeys.map((key, i) => (
+                  <span
+                    key={`hold-${i}-${key}`}
+                    className="flex items-center gap-1.5"
+                  >
+                    {i > 0 && (
+                      <span className="text-white/42 text-[18px] font-light">
+                        +
+                      </span>
+                    )}
+                    <Kbd>{key}</Kbd>
+                  </span>
+                ))}
+              </div>
+              <DictationPttHoldHint />
+            </div>
           </div>
-          <span className="text-[18px] text-white/50 font-sans text-center max-w-[320px] leading-snug">
-            {dictationShortcutBehaviorHint()}
-          </span>
-        </div>
+        ) : (
+          <div className="mx-auto flex w-full max-w-[min(440px,calc(100%-1.5rem))] flex-col items-center gap-6">
+            <div className="flex items-center gap-1.5">
+              {displayKeys.map((key, i) => (
+                <span
+                  key={`main-${i}-${key}`}
+                  className="flex items-center gap-1.5"
+                >
+                  {i > 0 && (
+                    <span className="text-white/42 text-[18px] font-light">
+                      +
+                    </span>
+                  )}
+                  <Kbd>{key}</Kbd>
+                </span>
+              ))}
+            </div>
+            <DictationShortcutStartHint align="center" />
+          </div>
+        )}
 
         <div className="w-px h-3 bg-white/14" />
 
