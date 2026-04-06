@@ -15,6 +15,7 @@ import type {
   ShortcutId,
   UpdateCheckState,
 } from "../../../shared/types";
+import { dictationShortcutBehaviorHint } from "../../../shared/shortcut-options";
 import { TRANSCRIPTION_LANGUAGE_HINT } from "../../../shared/transcription-languages";
 import { formatRecordingDurationLabel } from "../../../shared/recording-duration-presets";
 import {
@@ -364,9 +365,16 @@ export function SettingsScreen({
     triggerApplyUpdate();
   }, []);
 
-  const handleShortcutChange = useCallback(async (id: ShortcutId) => {
-    await setShortcut(id);
-  }, []);
+  const handleShortcutChange = useCallback(
+    async (id: ShortcutId) => {
+      queryClient.setQueryData(["settings"], {
+        ...settings,
+        shortcutId: id,
+      });
+      await setShortcut(id);
+    },
+    [queryClient, settings],
+  );
 
   const handleDebugToggle = useCallback(async () => {
     await setDebugMode(!settings.debugMode);
@@ -611,8 +619,8 @@ export function SettingsScreen({
             onChange={handleShortcutChange}
           />
           <p className={settingsHelperClass}>
-            The keyboard shortcut used to start and stop dictation. Changing it
-            takes effect immediately.
+            {dictationShortcutBehaviorHint()} Fn and Control combos vary by
+            keyboard; macOS may use Fn for system shortcuts.
           </p>
         </motion.div>
 

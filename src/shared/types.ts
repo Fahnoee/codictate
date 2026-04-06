@@ -24,6 +24,16 @@ export type ShortcutId =
   | 'option-f1'
   | 'option-f2'
   | 'option-enter'
+  | 'fn-space'
+  | 'fn-f1'
+  | 'fn-f2'
+  | 'fn-enter'
+  /** Fn / Globe key alone (hardware varies; may not work on all keyboards). */
+  | 'fn-globe'
+  | 'control-space'
+  | 'control-f1'
+  | 'control-f2'
+  | 'control-enter'
 
 export interface AppSettings {
   shortcutId: ShortcutId
@@ -64,7 +74,7 @@ export type WebviewRPCType = {
       getPermissions: { params: {}; response: PermissionState }
       getDevices: { params: {}; response: DeviceInfo }
       getSettings: { params: {}; response: AppSettings }
-      setSettings: { params: { shortcutId: ShortcutId }; response: boolean }
+      setSettings: { params: { shortcutId?: ShortcutId }; response: boolean }
       setAudioDevice: { params: { index: number }; response: boolean }
       setDebugMode: { params: { enabled: boolean }; response: boolean }
       setTranscriptionLanguage: {

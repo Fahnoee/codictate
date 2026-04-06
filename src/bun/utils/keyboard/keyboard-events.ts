@@ -25,6 +25,9 @@ export const KeyCode: Record<number, string> = {
   61: 'rightOption',
   59: 'control',
   62: 'rightControl',
+  /** Fn / globe (hardware-dependent; Swift also handles 179). */
+  63: 'fn',
+  179: 'globeFn',
 } as const
 
 // Reverse lookup: name → keycode number (e.g. Key.space === 49)
@@ -32,12 +35,238 @@ export const Key = Object.fromEntries(
   Object.entries(KeyCode).map(([code, name]) => [name, Number(code)])
 ) as Record<string, number>
 
+/** Physical keycodes that can represent Fn / Globe on different Macs. */
+export const FN_PHYSICAL_KEYCODES = [Key.fn, Key.globeFn] as const
+
 export interface KeyEvent {
   keycode: number
   option: boolean
   command: boolean
   control: boolean
   shift: boolean
+  fn: boolean
+  keyDown: boolean
+  isRepeat: boolean
+}
+
+export function normalizeKeyEvent(
+  parsed: Record<string, unknown>
+): KeyEvent | null {
+  if (typeof parsed.keycode !== 'number') return null
+  return {
+    keycode: parsed.keycode,
+    option: Boolean(parsed.option),
+    command: Boolean(parsed.command),
+    control: Boolean(parsed.control),
+    shift: Boolean(parsed.shift),
+    fn: Boolean(parsed.fn),
+    keyDown: parsed.keyDown !== false,
+    isRepeat: Boolean(parsed.isRepeat),
+  }
+}
+
+/** Swallow rule payload for KeyListener (modifiers must match exactly). */
+export function serializeSwallowRule(r: KeyEvent): Record<string, unknown> {
+  return {
+    keycode: r.keycode,
+    option: r.option,
+    command: r.command,
+    control: r.control,
+    shift: r.shift,
+    fn: r.fn,
+  }
+}
+
+function rule(
+  keycode: number,
+  mods: Partial<
+    Pick<KeyEvent, 'option' | 'command' | 'control' | 'shift' | 'fn'>
+  >
+): KeyEvent {
+  return {
+    keycode,
+    option: mods.option ?? false,
+    command: mods.command ?? false,
+    control: mods.control ?? false,
+    shift: mods.shift ?? false,
+    fn: mods.fn ?? false,
+    keyDown: true,
+    isRepeat: false,
+  }
+}
+
+function optionComboToggleDown(trigger: number) {
+  return (e: KeyEvent) =>
+    e.keyDown && e.keycode === trigger && e.option && !e.isRepeat
+}
+
+function optionComboHoldDown(trigger: number) {
+  return optionComboToggleDown(trigger)
+}
+
+function optionComboHoldUp(trigger: number) {
+  return (e: KeyEvent) =>
+    (!e.keyDown && e.keycode === trigger) ||
+    ((e.keycode === Key.option || e.keycode === Key.rightOption) && !e.option)
+}
+
+function fnComboToggleDown(trigger: number) {
+  return (e: KeyEvent) =>
+    e.keyDown && e.keycode === trigger && e.fn && !e.isRepeat
+}
+
+function fnComboHoldDown(trigger: number) {
+  return fnComboToggleDown(trigger)
+}
+
+function fnComboHoldUp(trigger: number) {
+  return (e: KeyEvent) =>
+    (!e.keyDown && e.keycode === trigger) ||
+    (FN_PHYSICAL_KEYCODES.includes(
+      e.keycode as (typeof FN_PHYSICAL_KEYCODES)[number]
+    ) &&
+      !e.fn)
+}
+
+function controlComboToggleDown(trigger: number) {
+  return (e: KeyEvent) =>
+    e.keyDown && e.keycode === trigger && e.control && !e.isRepeat
+}
+
+function controlComboHoldDown(trigger: number) {
+  return controlComboToggleDown(trigger)
+}
+
+function controlComboHoldUp(trigger: number) {
+  return (e: KeyEvent) =>
+    (!e.keyDown && e.keycode === trigger) ||
+    ((e.keycode === Key.control || e.keycode === Key.rightControl) &&
+      !e.control)
+}
+
+export interface ShortcutDefinition {
+  displayKeys: string[]
+  /** One or more swallow rules (e.g. Fn uses two hardware keycodes). */
+  swallowRules: KeyEvent[]
+  matchesToggleDown: (e: KeyEvent) => boolean
+  matchesHoldDown: (e: KeyEvent) => boolean
+  matchesHoldUp: (e: KeyEvent) => boolean
+}
+
+export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
+  'option-space': {
+    displayKeys: ['⌥', 'Space'],
+    swallowRules: [rule(Key.space, { option: true })],
+    matchesToggleDown: optionComboToggleDown(Key.space),
+    matchesHoldDown: optionComboHoldDown(Key.space),
+    matchesHoldUp: optionComboHoldUp(Key.space),
+  },
+  'right-option': {
+    displayKeys: ['Right ⌥'],
+    swallowRules: [rule(Key.rightOption, { option: true })],
+    matchesToggleDown: (e) =>
+      e.keyDown && e.keycode === Key.rightOption && e.option,
+    matchesHoldDown: (e) =>
+      e.keyDown && e.keycode === Key.rightOption && e.option,
+    matchesHoldUp: (e) => e.keycode === Key.rightOption && !e.keyDown,
+  },
+  'option-f1': {
+    displayKeys: ['⌥', 'F1'],
+    swallowRules: [rule(Key.f1, { option: true })],
+    matchesToggleDown: optionComboToggleDown(Key.f1),
+    matchesHoldDown: optionComboHoldDown(Key.f1),
+    matchesHoldUp: optionComboHoldUp(Key.f1),
+  },
+  'option-f2': {
+    displayKeys: ['⌥', 'F2'],
+    swallowRules: [rule(Key.f2, { option: true })],
+    matchesToggleDown: optionComboToggleDown(Key.f2),
+    matchesHoldDown: optionComboHoldDown(Key.f2),
+    matchesHoldUp: optionComboHoldUp(Key.f2),
+  },
+  'option-enter': {
+    displayKeys: ['⌥', 'Enter'],
+    swallowRules: [rule(Key.enter, { option: true })],
+    matchesToggleDown: optionComboToggleDown(Key.enter),
+    matchesHoldDown: optionComboHoldDown(Key.enter),
+    matchesHoldUp: optionComboHoldUp(Key.enter),
+  },
+  'fn-space': {
+    displayKeys: ['Fn', 'Space'],
+    swallowRules: [rule(Key.space, { fn: true })],
+    matchesToggleDown: fnComboToggleDown(Key.space),
+    matchesHoldDown: fnComboHoldDown(Key.space),
+    matchesHoldUp: fnComboHoldUp(Key.space),
+  },
+  'fn-f1': {
+    displayKeys: ['Fn', 'F1'],
+    swallowRules: [rule(Key.f1, { fn: true })],
+    matchesToggleDown: fnComboToggleDown(Key.f1),
+    matchesHoldDown: fnComboHoldDown(Key.f1),
+    matchesHoldUp: fnComboHoldUp(Key.f1),
+  },
+  'fn-f2': {
+    displayKeys: ['Fn', 'F2'],
+    swallowRules: [rule(Key.f2, { fn: true })],
+    matchesToggleDown: fnComboToggleDown(Key.f2),
+    matchesHoldDown: fnComboHoldDown(Key.f2),
+    matchesHoldUp: fnComboHoldUp(Key.f2),
+  },
+  'fn-enter': {
+    displayKeys: ['Fn', 'Enter'],
+    swallowRules: [rule(Key.enter, { fn: true })],
+    matchesToggleDown: fnComboToggleDown(Key.enter),
+    matchesHoldDown: fnComboHoldDown(Key.enter),
+    matchesHoldUp: fnComboHoldUp(Key.enter),
+  },
+  'fn-globe': {
+    displayKeys: ['Fn'],
+    swallowRules: [rule(Key.fn, { fn: true }), rule(Key.globeFn, { fn: true })],
+    matchesToggleDown: (e) =>
+      FN_PHYSICAL_KEYCODES.includes(
+        e.keycode as (typeof FN_PHYSICAL_KEYCODES)[number]
+      ) &&
+      e.fn &&
+      e.keyDown,
+    matchesHoldDown: (e) =>
+      FN_PHYSICAL_KEYCODES.includes(
+        e.keycode as (typeof FN_PHYSICAL_KEYCODES)[number]
+      ) &&
+      e.fn &&
+      e.keyDown,
+    matchesHoldUp: (e) =>
+      FN_PHYSICAL_KEYCODES.includes(
+        e.keycode as (typeof FN_PHYSICAL_KEYCODES)[number]
+      ) && !e.keyDown,
+  },
+  'control-space': {
+    displayKeys: ['⌃', 'Space'],
+    swallowRules: [rule(Key.space, { control: true })],
+    matchesToggleDown: controlComboToggleDown(Key.space),
+    matchesHoldDown: controlComboHoldDown(Key.space),
+    matchesHoldUp: controlComboHoldUp(Key.space),
+  },
+  'control-f1': {
+    displayKeys: ['⌃', 'F1'],
+    swallowRules: [rule(Key.f1, { control: true })],
+    matchesToggleDown: controlComboToggleDown(Key.f1),
+    matchesHoldDown: controlComboHoldDown(Key.f1),
+    matchesHoldUp: controlComboHoldUp(Key.f1),
+  },
+  'control-f2': {
+    displayKeys: ['⌃', 'F2'],
+    swallowRules: [rule(Key.f2, { control: true })],
+    matchesToggleDown: controlComboToggleDown(Key.f2),
+    matchesHoldDown: controlComboHoldDown(Key.f2),
+    matchesHoldUp: controlComboHoldUp(Key.f2),
+  },
+  'control-enter': {
+    displayKeys: ['⌃', 'Enter'],
+    swallowRules: [rule(Key.enter, { control: true })],
+    matchesToggleDown: controlComboToggleDown(Key.enter),
+    matchesHoldDown: controlComboHoldDown(Key.enter),
+    matchesHoldUp: controlComboHoldUp(Key.enter),
+  },
 }
 
 export interface PermissionStatus {
@@ -51,75 +280,11 @@ export type StartKeyboardListenerOptions = {
   requestListenAccessOnLaunch?: boolean
 }
 
-export interface ShortcutDefinition {
-  displayKeys: string[]
-  swallowRule: KeyEvent
-  isMatch: (e: KeyEvent) => boolean
-}
-
-export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
-  'option-space': {
-    displayKeys: ['⌥', 'Space'],
-    swallowRule: {
-      keycode: Key.space,
-      option: true,
-      command: false,
-      control: false,
-      shift: false,
-    },
-    isMatch: (e) => e.keycode === Key.space && e.option,
-  },
-  'right-option': {
-    displayKeys: ['Right ⌥'],
-    swallowRule: {
-      keycode: Key.rightOption,
-      option: true,
-      command: false,
-      control: false,
-      shift: false,
-    },
-    isMatch: (e) => e.keycode === Key.rightOption && e.option,
-  },
-  'option-f1': {
-    displayKeys: ['⌥', 'F1'],
-    swallowRule: {
-      keycode: Key.f1,
-      option: true,
-      command: false,
-      control: false,
-      shift: false,
-    },
-    isMatch: (e) => e.keycode === Key.f1 && e.option,
-  },
-  'option-f2': {
-    displayKeys: ['⌥', 'F2'],
-    swallowRule: {
-      keycode: Key.f2,
-      option: true,
-      command: false,
-      control: false,
-      shift: false,
-    },
-    isMatch: (e) => e.keycode === Key.f2 && e.option,
-  },
-  'option-enter': {
-    displayKeys: ['⌥', 'Enter'],
-    swallowRule: {
-      keycode: Key.enter,
-      option: true,
-      command: false,
-      control: false,
-      shift: false,
-    },
-    isMatch: (e) => e.keycode === Key.enter && e.option,
-  },
-}
-
 /** NSPasteboard + Cmd+V — Unicode-safe in bundled apps (no pbcopy / shell locale). */
 let keyListenerPasteText: ((text: string) => void) | null = null
 
 export function startKeyboardListener(
-  onKeyDown: (event: KeyEvent) => void,
+  onKeyEvent: (event: KeyEvent) => void,
   swallowRules: KeyEvent[] = [],
   onPermissions?: (status: PermissionStatus) => void,
   options?: StartKeyboardListenerOptions
@@ -131,7 +296,7 @@ export function startKeyboardListener(
   const requestListenAccessOnLaunch =
     options?.requestListenAccessOnLaunch !== false
   const config = JSON.stringify({
-    swallow: swallowRules,
+    swallow: swallowRules.map(serializeSwallowRule),
     requestListenAccessOnLaunch,
   })
   proc.stdin.write(config + '\n')
@@ -200,28 +365,28 @@ export function startKeyboardListener(
 
       buffer += decoder.decode(value, { stream: true })
 
-      // Process every complete newline-terminated JSON line.
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
 
       for (const line of lines) {
         if (!line.trim()) continue
         try {
-          const parsed = JSON.parse(line)
+          const parsed = JSON.parse(line) as Record<string, unknown>
 
           if (typeof parsed.keycode === 'number') {
-            onKeyDown(parsed as KeyEvent)
+            const ev = normalizeKeyEvent(parsed)
+            if (ev) onKeyEvent(ev)
           } else if (parsed.status === 'started') {
             onPermissions?.({
-              inputMonitoring: parsed.inputMonitoring ?? false,
-              microphone: parsed.microphone ?? false,
-              accessibility: parsed.accessibility ?? false,
+              inputMonitoring: parsed.inputMonitoring === true,
+              microphone: parsed.microphone === true,
+              accessibility: parsed.accessibility === true,
             })
           } else if (parsed.type === 'permissions') {
             onPermissions?.({
-              inputMonitoring: parsed.inputMonitoring ?? false,
-              microphone: parsed.microphone ?? false,
-              accessibility: parsed.accessibility ?? false,
+              inputMonitoring: parsed.inputMonitoring === true,
+              microphone: parsed.microphone === true,
+              accessibility: parsed.accessibility === true,
             })
           } else if (parsed.type === 'paste_result') {
             log('paste', 'CGEvent paste result from KeyListener', {
@@ -234,13 +399,15 @@ export function startKeyboardListener(
             console.log('[KeyListener] Event tap attached')
           } else if (parsed.type === 'tap_create_failed') {
             console.error(
-              `[KeyListener] ${parsed.message ?? 'tap_create_failed'}`
+              `[KeyListener] ${String(parsed.message ?? 'tap_create_failed')}`
             )
           } else if (
             parsed.status === 'permission_requested' ||
             parsed.status === 'error'
           ) {
-            console.error(`[KeyListener] ${parsed.message ?? parsed.status}`)
+            console.error(
+              `[KeyListener] ${String(parsed.message ?? parsed.status)}`
+            )
           }
         } catch {
           // Ignore malformed output lines from the native binary

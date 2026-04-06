@@ -328,7 +328,10 @@ setTimeout(pushInitialState, 500)
 
 startDeviceMonitor()
 
-Electrobun.events.on('before-quit', () => keyboard.stop())
+Electrobun.events.on('before-quit', () => {
+  trayHandlers.setTrayIdle()
+  keyboard.stop()
+})
 process.on('exit', () => keyboard.stop())
 
 async function checkForUpdates() {

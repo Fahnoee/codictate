@@ -1,6 +1,7 @@
 import { homedir } from 'os'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
+import { SHORTCUT_OPTIONS } from '../../shared/shortcut-options'
 import type { ShortcutId, AppSettings } from '../../shared/types'
 import {
   isValidTranscriptionLanguageId,
@@ -24,6 +25,14 @@ const CONFIG_DIR = join(
   'codictate'
 )
 const CONFIG_PATH = join(CONFIG_DIR, 'app-config.json')
+
+const VALID_SHORTCUT_IDS = new Set<ShortcutId>(
+  SHORTCUT_OPTIONS.map((o) => o.id)
+)
+
+function isValidShortcutId(id: unknown): id is ShortcutId {
+  return typeof id === 'string' && VALID_SHORTCUT_IDS.has(id as ShortcutId)
+}
 
 export class AppConfig {
   // Name is the primary key — stable across device list reorders.
@@ -64,7 +73,9 @@ export class AppConfig {
       if (raw.audioDeviceName !== undefined)
         this.audioDeviceName = raw.audioDeviceName
       if (raw.audioDevice !== undefined) this.audioDevice = raw.audioDevice
-      if (raw.shortcutId !== undefined) this.shortcutId = raw.shortcutId
+      if (raw.shortcutId !== undefined && isValidShortcutId(raw.shortcutId)) {
+        this.shortcutId = raw.shortcutId
+      }
       if (
         raw.transcriptionLanguageId !== undefined &&
         isValidTranscriptionLanguageId(raw.transcriptionLanguageId)
@@ -162,9 +173,11 @@ export class AppConfig {
     return this.audioDevice
   }
 
-  public async setShortcutId(id: ShortcutId) {
+  public async setShortcutId(id: ShortcutId): Promise<boolean> {
+    if (!VALID_SHORTCUT_IDS.has(id)) return false
     this.shortcutId = id
     await this.save()
+    return true
   }
 
   public async setTranscriptionLanguageId(id: string): Promise<boolean> {

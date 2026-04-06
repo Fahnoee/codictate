@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppSettings, AppStatus, ShortcutId } from "../../../shared/types";
-import { shortcutDisplayKeys } from "../../../shared/shortcut-options";
+import {
+  dictationShortcutBehaviorHint,
+  shortcutDisplayKeys,
+} from "../../../shared/shortcut-options";
 import {
   completeOnboarding,
   setShortcut,
@@ -74,12 +77,18 @@ export function ProductOnboardingScreen({
     }
   }, [step]);
 
+  useEffect(() => {
+    setShortcutDraft(settings.shortcutId);
+  }, [settings.shortcutId]);
+
   const handleShortcutContinue = useCallback(async () => {
     setBusy(true);
     try {
       const ok = await setShortcut(shortcutDraft);
-      if (ok) mergeSettings({ shortcutId: shortcutDraft });
-      setStep(1);
+      if (ok) {
+        mergeSettings({ shortcutId: shortcutDraft });
+        setStep(1);
+      }
     } finally {
       setBusy(false);
     }
@@ -160,12 +169,15 @@ export function ProductOnboardingScreen({
               className="w-full"
             >
               <p className="text-[20px] text-white/55 text-center mb-4 leading-snug">
-                Choose the shortcut you&apos;ll hold to dictate from any app.
+                Choose a shortcut to dictate from any app.
               </p>
               <ShortcutPicker
                 value={shortcutDraft}
                 onChange={setShortcutDraft}
               />
+              <p className="text-[17px] text-white/44 text-center mt-3 leading-relaxed">
+                {dictationShortcutBehaviorHint()}
+              </p>
               <button
                 type="button"
                 disabled={busy}
@@ -237,8 +249,8 @@ export function ProductOnboardingScreen({
                 And start dictating.
               </p>
               <p className="text-[18px] text-white/50 text-center mb-4 leading-relaxed">
-                Press to record, press again to stop, and Codictate will
-                transcribe for you.
+                {dictationShortcutBehaviorHint()} Codictate transcribes when you
+                stop.
               </p>
 
               <div className="mb-3 grid w-full max-w-md grid-cols-[5rem_minmax(0,1fr)] items-center gap-x-4 mx-auto">

@@ -6,7 +6,6 @@ import type {
   DeviceInfo,
   PermissionState,
   SettingsPane,
-  ShortcutId,
   UpdateCheckState,
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
@@ -34,7 +33,7 @@ interface WindowDeps {
   /** Returns the live device list — called on every request so it's always fresh. */
   getCurrentDevices: () => Record<string, string>
   getPermissions: () => Promise<PermissionState>
-  onSettingsChanged: (shortcutId: ShortcutId) => Promise<void>
+  onSettingsChanged: () => Promise<void>
   /** Called when the user selects a device from the settings screen. Should persist the choice and update menus. */
   onAudioDeviceSelected?: (index: number) => Promise<void>
   onTriggerUpdateCheck?: () => void
@@ -96,8 +95,10 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         },
         getSettings: async () => deps.appConfig.getSettings(),
         setSettings: async ({ shortcutId }) => {
-          await deps.appConfig.setShortcutId(shortcutId)
-          await deps.onSettingsChanged(shortcutId)
+          if (shortcutId === undefined) return false
+          const ok = await deps.appConfig.setShortcutId(shortcutId)
+          if (!ok) return false
+          await deps.onSettingsChanged()
           return true
         },
         setAudioDevice: async ({ index }) => {

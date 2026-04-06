@@ -149,6 +149,16 @@ export const setupTray = (
 
   tray.setMenu(buildMenu(appConfig.resolveAudioDevice(devices)))
 
+  let listeningDotsTimer: ReturnType<typeof setInterval> | null = null
+  let listeningDotPhase = 0
+
+  const clearListeningDots = () => {
+    if (listeningDotsTimer !== null) {
+      clearInterval(listeningDotsTimer)
+      listeningDotsTimer = null
+    }
+  }
+
   tray.on('tray-clicked', (e) => {
     const event = e as { data: { action: string } }
     if (event.data.action === 'open') {
@@ -213,9 +223,25 @@ export const setupTray = (
   })
 
   return {
-    setTrayIdle: () => tray.setTitle(''),
-    setTrayRecording: () => tray.setTitle(' ⏺'),
-    setTrayTranscribing: () => tray.setTitle(' …'),
+    setTrayIdle: () => {
+      clearListeningDots()
+      tray.setTitle('')
+    },
+    setTrayRecording: () => {
+      clearListeningDots()
+      listeningDotPhase = 0
+      const tick = () => {
+        listeningDotPhase = (listeningDotPhase + 1) % 4
+        const dots = '.'.repeat(listeningDotPhase)
+        tray.setTitle(` Listening${dots}`)
+      }
+      tick()
+      listeningDotsTimer = setInterval(tick, 450)
+    },
+    setTrayTranscribing: () => {
+      clearListeningDots()
+      tray.setTitle(' …')
+    },
     rebuildDeviceMenu: (selectedDevice: number) =>
       tray.setMenu(buildMenu(selectedDevice)),
     updateDeviceList: (

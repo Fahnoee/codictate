@@ -20,14 +20,17 @@ if let line = readLine(),
     }
 }
 
-func shouldSwallow(keycode: Int64, option: Bool, command: Bool, control: Bool, shift: Bool) -> Bool {
+func shouldSwallow(
+    keycode: Int64, option: Bool, command: Bool, control: Bool, shift: Bool, fn: Bool
+) -> Bool {
     for rule in swallowRules {
         if let ruleKeycode = rule["keycode"] as? Int,
             Int64(ruleKeycode) == keycode,
             (rule["option"] as? Bool ?? false) == option,
             (rule["command"] as? Bool ?? false) == command,
             (rule["control"] as? Bool ?? false) == control,
-            (rule["shift"] as? Bool ?? false) == shift
+            (rule["shift"] as? Bool ?? false) == shift,
+            (rule["fn"] as? Bool ?? false) == fn
         {
             return true
         }
@@ -60,6 +63,7 @@ var globalTap: CFMachPort? = nil
 var tapRunLoopSource: CFRunLoopSource? = nil
 
 let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+    | CGEventMask(1 << CGEventType.keyUp.rawValue)
     | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
 
 func micAuthorized() -> Bool {
@@ -137,6 +141,8 @@ let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .mai
 sigtermSource.setEventHandler { disableAndExit() }
 sigtermSource.resume()
 
+/// Emits keyDown/keyUp and flagsChanged (press + release) so the host can keep a shortcut
+/// held and detect release; hold-vs-tap timing uses `DICTATION_HOLD_QUALIFY_MS` in TypeScript.
 func callback(
     _ proxy: CGEventTapProxy, _ type: CGEventType, _ event: CGEvent,
     _ refcon: UnsafeMutableRawPointer?
@@ -146,35 +152,65 @@ func callback(
         return nil
     }
 
-    if type == .keyDown || type == .flagsChanged {
-        let keycode = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
-        let option = flags.contains(.maskAlternate)
-        let command = flags.contains(.maskCommand)
-        let control = flags.contains(.maskControl)
-        let shift = flags.contains(.maskShift)
+    let flags = event.flags
+    let option = flags.contains(.maskAlternate)
+    let command = flags.contains(.maskCommand)
+    let control = flags.contains(.maskControl)
+    let shift = flags.contains(.maskShift)
+    let fn = flags.contains(.maskSecondaryFn)
 
-        if type == .flagsChanged {
-            let isPress: Bool
-            switch keycode {
-            case 58, 61: isPress = option
-            case 56, 60: isPress = shift
-            case 55, 54: isPress = command
-            case 59, 62: isPress = control
-            default: return Unmanaged.passRetained(event)
-            }
-            if !isPress { return Unmanaged.passRetained(event) }
+    if type == .keyDown || type == .keyUp {
+        let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+        let keyDown = type == .keyDown
+        let isRepeat: Bool
+        if type == .keyDown {
+            isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        } else {
+            isRepeat = false
         }
 
         let swallow = shouldSwallow(
             keycode: keycode, option: option, command: command,
-            control: control, shift: shift)
+            control: control, shift: shift, fn: fn)
 
-        let keyMsg = "{\"keycode\": \(keycode), \"option\": \(option), \"command\": \(command), \"control\": \(control), \"shift\": \(shift)}"
+        let keyMsg =
+            "{\"keycode\": \(keycode), \"option\": \(option), \"command\": \(command), \"control\": \(control), \"shift\": \(shift), \"fn\": \(fn), \"keyDown\": \(keyDown), \"isRepeat\": \(isRepeat)}"
+        outputQueue.async { print(keyMsg); fflush(stdout) }
+
+        if swallow { return nil }
+        return Unmanaged.passRetained(event)
+    }
+
+    if type == .flagsChanged {
+        let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+
+        // Modifier keys: emit on both press and release. `keyDown` = that modifier bit is on after this event.
+        let modKeyDown: Bool?
+        switch keycode {
+        case 58, 61: modKeyDown = option
+        case 56, 60: modKeyDown = shift
+        case 55, 54: modKeyDown = command
+        case 59, 62: modKeyDown = control
+        case 63, 179: modKeyDown = fn
+        default:
+            modKeyDown = nil
+        }
+
+        guard let kd = modKeyDown else {
+            return Unmanaged.passRetained(event)
+        }
+
+        let swallow = shouldSwallow(
+            keycode: keycode, option: option, command: command,
+            control: control, shift: shift, fn: fn)
+
+        let keyMsg =
+            "{\"keycode\": \(keycode), \"option\": \(option), \"command\": \(command), \"control\": \(control), \"shift\": \(shift), \"fn\": \(fn), \"keyDown\": \(kd), \"isRepeat\": false}"
         outputQueue.async { print(keyMsg); fflush(stdout) }
 
         if swallow { return nil }
     }
+
     return Unmanaged.passRetained(event)
 }
 

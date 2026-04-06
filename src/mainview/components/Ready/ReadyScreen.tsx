@@ -4,7 +4,10 @@ import { useMemo, useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppStatus, AppSettings, DeviceInfo } from "../../../shared/types";
-import { shortcutDisplayKeys } from "../../../shared/shortcut-options";
+import {
+  dictationShortcutBehaviorHint,
+  shortcutDisplayKeys,
+} from "../../../shared/shortcut-options";
 import {
   setTranscriptionLanguage,
   setTranslateToEnglish,
@@ -225,8 +228,8 @@ export function ReadyScreen({
               </span>
             ))}
           </div>
-          <span className="text-[18px] text-white/50 font-sans">
-            Start / stop recording
+          <span className="text-[18px] text-white/50 font-sans text-center max-w-[320px] leading-snug">
+            {dictationShortcutBehaviorHint()}
           </span>
         </div>
 
