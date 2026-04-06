@@ -129,11 +129,18 @@ export function setupIndicatorWindow(deps: {
    * `passthrough: false`: native mouse passthrough broke WKWebView painting;
    * click-through uses `pointer-events: none` in `indicator.css`.
    */
-  function createWindow(): BrowserWindow {
+  function createWindow(
+    initialFrame: {
+      x: number
+      y: number
+      width: number
+      height: number
+    } = bottomRightFrame()
+  ): BrowserWindow {
     return new BrowserWindow({
       title: 'Codictate indicator',
       url: deps.url,
-      frame: bottomRightFrame(),
+      frame: initialFrame,
       titleBarStyle: 'hidden',
       transparent: true,
       passthrough: false,
