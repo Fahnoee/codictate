@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppSettings, AppStatus, ShortcutId } from "../../../shared/types";
@@ -16,7 +16,7 @@ import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 import { ShortcutPicker } from "../Settings/ShortcutPicker";
 import { LanguagePicker } from "../Settings/LanguagePicker";
 import { RecordingOrb } from "../Ready/RecordingOrb";
-import { DictationShortcutBehaviorSummary } from "../Common/DictationShortcutBehaviorSummary";
+import { DictationShortcutStartHint } from "../Common/DictationShortcutStartHint";
 import { Kbd } from "../Common/Kbd";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -121,7 +121,10 @@ export function ProductOnboardingScreen({
     }
   }, [mergeSettings]);
 
-  const keys = shortcutDisplayKeys(shortcutDraft);
+  const displayKeys = useMemo(
+    () => shortcutDisplayKeys(shortcutDraft),
+    [shortcutDraft],
+  );
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none px-6 py-10">
@@ -173,8 +176,23 @@ export function ProductOnboardingScreen({
                 value={shortcutDraft}
                 onChange={setShortcutDraft}
               />
-              <div className="mt-3">
-                <DictationShortcutBehaviorSummary variant="onboarding" />
+              <div className="mx-auto mt-6 flex w-full max-w-[min(440px,calc(100%-1.5rem))] flex-col items-center gap-6">
+                <div className="flex items-center gap-1.5">
+                  {displayKeys.map((key, i) => (
+                    <span
+                      key={`onb-main-${i}-${key}`}
+                      className="flex items-center gap-1.5"
+                    >
+                      {i > 0 && (
+                        <span className="text-[18px] font-light text-white/42">
+                          +
+                        </span>
+                      )}
+                      <Kbd>{key}</Kbd>
+                    </span>
+                  ))}
+                </div>
+                <DictationShortcutStartHint align="center" />
               </div>
               <button
                 type="button"
@@ -231,29 +249,27 @@ export function ProductOnboardingScreen({
               transition={{ duration: 0.3, ease: EASE }}
               className="w-full flex flex-col items-center"
             >
-              <p className="text-[20px] text-white/55 text-center mb-1 leading-snug">
-                Click in the box below, use your shortcut:{" "}
-                <span className="inline-flex items-center gap-1 align-middle">
-                  {keys.map((k, idx) => (
-                    <span key={k} className="inline-flex items-center gap-1">
-                      {idx > 0 && (
-                        <span className="text-white/35 text-[17px]">+</span>
+              <p className="mb-3 text-center text-[20px] leading-snug text-white/55">
+                Click in the box below, use your shortcut:
+              </p>
+              <div className="mx-auto mb-4 flex w-full max-w-[min(440px,calc(100%-1.5rem))] flex-col items-center gap-6">
+                <div className="flex items-center gap-1.5">
+                  {displayKeys.map((key, i) => (
+                    <span
+                      key={`onb-try-${i}-${key}`}
+                      className="flex items-center gap-1.5"
+                    >
+                      {i > 0 && (
+                        <span className="text-[18px] font-light text-white/42">
+                          +
+                        </span>
                       )}
-                      <Kbd>{k}</Kbd>
+                      <Kbd>{key}</Kbd>
                     </span>
                   ))}
-                </span>
-                <br />
-                And start dictating.
-              </p>
-              <div className="mb-4 mt-1 flex flex-col items-center gap-3 text-center">
-                <DictationShortcutBehaviorSummary variant="onboarding" />
-                <p className="max-w-[min(320px,100%)] font-sans text-[17px] leading-relaxed text-white/46">
-                  Codictate pastes transcription when you finish (release or
-                  second tap).
-                </p>
+                </div>
+                <DictationShortcutStartHint align="center" />
               </div>
-
               <div className="mb-3 grid w-full max-w-md grid-cols-[5rem_minmax(0,1fr)] items-center gap-x-4 mx-auto">
                 <div className="flex h-20 justify-center">
                   <RecordingOrb status={status} />

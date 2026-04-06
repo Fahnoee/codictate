@@ -122,6 +122,8 @@ interface WindowDeps {
   windowMinSize?: MainWindowMinSize
   /** Indicator window should resync when the user changes recording indicator mode in Settings. */
   onRecordingIndicatorModeChanged?: () => void
+  /** Indicator is hidden until onboarding completes; refresh when that flips to true. */
+  onOnboardingCompleted?: () => void
 }
 
 export interface WindowHandle {
@@ -275,6 +277,7 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         completeOnboarding: async () => {
           await deps.appConfig.setOnboardingCompleted(true)
           rpc.send.updateSettings(deps.appConfig.getSettings())
+          deps.onOnboardingCompleted?.()
           return true
         },
         setRecordingIndicatorMode: async ({ mode }) => {

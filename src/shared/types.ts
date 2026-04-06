@@ -60,6 +60,11 @@ export interface AppSettings {
   onboardingCompleted: boolean
   /** Desktop activity indicator: off, always visible, or only while recording/transcribing. */
   recordingIndicatorMode: RecordingIndicatorMode
+  /**
+   * Last top-left position of the floating indicator window (screen coordinates).
+   * `null` = use default placement (bottom-right of primary work area).
+   */
+  recordingIndicatorPosition: { x: number; y: number } | null
 }
 
 export interface PermissionState {

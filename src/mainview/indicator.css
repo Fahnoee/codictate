@@ -16,4 +16,8 @@
   #root {
     pointer-events: none;
   }
+
+  [role="status"] {
+    pointer-events: auto;
+  }
 }

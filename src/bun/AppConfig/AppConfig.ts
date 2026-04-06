@@ -1,26 +1,26 @@
+import { mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { mkdirSync } from 'fs'
-import { SHORTCUT_OPTIONS } from '../../shared/shortcut-options'
-import type {
-  ShortcutId,
-  AppSettings,
-  RecordingIndicatorMode,
-} from '../../shared/types'
-import {
-  isValidTranscriptionLanguageId,
-  whisperCodeForTranscriptionId,
-} from '../../shared/transcription-languages'
 import {
   DEFAULT_MAX_RECORDING_DURATION_SECONDS,
   isValidMaxRecordingDurationSeconds,
   type RecordingDurationPresetSeconds,
 } from '../../shared/recording-duration-presets'
+import { SHORTCUT_OPTIONS } from '../../shared/shortcut-options'
+import {
+  isValidTranscriptionLanguageId,
+  whisperCodeForTranscriptionId,
+} from '../../shared/transcription-languages'
+import type {
+  AppSettings,
+  RecordingIndicatorMode,
+  ShortcutId,
+} from '../../shared/types'
 import {
   DEFAULT_MODEL_ID,
   isValidWhisperModelId,
 } from '../../shared/whisper-models'
-import { enableDebug, disableDebug } from '../utils/logger'
+import { disableDebug, enableDebug } from '../utils/logger'
 
 const CONFIG_DIR = join(
   homedir(),
@@ -71,6 +71,7 @@ export class AppConfig {
   /** False until first-run onboarding finishes; true for legacy configs missing the key. */
   private onboardingCompleted: boolean
   private recordingIndicatorMode: RecordingIndicatorMode
+  private recordingIndicatorPosition: { x: number; y: number } | null
 
   constructor() {
     this.audioDeviceName = null
@@ -84,7 +85,8 @@ export class AppConfig {
     this.translateToEnglish = false
     this.translateDefaultLanguageId = null
     this.onboardingCompleted = false
-    this.recordingIndicatorMode = 'when-active'
+    this.recordingIndicatorMode = 'always'
+    this.recordingIndicatorPosition = null
   }
 
   // --- Persistence ---
@@ -152,6 +154,20 @@ export class AppConfig {
         this.recordingIndicatorMode = raw.recordingIndicatorMode
       }
       if (
+        raw.recordingIndicatorPosition !== undefined &&
+        raw.recordingIndicatorPosition !== null &&
+        typeof raw.recordingIndicatorPosition === 'object' &&
+        Number.isFinite(raw.recordingIndicatorPosition.x) &&
+        Number.isFinite(raw.recordingIndicatorPosition.y)
+      ) {
+        this.recordingIndicatorPosition = {
+          x: raw.recordingIndicatorPosition.x,
+          y: raw.recordingIndicatorPosition.y,
+        }
+      } else if (raw.recordingIndicatorPosition === null) {
+        this.recordingIndicatorPosition = null
+      }
+      if (
         this.shortcutHoldOnlyId !== null &&
         this.shortcutHoldOnlyId === this.shortcutId
       ) {
@@ -182,6 +198,7 @@ export class AppConfig {
       translateDefaultLanguageId: this.translateDefaultLanguageId,
       onboardingCompleted: this.onboardingCompleted,
       recordingIndicatorMode: this.recordingIndicatorMode,
+      recordingIndicatorPosition: this.recordingIndicatorPosition,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -346,6 +363,7 @@ export class AppConfig {
       translateDefaultLanguageId: this.translateDefaultLanguageId,
       onboardingCompleted: this.onboardingCompleted,
       recordingIndicatorMode: this.recordingIndicatorMode,
+      recordingIndicatorPosition: this.recordingIndicatorPosition,
     }
   }
 
@@ -365,5 +383,22 @@ export class AppConfig {
     this.recordingIndicatorMode = mode
     await this.save()
     return true
+  }
+
+  public getRecordingIndicatorPosition(): { x: number; y: number } | null {
+    return this.recordingIndicatorPosition
+  }
+
+  /**
+   * Persists only indicator geometry; other keys in app-config.json are preserved
+   * via the same full-document write as every other setter.
+   */
+  public async setRecordingIndicatorPosition(
+    x: number,
+    y: number
+  ): Promise<void> {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
+    this.recordingIndicatorPosition = { x, y }
+    await this.save()
   }
 }

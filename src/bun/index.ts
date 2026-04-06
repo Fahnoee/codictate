@@ -225,11 +225,18 @@ const win = setupWindow({
   onRecordingIndicatorModeChanged: () => {
     indicatorRef.current?.onConfigChanged()
   },
+  onOnboardingCompleted: () => {
+    indicatorRef.current?.onConfigChanged()
+  },
 })
 
 indicatorRef.current = setupIndicatorWindow({
   url: indicatorUrl,
   getSettings: () => UserAppConfig.getSettings(),
+  getRecordingIndicatorPosition: () =>
+    UserAppConfig.getRecordingIndicatorPosition(),
+  saveRecordingIndicatorPosition: (x, y) =>
+    UserAppConfig.setRecordingIndicatorPosition(x, y),
 })
 
 // When the 5-minute auto-disable fires, sync the state back to AppConfig and

@@ -26,7 +26,17 @@ export type IndicatorWindowHandle = {
   dispose: () => void
 }
 
-function indicatorShouldExist(
+/** Keep a BrowserWindow (webview warm) whenever the user wants an indicator at all. */
+function indicatorLifecycleActive(
+  mode: RecordingIndicatorMode,
+  onboardingCompleted: boolean
+): boolean {
+  if (!onboardingCompleted) return false
+  return mode !== 'off'
+}
+
+/** Actually visible on screen (not parked off-screen). */
+function indicatorShouldBeVisible(
   mode: RecordingIndicatorMode,
   status: AppStatus
 ): boolean {
@@ -55,9 +65,13 @@ function bottomRightFrame(): {
 export function setupIndicatorWindow(deps: {
   url: string
   getSettings: () => AppSettings
+  getRecordingIndicatorPosition: () => AppSettings['recordingIndicatorPosition']
+  saveRecordingIndicatorPosition: (x: number, y: number) => void | Promise<void>
 }): IndicatorWindowHandle {
   let indicatorWin: BrowserWindow | null = null
   let lastStatus: AppStatus = 'ready'
+  let positionSaveTimer: ReturnType<typeof setTimeout> | null = null
+  let suppressIndicatorPositionSave = false
 
   const indicatorRpc = BrowserView.defineRPC<IndicatorWebviewRPCType>({
     maxRequestTime: 5000,
@@ -67,7 +81,15 @@ export function setupIndicatorWindow(deps: {
     },
   })
 
+  function clearPositionSaveTimer() {
+    if (positionSaveTimer) {
+      clearTimeout(positionSaveTimer)
+      positionSaveTimer = null
+    }
+  }
+
   function destroyWindow() {
+    clearPositionSaveTimer()
     if (indicatorWin && BrowserWindow.getById(indicatorWin.id)) {
       try {
         indicatorWin.close()
@@ -76,6 +98,82 @@ export function setupIndicatorWindow(deps: {
       }
     }
     indicatorWin = null
+  }
+
+  function intersectsAnyDisplay(
+    x: number,
+    y: number,
+    w: number,
+    h: number
+  ): boolean {
+    const displays = Screen.getAllDisplays()
+    if (displays.length === 0) return true
+    for (const d of displays) {
+      const b = d.bounds
+      if (
+        x + w > b.x &&
+        x < b.x + b.width &&
+        y + h > b.y &&
+        y < b.y + b.height
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
+  function resolveInitialIndicatorFrame(): {
+    x: number
+    y: number
+    width: number
+    height: number
+  } {
+    const saved = deps.getRecordingIndicatorPosition()
+    if (saved === null) return bottomRightFrame()
+    const { x, y } = saved
+    if (
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !intersectsAnyDisplay(x, y, INDICATOR_FRAME_PX, INDICATOR_FRAME_PX)
+    ) {
+      return bottomRightFrame()
+    }
+    return {
+      x: Math.round(x),
+      y: Math.round(y),
+      width: INDICATOR_FRAME_PX,
+      height: INDICATOR_FRAME_PX,
+    }
+  }
+
+  function scheduleSaveIndicatorPosition(x: number, y: number) {
+    clearPositionSaveTimer()
+    positionSaveTimer = setTimeout(() => {
+      positionSaveTimer = null
+      void deps.saveRecordingIndicatorPosition(x, y)
+    }, 450)
+  }
+
+  function attachIndicatorPositionPersistence(win: BrowserWindow) {
+    win.on('move', (event: unknown) => {
+      if (suppressIndicatorPositionSave) return
+      if (!indicatorWin || indicatorWin.id !== win.id) return
+      const payload = (event as { data?: { x?: number; y?: number } }).data
+      if (payload === undefined) return
+      const x = payload.x
+      const y = payload.y
+      if (typeof x !== 'number' || typeof y !== 'number') return
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      let frame: { width: number; height: number }
+      try {
+        frame = win.getFrame()
+      } catch {
+        return
+      }
+      // Parked / minimized artifact — do not persist
+      if (frame.width < 32 || frame.height < 32) return
+      scheduleSaveIndicatorPosition(x, y)
+    })
   }
 
   /**
@@ -98,7 +196,7 @@ export function setupIndicatorWindow(deps: {
       y: number
       width: number
       height: number
-    } = bottomRightFrame()
+    } = resolveInitialIndicatorFrame()
   ): BrowserWindow {
     return new BrowserWindow({
       title: 'Codictate indicator',
@@ -134,18 +232,23 @@ export function setupIndicatorWindow(deps: {
     }
   }
 
-  function placeBottomRight(win: BrowserWindow) {
-    const f = bottomRightFrame()
-    win.setFrame(f.x, f.y, f.width, f.height)
-  }
-
   function applyVisibleOverlayBehavior(win: BrowserWindow) {
-    placeBottomRight(win)
+    try {
+      const f = win.getFrame()
+      if (f.width <= 2 && f.height <= 2) {
+        const target = resolveInitialIndicatorFrame()
+        win.setFrame(target.x, target.y, target.width, target.height)
+      }
+    } catch {
+      /* window gone */
+    }
     win.setAlwaysOnTop(true)
     win.setVisibleOnAllWorkspaces(true)
   }
 
   function parkIndicatorWindow(win: BrowserWindow) {
+    suppressIndicatorPositionSave = true
+    clearPositionSaveTimer()
     try {
       win.setAlwaysOnTop(false)
       win.setFrame(
@@ -157,26 +260,27 @@ export function setupIndicatorWindow(deps: {
     } catch {
       /* window gone */
     }
+    setTimeout(() => {
+      suppressIndicatorPositionSave = false
+    }, 200)
   }
 
   const onAppStatus = (status: AppStatus) => {
     lastStatus = status
-    const mode =
-      deps.getSettings().recordingIndicatorMode ?? ('when-active' as const)
+    const settings = deps.getSettings()
+    const onboardingCompleted = settings.onboardingCompleted
+    const mode = settings.recordingIndicatorMode ?? ('always' as const)
 
-    if (!indicatorShouldExist(mode, status)) {
+    const wantLifecycle = indicatorLifecycleActive(mode, onboardingCompleted)
+    const wantVisible = wantLifecycle && indicatorShouldBeVisible(mode, status)
+
+    if (!wantLifecycle) {
       const win =
         indicatorWin !== null && BrowserWindow.getById(indicatorWin.id)
           ? indicatorWin
           : null
       if (win) {
-        const parkForReuse = mode === 'when-active' && status === 'ready'
-        if (parkForReuse) {
-          pushStatusToWebview(status)
-          parkIndicatorWindow(win)
-        } else {
-          destroyWindow()
-        }
+        destroyWindow()
       } else {
         indicatorWin = null
       }
@@ -186,16 +290,44 @@ export function setupIndicatorWindow(deps: {
     const existed =
       indicatorWin !== null && BrowserWindow.getById(indicatorWin.id)
     if (!existed) {
-      indicatorWin = createWindow()
+      const initialFrame = wantVisible
+        ? resolveInitialIndicatorFrame()
+        : {
+            x: PARKED_INDICATOR_FRAME.x,
+            y: PARKED_INDICATOR_FRAME.y,
+            width: PARKED_INDICATOR_FRAME.width,
+            height: PARKED_INDICATOR_FRAME.height,
+          }
+      indicatorWin = createWindow(initialFrame)
       const w = indicatorWin
-      applyVisibleOverlayBehavior(w)
+      attachIndicatorPositionPersistence(w)
       w.webview.on('dom-ready', () => {
         if (!indicatorWin || indicatorWin.id !== w.id) return
-        applyVisibleOverlayBehavior(w)
+        const s = deps.getSettings()
+        const oc = s.onboardingCompleted
+        const m = s.recordingIndicatorMode ?? ('always' as const)
+        const vis =
+          indicatorLifecycleActive(m, oc) &&
+          indicatorShouldBeVisible(m, lastStatus)
+        if (vis) {
+          applyVisibleOverlayBehavior(w)
+        } else {
+          parkIndicatorWindow(w)
+        }
         pushStatusToWebview(lastStatus)
         setTimeout(() => {
           if (!indicatorWin || indicatorWin.id !== w.id) return
-          applyVisibleOverlayBehavior(w)
+          const s2 = deps.getSettings()
+          const oc2 = s2.onboardingCompleted
+          const m2 = s2.recordingIndicatorMode ?? ('always' as const)
+          const vis2 =
+            indicatorLifecycleActive(m2, oc2) &&
+            indicatorShouldBeVisible(m2, lastStatus)
+          if (vis2) {
+            applyVisibleOverlayBehavior(w)
+          } else {
+            parkIndicatorWindow(w)
+          }
         }, 120)
       })
     }
@@ -206,7 +338,11 @@ export function setupIndicatorWindow(deps: {
       setTimeout(() => pushStatusToWebview(lastStatus), 450)
     }
 
-    applyVisibleOverlayBehavior(win)
+    if (wantVisible) {
+      applyVisibleOverlayBehavior(win)
+    } else {
+      parkIndicatorWindow(win)
+    }
     // Do not call win.show() — it maps to focusWindow() and activates Codictate.
   }
 

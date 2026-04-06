@@ -7,13 +7,8 @@ import type { AppStatus, AppSettings, DeviceInfo } from "../../../shared/types";
 import {
   dictationReadyPttHintAfter,
   dictationReadyPttHintBefore,
-  dictationReadyStartHintAfterTap,
-  dictationReadyStartHintBeforeHold,
-  dictationReadyStartHintBetween,
   dictationShortcutSummaryHoldBody,
   dictationShortcutSummaryHoldTitle,
-  dictationShortcutSummaryTapBody,
-  dictationShortcutSummaryTapTitle,
   shortcutDisplayKeys,
 } from "../../../shared/shortcut-options";
 import {
@@ -28,6 +23,10 @@ import {
 } from "../../../shared/whisper-models";
 import { appEvents } from "../../app-events";
 import { Kbd } from "../Common/Kbd";
+import {
+  DictationShortcutStartHint,
+  UnderlinedDictationTerm,
+} from "../Common/DictationShortcutStartHint";
 import { InstantTooltip } from "../Common/InstantTooltip";
 import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 import {
@@ -38,32 +37,10 @@ import {
 import { TranscriptionLanguageHintButton } from "../Settings/TranscriptionLanguageHintButton";
 import { RecordingOrb } from "./RecordingOrb";
 
-/** Keeps hint copy in a narrow measure so it stays near the keys, not full column width. */
-const READY_SHORTCUT_HINT_MAX_W_CLASS = "max-w-[min(100%,15.5rem)]";
-
-function UnderlinedDictationTerm({
-  label,
-  tooltipText,
-}: {
-  label: string;
-  tooltipText: string;
-}) {
-  return (
-    <InstantTooltip text={tooltipText}>
-      <span
-        tabIndex={0}
-        className="cursor-help font-medium text-white/72 underline decoration-white/45 decoration-2 underline-offset-[5px] transition-[color,text-decoration-color] hover:text-white/88 hover:decoration-white/70 focus-visible:rounded-sm focus-visible:text-white/88 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
-      >
-        {label}
-      </span>
-    </InstantTooltip>
-  );
-}
-
 function DictationPttHoldHint({ className = "" }: { className?: string }) {
   return (
     <p
-      className={`mt-3 ${READY_SHORTCUT_HINT_MAX_W_CLASS} text-[15px] leading-snug text-white/50 font-sans text-balance text-center md:text-left ${className}`}
+      className={`mt-3 max-w-[min(100%,15.5rem)] text-[15px] leading-snug text-white/50 font-sans text-balance text-center md:text-left ${className}`}
     >
       {dictationReadyPttHintBefore}
       <UnderlinedDictationTerm
@@ -71,37 +48,6 @@ function DictationPttHoldHint({ className = "" }: { className?: string }) {
         tooltipText={dictationShortcutSummaryHoldBody}
       />
       {dictationReadyPttHintAfter}
-    </p>
-  );
-}
-
-function DictationShortcutStartHint({
-  align,
-  className = "",
-}: {
-  align: "center" | "end";
-  className?: string;
-}) {
-  const alignClass =
-    align === "end"
-      ? "text-center md:text-right md:ml-auto"
-      : "mx-auto text-center";
-
-  return (
-    <p
-      className={`mt-3 ${READY_SHORTCUT_HINT_MAX_W_CLASS} text-[15px] leading-snug text-white/50 font-sans text-balance ${alignClass} ${className}`}
-    >
-      {dictationReadyStartHintBeforeHold}
-      <UnderlinedDictationTerm
-        label={dictationShortcutSummaryHoldTitle}
-        tooltipText={dictationShortcutSummaryHoldBody}
-      />
-      {dictationReadyStartHintBetween}
-      <UnderlinedDictationTerm
-        label={dictationShortcutSummaryTapTitle}
-        tooltipText={dictationShortcutSummaryTapBody}
-      />
-      {dictationReadyStartHintAfterTap}
     </p>
   );
 }
