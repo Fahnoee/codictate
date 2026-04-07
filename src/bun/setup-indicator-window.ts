@@ -12,13 +12,30 @@ const INDICATOR_FRAME_PX = 72
 /**
  * Keep the HUD alive but invisible so closing it does not hand key-window
  * status back to the main Codictate window.
+ * Park one pixel past the top-left of all displays — fully off-screen without
+ * the huge negative coordinates that confuse Mission Control.
  */
-const PARKED_INDICATOR_FRAME = {
-  x: -10_000,
-  y: -10_000,
-  width: 1,
-  height: 1,
-} as const
+function getParkedIndicatorFrame(): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  const w = 1
+  const h = 1
+  const displays = Screen.getAllDisplays()
+  if (displays.length === 0) {
+    return { x: -w, y: -h, width: w, height: h }
+  }
+  let minX = Infinity
+  let minY = Infinity
+  for (const d of displays) {
+    const b = d.bounds
+    minX = Math.min(minX, b.x)
+    minY = Math.min(minY, b.y)
+  }
+  return { x: minX - w, y: minY - h, width: w, height: h }
+}
 
 export type IndicatorWindowHandle = {
   onAppStatus: (status: AppStatus) => void
@@ -251,12 +268,8 @@ export function setupIndicatorWindow(deps: {
     clearPositionSaveTimer()
     try {
       win.setAlwaysOnTop(false)
-      win.setFrame(
-        PARKED_INDICATOR_FRAME.x,
-        PARKED_INDICATOR_FRAME.y,
-        PARKED_INDICATOR_FRAME.width,
-        PARKED_INDICATOR_FRAME.height
-      )
+      const parked = getParkedIndicatorFrame()
+      win.setFrame(parked.x, parked.y, parked.width, parked.height)
     } catch {
       /* window gone */
     }
@@ -292,12 +305,7 @@ export function setupIndicatorWindow(deps: {
     if (!existed) {
       const initialFrame = wantVisible
         ? resolveInitialIndicatorFrame()
-        : {
-            x: PARKED_INDICATOR_FRAME.x,
-            y: PARKED_INDICATOR_FRAME.y,
-            width: PARKED_INDICATOR_FRAME.width,
-            height: PARKED_INDICATOR_FRAME.height,
-          }
+        : getParkedIndicatorFrame()
       indicatorWin = createWindow(initialFrame)
       const w = indicatorWin
       attachIndicatorPositionPersistence(w)
