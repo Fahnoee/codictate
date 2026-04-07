@@ -3,10 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
-import type { AppSettings, AppStatus, ShortcutId } from "../../../shared/types";
+import type {
+  AppSettings,
+  AppStatus,
+  RecordingIndicatorMode,
+  ShortcutId,
+} from "../../../shared/types";
 import { shortcutDisplayKeys } from "../../../shared/shortcut-options";
 import {
   completeOnboarding,
+  setOnboardingIndicatorPreview,
+  setRecordingIndicatorMode,
   setShortcut,
   setTranscriptionLanguage,
   setTranslateDefaultLanguage,
@@ -21,7 +28,29 @@ import { Kbd } from "../Common/Kbd";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
-type Step = 0 | 1 | 2;
+type Step = 0 | 1 | 2 | 3;
+
+const INDICATOR_ONBOARDING_OPTIONS: readonly {
+  mode: RecordingIndicatorMode;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    mode: "always",
+    label: "Always on",
+    hint: "Stays in the corner; subtle while idle, active while you dictate.",
+  },
+  {
+    mode: "when-active",
+    label: "Only while dictating",
+    hint: "Shows while you are recording or transcribing, then hides.",
+  },
+  {
+    mode: "off",
+    label: "Off",
+    hint: "No floating indicator on the desktop.",
+  },
+] as const;
 
 /** Concrete language for translate-default picker (never `auto`). */
 function initialTranslateDefaultDraft(s: AppSettings): string {
@@ -49,6 +78,10 @@ export function ProductOnboardingScreen({
   );
   const [status, setStatus] = useState<AppStatus>("ready");
   const [busy, setBusy] = useState(false);
+  const [dictationTrialComplete, setDictationTrialComplete] = useState(false);
+  const [indicatorDraft, setIndicatorDraft] =
+    useState<RecordingIndicatorMode>("always");
+  const dictationEngagedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -70,10 +103,35 @@ export function ProductOnboardingScreen({
 
   useEffect(() => {
     if (step === 2) {
+      dictationEngagedRef.current = false;
+      setDictationTrialComplete(false);
       const t = window.setTimeout(() => textareaRef.current?.focus(), 200);
       return () => window.clearTimeout(t);
     }
   }, [step]);
+
+  useEffect(() => {
+    if (step !== 2 || dictationTrialComplete) return;
+    if (status === "recording" || status === "transcribing") {
+      dictationEngagedRef.current = true;
+    } else if (status === "ready" && dictationEngagedRef.current) {
+      setDictationTrialComplete(true);
+    }
+  }, [status, step, dictationTrialComplete]);
+
+  useEffect(() => {
+    if (step !== 3) {
+      void setOnboardingIndicatorPreview({ active: false });
+      return;
+    }
+    void setOnboardingIndicatorPreview({ active: true, mode: indicatorDraft });
+  }, [step, indicatorDraft]);
+
+  useEffect(() => {
+    return () => {
+      void setOnboardingIndicatorPreview({ active: false });
+    };
+  }, []);
 
   useEffect(() => {
     setShortcutDraft(settings.shortcutId);
@@ -109,9 +167,17 @@ export function ProductOnboardingScreen({
     }
   }, [languageDraft, mergeSettings]);
 
-  const finishOnboarding = useCallback(async () => {
+  const handleTryDictationContinue = useCallback(() => {
+    if (!dictationTrialComplete) return;
+    setStep(3);
+  }, [dictationTrialComplete]);
+
+  const handleIndicatorFinish = useCallback(async () => {
     setBusy(true);
     try {
+      const okMode = await setRecordingIndicatorMode(indicatorDraft);
+      if (!okMode) return;
+      mergeSettings({ recordingIndicatorMode: indicatorDraft });
       const ok = await completeOnboarding();
       if (ok) {
         mergeSettings({ onboardingCompleted: true });
@@ -119,7 +185,7 @@ export function ProductOnboardingScreen({
     } finally {
       setBusy(false);
     }
-  }, [mergeSettings]);
+  }, [mergeSettings, indicatorDraft]);
 
   const displayKeys = useMemo(
     () => shortcutDisplayKeys(shortcutDraft),
@@ -145,7 +211,7 @@ export function ProductOnboardingScreen({
         </motion.div>
 
         <div className="flex gap-2 mb-6">
-          {([0, 1, 2] as const).map((i) => (
+          {([0, 1, 2, 3] as const).map((i) => (
             <div
               key={i}
               className={`h-1 rounded-full transition-all duration-300 ${
@@ -250,7 +316,8 @@ export function ProductOnboardingScreen({
               className="w-full flex flex-col items-center"
             >
               <p className="mb-3 text-center text-[20px] leading-snug text-white/55">
-                Click in the box below, use your shortcut:
+                Try dictation once to continue. Click in the box, use your
+                shortcut to speak, then stop the same way when you are done.
               </p>
               <div className="mx-auto mb-4 flex w-full max-w-[min(440px,calc(100%-1.5rem))] flex-col items-center gap-6">
                 <div className="flex items-center gap-1.5">
@@ -288,24 +355,74 @@ export function ProductOnboardingScreen({
                 className="w-full rounded-xl border border-white/12 bg-white/4 px-4 py-3 text-[19px] text-white/85 placeholder:text-white/25 outline-none focus-visible:border-white/22 focus-visible:ring-2 focus-visible:ring-white/10 resize-y min-h-[140px] select-text"
               />
 
-              <div className="flex flex-col gap-2 mt-5 w-full">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void finishOnboarding()}
-                  className="w-full py-3 rounded-xl text-[19px] font-medium bg-white/12 hover:bg-white/18 border border-white/14 text-white/85 transition-colors disabled:opacity-40"
-                >
-                  Continue to Codictate
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void finishOnboarding()}
-                  className="text-[17px] text-white/30 hover:text-white/45 transition-colors py-1"
-                >
-                  Skip try-out
-                </button>
+              {!dictationTrialComplete && (
+                <p className="mt-4 text-center text-[16px] text-amber-200/55 leading-snug">
+                  Finish one dictation session (recording or transcribing, then
+                  idle) to unlock the next step.
+                </p>
+              )}
+
+              <button
+                type="button"
+                disabled={busy || !dictationTrialComplete}
+                onClick={handleTryDictationContinue}
+                className="mt-5 w-full py-3 rounded-xl text-[19px] font-medium bg-white/12 hover:bg-white/18 border border-white/14 text-white/85 transition-colors disabled:opacity-40"
+              >
+                Continue
+              </button>
+            </motion.div>
+          )}
+
+          {step === 3 && (
+            <motion.div
+              key="s3"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className="w-full flex flex-col items-center"
+            >
+              <p className="mb-2 text-center text-[20px] leading-snug text-white/55">
+                Desktop recording indicator
+              </p>
+              <p className="mb-5 text-center text-[17px] leading-snug text-white/38">
+                The floating chip updates on your desktop as you choose — try
+                each option. You can change this anytime in settings.
+              </p>
+              <div className="flex w-full flex-col gap-2">
+                {INDICATOR_ONBOARDING_OPTIONS.map(({ mode, label, hint }) => {
+                  const selected = indicatorDraft === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setIndicatorDraft(mode)}
+                      className={`w-full text-left rounded-xl border px-4 py-3.5 transition-colors duration-200 cursor-pointer ${
+                        selected
+                          ? "border-white/22 bg-white/8"
+                          : "border-white/11 bg-white/4 hover:border-white/16 hover:bg-white/6"
+                      }`}
+                    >
+                      <span
+                        className={`block text-[19px] font-medium ${selected ? "text-white/88" : "text-white/62"}`}
+                      >
+                        {label}
+                      </span>
+                      <span className="mt-0.5 block text-[16px] text-white/40 leading-snug">
+                        {hint}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleIndicatorFinish()}
+                className="mt-5 w-full py-3 rounded-xl text-[19px] font-medium bg-white/12 hover:bg-white/18 border border-white/14 text-white/85 transition-colors disabled:opacity-40"
+              >
+                Continue to Codictate
+              </button>
             </motion.div>
           )}
         </AnimatePresence>

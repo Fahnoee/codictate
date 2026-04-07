@@ -150,6 +150,13 @@ export async function setRecordingIndicatorMode(
   return rpc.request.setRecordingIndicatorMode({ mode })
 }
 
+export async function setOnboardingIndicatorPreview(params: {
+  active: boolean
+  mode?: RecordingIndicatorMode
+}): Promise<boolean> {
+  return rpc.request.setOnboardingIndicatorPreview(params)
+}
+
 export function copyDebugLog(): void {
   rpc.send.copyDebugLog({})
 }

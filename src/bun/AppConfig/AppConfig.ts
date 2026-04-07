@@ -72,6 +72,12 @@ export class AppConfig {
   private onboardingCompleted: boolean
   private recordingIndicatorMode: RecordingIndicatorMode
   private recordingIndicatorPosition: { x: number; y: number } | null
+  /**
+   * In-memory only: while set, the indicator window uses this mode during
+   * onboarding preview (not persisted).
+   */
+  private recordingIndicatorOnboardingPreviewMode: RecordingIndicatorMode | null =
+    null
 
   constructor() {
     this.audioDeviceName = null
@@ -369,7 +375,32 @@ export class AppConfig {
 
   public async setOnboardingCompleted(completed: boolean): Promise<void> {
     this.onboardingCompleted = completed
+    if (completed) {
+      this.recordingIndicatorOnboardingPreviewMode = null
+    }
     await this.save()
+  }
+
+  /**
+   * Drive the desktop indicator during onboarding (step 3). Does not write disk.
+   */
+  public setRecordingIndicatorOnboardingPreview(
+    active: boolean,
+    mode?: RecordingIndicatorMode
+  ): void {
+    if (!active) {
+      this.recordingIndicatorOnboardingPreviewMode = null
+      return
+    }
+    const m =
+      mode !== undefined && RECORDING_INDICATOR_MODES.has(mode)
+        ? mode
+        : this.recordingIndicatorMode
+    this.recordingIndicatorOnboardingPreviewMode = m
+  }
+
+  public getRecordingIndicatorOnboardingPreviewMode(): RecordingIndicatorMode | null {
+    return this.recordingIndicatorOnboardingPreviewMode
   }
 
   public getRecordingIndicatorMode(): RecordingIndicatorMode {

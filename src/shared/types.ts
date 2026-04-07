@@ -115,6 +115,11 @@ export type WebviewRPCType = {
         params: { mode: RecordingIndicatorMode }
         response: boolean
       }
+      /** Ephemeral: show the floating indicator during onboarding to preview the chosen mode. */
+      setOnboardingIndicatorPreview: {
+        params: { active: boolean; mode?: RecordingIndicatorMode }
+        response: boolean
+      }
     }
     messages: {
       logBun: { msg: string }

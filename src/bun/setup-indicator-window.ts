@@ -43,13 +43,23 @@ export type IndicatorWindowHandle = {
   dispose: () => void
 }
 
-/** Keep a BrowserWindow (webview warm) whenever the user wants an indicator at all. */
-function indicatorLifecycleActive(
-  mode: RecordingIndicatorMode,
-  onboardingCompleted: boolean
-): boolean {
-  if (!onboardingCompleted) return false
-  return mode !== 'off'
+/**
+ * Resolve saved vs onboarding-preview mode and whether the indicator process
+ * should keep a window alive.
+ */
+function readIndicatorPlan(
+  getSettings: () => AppSettings,
+  previewMode: RecordingIndicatorMode | null
+): {
+  mode: RecordingIndicatorMode
+  wantLifecycle: boolean
+} {
+  const settings = getSettings()
+  const savedMode = settings.recordingIndicatorMode ?? ('always' as const)
+  const mode = previewMode ?? savedMode
+  const wantLifecycle =
+    mode !== 'off' && (settings.onboardingCompleted || previewMode !== null)
+  return { mode, wantLifecycle }
 }
 
 /** Actually visible on screen (not parked off-screen). */
@@ -84,6 +94,7 @@ export function setupIndicatorWindow(deps: {
   getSettings: () => AppSettings
   getRecordingIndicatorPosition: () => AppSettings['recordingIndicatorPosition']
   saveRecordingIndicatorPosition: (x: number, y: number) => void | Promise<void>
+  getOnboardingIndicatorPreviewMode: () => RecordingIndicatorMode | null
 }): IndicatorWindowHandle {
   let indicatorWin: BrowserWindow | null = null
   let lastStatus: AppStatus = 'ready'
@@ -280,11 +291,11 @@ export function setupIndicatorWindow(deps: {
 
   const onAppStatus = (status: AppStatus) => {
     lastStatus = status
-    const settings = deps.getSettings()
-    const onboardingCompleted = settings.onboardingCompleted
-    const mode = settings.recordingIndicatorMode ?? ('always' as const)
-
-    const wantLifecycle = indicatorLifecycleActive(mode, onboardingCompleted)
+    const previewMode = deps.getOnboardingIndicatorPreviewMode()
+    const { mode, wantLifecycle } = readIndicatorPlan(
+      deps.getSettings,
+      previewMode
+    )
     const wantVisible = wantLifecycle && indicatorShouldBeVisible(mode, status)
 
     if (!wantLifecycle) {
@@ -311,12 +322,11 @@ export function setupIndicatorWindow(deps: {
       attachIndicatorPositionPersistence(w)
       w.webview.on('dom-ready', () => {
         if (!indicatorWin || indicatorWin.id !== w.id) return
-        const s = deps.getSettings()
-        const oc = s.onboardingCompleted
-        const m = s.recordingIndicatorMode ?? ('always' as const)
-        const vis =
-          indicatorLifecycleActive(m, oc) &&
-          indicatorShouldBeVisible(m, lastStatus)
+        const { mode: m, wantLifecycle: life } = readIndicatorPlan(
+          deps.getSettings,
+          deps.getOnboardingIndicatorPreviewMode()
+        )
+        const vis = life && indicatorShouldBeVisible(m, lastStatus)
         if (vis) {
           applyVisibleOverlayBehavior(w)
         } else {
@@ -325,12 +335,11 @@ export function setupIndicatorWindow(deps: {
         pushStatusToWebview(lastStatus)
         setTimeout(() => {
           if (!indicatorWin || indicatorWin.id !== w.id) return
-          const s2 = deps.getSettings()
-          const oc2 = s2.onboardingCompleted
-          const m2 = s2.recordingIndicatorMode ?? ('always' as const)
-          const vis2 =
-            indicatorLifecycleActive(m2, oc2) &&
-            indicatorShouldBeVisible(m2, lastStatus)
+          const { mode: m2, wantLifecycle: life2 } = readIndicatorPlan(
+            deps.getSettings,
+            deps.getOnboardingIndicatorPreviewMode()
+          )
+          const vis2 = life2 && indicatorShouldBeVisible(m2, lastStatus)
           if (vis2) {
             applyVisibleOverlayBehavior(w)
           } else {

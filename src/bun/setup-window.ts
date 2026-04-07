@@ -124,6 +124,8 @@ interface WindowDeps {
   onRecordingIndicatorModeChanged?: () => void
   /** Indicator is hidden until onboarding completes; refresh when that flips to true. */
   onOnboardingCompleted?: () => void
+  /** Indicator preview during onboarding (step 3). */
+  onOnboardingIndicatorPreviewChanged?: () => void
 }
 
 export interface WindowHandle {
@@ -287,6 +289,11 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
             deps.onRecordingIndicatorModeChanged?.()
           }
           return ok
+        },
+        setOnboardingIndicatorPreview: async ({ active, mode }) => {
+          deps.appConfig.setRecordingIndicatorOnboardingPreview(active, mode)
+          deps.onOnboardingIndicatorPreviewChanged?.()
+          return true
         },
       },
       messages: {
