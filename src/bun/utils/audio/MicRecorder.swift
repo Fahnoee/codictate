@@ -3,6 +3,105 @@ import CoreAudio
 import Darwin
 import Foundation
 
+// macOS marks AVAudioSession / duckOthers as unavailable, so we approximate “duck” by briefly
+// lowering the default output device’s hardware volume when routing is built-in speakers.
+// Bluetooth/USB and name hints (headphones, AirPods) skip this so private listening is unchanged.
+
+private func getDefaultOutputDevice() -> AudioDeviceID {
+    var id = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    _ = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id)
+    return id
+}
+
+private func getDeviceTransportType(_ id: AudioDeviceID) -> UInt32 {
+    var transport: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyTransportType,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &transport) == noErr else {
+        return 0
+    }
+    return transport
+}
+
+/// Single default-output snapshot for ducking (avoids two HAL reads drifting apart).
+private func shouldLowerOutputForDevice(_ id: AudioDeviceID) -> Bool {
+    guard id != 0 else { return false }
+    let transport = getDeviceTransportType(id)
+    if transport == kAudioDeviceTransportTypeAggregate || transport == kAudioDeviceTransportTypeVirtual {
+        return false
+    }
+    if transport == kAudioDeviceTransportTypeBluetooth {
+        return false
+    }
+    if transport == kAudioDeviceTransportTypeUSB {
+        return false
+    }
+    let name = deviceName(id)
+    if name.localizedCaseInsensitiveContains("headphone")
+        || name.localizedCaseInsensitiveContains("headset")
+        || name.localizedCaseInsensitiveContains("airpods")
+    {
+        return false
+    }
+    return transport == kAudioDeviceTransportTypeBuiltIn
+}
+
+private struct SavedOutputVolume {
+    let device: AudioDeviceID
+    let scalar: Float32
+}
+
+private func outputVolumeScalarAddress() -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyVolumeScalar,
+        mScope: kAudioDevicePropertyScopeOutput,
+        mElement: kAudioObjectPropertyElementMain
+    )
+}
+
+/// Lowers default output volume; returns previous scalar for restore, or nil if unchanged / unsupported.
+private func tryApplyOutputDuck() -> SavedOutputVolume? {
+    let device = getDefaultOutputDevice()
+    guard shouldLowerOutputForDevice(device) else { return nil }
+    var addr = outputVolumeScalarAddress()
+    guard AudioObjectHasProperty(device, &addr) else { return nil }
+    var settable: DarwinBoolean = false
+    guard AudioObjectIsPropertySettable(device, &addr, &settable) == noErr, settable.boolValue else {
+        return nil
+    }
+    var current: Float32 = 1
+    var size = UInt32(MemoryLayout<Float32>.size)
+    guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &current) == noErr else { return nil }
+    let ducked = max(0.04, min(current * 0.2, 0.18))
+    guard ducked + 0.02 < current else { return nil }
+    var toWrite = ducked
+    guard AudioObjectSetPropertyData(device, &addr, 0, nil, size, &toWrite) == noErr else { return nil }
+    return SavedOutputVolume(device: device, scalar: current)
+}
+
+private func restoreOutputDuck(_ saved: SavedOutputVolume) {
+    var addr = outputVolumeScalarAddress()
+    guard AudioObjectHasProperty(saved.device, &addr) else {
+        fputs("MicRecorder: output device gone, cannot restore volume\n", stderr)
+        return
+    }
+    let size = UInt32(MemoryLayout<Float32>.size)
+    var scalar = saved.scalar
+    if AudioObjectSetPropertyData(saved.device, &addr, 0, nil, size, &scalar) != noErr {
+        fputs("MicRecorder: failed to restore output volume\n", stderr)
+    }
+}
+
 // CLI: MicRecorder --list-devices  → one line JSON {"0":"Mic Name",...}
 //      MicRecorder record <path> <index> <maxSeconds>
 // Stop early: SIGINT (graceful WAV finalize) or SIGTERM.
@@ -97,13 +196,28 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
     var savedInput: AudioDeviceID = 0
     var didSave = false
     var shouldStop = false
+    private var savedOutputVolume: SavedOutputVolume?
     let lock = NSLock()
+
+    private func applyOutputDuckingIfNeeded() {
+        // Runs before signal/timer handlers; `savedOutputVolume` is only read in `finish()` (under lock).
+        if let s = tryApplyOutputDuck() {
+            savedOutputVolume = s
+        }
+    }
+
+    private func restoreOutputDuckingIfNeeded() {
+        guard let s = savedOutputVolume else { return }
+        savedOutputVolume = nil
+        restoreOutputDuck(s)
+    }
 
     func finish() {
         lock.lock()
         defer { lock.unlock() }
         shouldStop = true
         recorder?.stop()
+        restoreOutputDuckingIfNeeded()
         if didSave {
             _ = setDefaultInputDevice(savedInput)
             didSave = false
@@ -132,6 +246,8 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
 
         let url = URL(fileURLWithPath: path)
         try? FileManager.default.removeItem(at: url)
+
+        applyOutputDuckingIfNeeded()
 
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
