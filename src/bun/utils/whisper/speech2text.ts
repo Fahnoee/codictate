@@ -9,7 +9,7 @@ export const RECORDING_PATH = '/tmp/codictate-recording.wav'
 
 /**
  * Whisper often splits or mishears the product name — normalize before paste.
- * Order: phrase mishearings first, then codec+tate|tape (incl. Codec Tate, Codec Tape, glued forms), then kodictate/codictate (any casing).
+ * Order: phrase mishearings first, then codec+tate|tape|sheet (incl. Codec Tate, Codec Tape, Codec Sheet, glued forms), then kodictate/codictate (any casing).
  */
 const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
   [/\bcode\s+dictate\b/gi, 'Codictate'],
@@ -22,6 +22,8 @@ const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
   [/\bKodakTech\b/gi, 'Codictate'],
   [/\bcodec\s+cheat\b/gi, 'Codictate'],
   [/\bcodeccheat\b/gi, 'Codictate'],
+  [/\bcodec\s+sheet\b/gi, 'Codictate'],
+  [/\bcodecsheet\b/gi, 'Codictate'],
   [/\bcodec\s*t(?:ate|ape)\b/gi, 'Codictate'],
   [/\bkodiktat\b/gi, 'Codictate'],
   [/\bkodictate\b/gi, 'Codictate'],
