@@ -435,10 +435,14 @@ export function SettingsScreen({
 
   const handleTranscriptionLanguageChange = useCallback(
     async (transcriptionLanguageId: string) => {
-      queryClient.setQueryData(["settings"], {
-        ...settings,
-        transcriptionLanguageId,
-      });
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old
+          ? {
+              ...old,
+              transcriptionLanguageId,
+            }
+          : old,
+      );
       await setTranscriptionLanguage(transcriptionLanguageId);
     },
     [queryClient, settings],
@@ -506,10 +510,16 @@ export function SettingsScreen({
 
       // If the deleted model was selected, fall back to the default model.
       if (settings.whisperModelId === modelId) {
-        queryClient.setQueryData(["settings"], {
-          ...settings,
-          whisperModelId: DEFAULT_MODEL_ID,
-        });
+        queryClient.setQueryData(
+          ["settings"],
+          (old: AppSettings | undefined) =>
+            old
+              ? {
+                  ...old,
+                  whisperModelId: DEFAULT_MODEL_ID,
+                }
+              : old,
+        );
         await setWhisperModel(DEFAULT_MODEL_ID);
       }
 
@@ -521,10 +531,8 @@ export function SettingsScreen({
         queryClient.setQueryData(["settings"], (old: AppSettings) => ({
           ...old,
           translateToEnglish: false,
-          transcriptionLanguageId: "auto",
         }));
         await setTranslateToEnglish(false);
-        await setTranscriptionLanguage("auto");
       }
     },
     [settings, queryClient],
@@ -532,12 +540,15 @@ export function SettingsScreen({
 
   const handleTranslateToggle = useCallback(async () => {
     if (settings.translateToEnglish) {
-      // Turning off — optimistically update UI; backend atomically resets lang to auto.
-      queryClient.setQueryData(["settings"], {
-        ...settings,
-        translateToEnglish: false,
-        transcriptionLanguageId: "auto",
-      });
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old
+          ? {
+              ...old,
+              translateToEnglish: false,
+              transcriptionLanguageId: "auto",
+            }
+          : old,
+      );
       await setTranslateToEnglish(false);
       return;
     }
@@ -553,16 +564,20 @@ export function SettingsScreen({
     );
 
     if (readiness.kind === "ready") {
-      const srcLang =
-        settings.transcriptionLanguageId === "auto" &&
-        settings.translateDefaultLanguageId !== "auto"
+      const sourceLanguageId =
+        settings.transcriptionLanguageId === "auto"
           ? settings.translateDefaultLanguageId
           : settings.transcriptionLanguageId;
-      queryClient.setQueryData(["settings"], {
-        ...settings,
-        translateToEnglish: true,
-        transcriptionLanguageId: srcLang,
-      });
+
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old
+          ? {
+              ...old,
+              translateToEnglish: true,
+              transcriptionLanguageId: sourceLanguageId,
+            }
+          : old,
+      );
       const ok = await setTranslateToEnglish(true);
       if (!ok) {
         const fresh = await fetchSettings();
@@ -595,10 +610,14 @@ export function SettingsScreen({
       ) {
         return;
       }
-      queryClient.setQueryData(["settings"], {
-        ...settings,
-        translateDefaultLanguageId: languageId,
-      });
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old
+          ? {
+              ...old,
+              translateDefaultLanguageId: languageId,
+            }
+          : old,
+      );
       await setTranslateDefaultLanguage(languageId);
     },
     [queryClient, settings],

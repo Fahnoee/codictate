@@ -52,9 +52,10 @@ export interface AppSettings {
   /** When true, Whisper translates speech to English using the selected Small or Large model (not Turbo). */
   translateToEnglish: boolean
   /**
-   * Default source language when translate mode is on and main transcription is
-   * auto-detect. Always set: `'auto'` = no fixed default yet (translate-from-auto
-   * requires a concrete language); else a key from `TRANSCRIPTION_LANGUAGE_OPTIONS`.
+   * Default source language used only by translate mode when the normal
+   * transcription language is auto-detect. Always set: `'auto'` = no fixed
+   * default yet (translate-from-auto requires a concrete language); else a key
+   * from `TRANSCRIPTION_LANGUAGE_OPTIONS`.
    */
   translateDefaultLanguageId: string
   /** First-run product onboarding after permissions; persisted, false until completed. */

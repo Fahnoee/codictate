@@ -13,6 +13,7 @@ import {
 } from "../../../shared/shortcut-options";
 import {
   setTranscriptionLanguage,
+  setTranslateDefaultLanguage,
   setTranslateToEnglish,
   fetchSettings,
 } from "../../rpc";
@@ -87,7 +88,6 @@ export function ReadyScreen({
     });
   }, []);
 
-  const languageIsAuto = languageId === "auto";
   const isTranslateOn = settings?.translateToEnglish ?? false;
 
   const translateReadiness = useMemo(() => {
@@ -105,25 +105,40 @@ export function ReadyScreen({
   const handleLanguageChange = useCallback(
     async (transcriptionLanguageId: string) => {
       if (settings) {
-        queryClient.setQueryData(["settings"], {
-          ...settings,
-          transcriptionLanguageId,
-        });
+        queryClient.setQueryData(
+          ["settings"],
+          (old: AppSettings | undefined) =>
+            old
+              ? {
+                  ...old,
+                  transcriptionLanguageId,
+                  ...(isTranslateOn && transcriptionLanguageId !== "auto"
+                    ? { translateDefaultLanguageId: transcriptionLanguageId }
+                    : {}),
+                }
+              : old,
+        );
       }
       await setTranscriptionLanguage(transcriptionLanguageId);
+      if (isTranslateOn && transcriptionLanguageId !== "auto") {
+        await setTranslateDefaultLanguage(transcriptionLanguageId);
+      }
     },
-    [queryClient, settings],
+    [isTranslateOn, queryClient, settings],
   );
 
   const handleTranslateToggle = useCallback(async () => {
     if (!settings || !isIdle) return;
     if (isTranslateOn) {
-      // Turning off - optimistically update UI; backend atomically resets lang to auto.
-      queryClient.setQueryData(["settings"], {
-        ...settings,
-        translateToEnglish: false,
-        transcriptionLanguageId: "auto",
-      });
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old
+          ? {
+              ...old,
+              translateToEnglish: false,
+              transcriptionLanguageId: "auto",
+            }
+          : old,
+      );
       await setTranslateToEnglish(false);
       return;
     }
@@ -142,18 +157,20 @@ export function ReadyScreen({
       return;
     }
 
-    // Backend handles everything atomically via setTranslateOn / setTranslateToEnglish.
-    // Optimistic UI: backend will set transcriptionLanguageId to the source language
-    // when auto is active, so mirror that here.
-    const srcLang =
-      languageIsAuto && settings.translateDefaultLanguageId !== "auto"
+    const sourceLanguageId =
+      settings.transcriptionLanguageId === "auto"
         ? settings.translateDefaultLanguageId
         : settings.transcriptionLanguageId;
-    queryClient.setQueryData(["settings"], {
-      ...settings,
-      translateToEnglish: true,
-      transcriptionLanguageId: srcLang,
-    });
+
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old
+        ? {
+            ...old,
+            translateToEnglish: true,
+            transcriptionLanguageId: sourceLanguageId,
+          }
+        : old,
+    );
     const ok = await setTranslateToEnglish(true);
     if (!ok) {
       queryClient.setQueryData(["settings"], await fetchSettings());
@@ -162,7 +179,6 @@ export function ReadyScreen({
     settings,
     isIdle,
     isTranslateOn,
-    languageIsAuto,
     modelAvailability,
     queryClient,
     onOpenSettings,

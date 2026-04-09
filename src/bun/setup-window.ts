@@ -269,8 +269,6 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
               await deps.appConfig.setTranslateToEnglish(true)
             }
           } else {
-            // Atomically resets translateToEnglish=false and transcriptionLanguageId='auto'
-            // in a single write — no window where disk can have stale lang state.
             await deps.appConfig.setTranslateOff()
           }
           rpc.send.updateSettings(deps.appConfig.getSettings())

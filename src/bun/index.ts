@@ -102,19 +102,6 @@ if (UserAppConfig.getTranslateToEnglish()) {
   }
 }
 
-// One-time heal: older versions wrote the translate default language into
-// transcriptionLanguageId. If translate is off, the language MUST be auto.
-// This catches every orphaned state regardless of what translateDefaultLanguageId is.
-if (
-  !UserAppConfig.getTranslateToEnglish() &&
-  UserAppConfig.getTranscriptionLanguageId() !== 'auto'
-) {
-  console.log(
-    `[heal] resetting transcriptionLanguageId from "${UserAppConfig.getTranscriptionLanguageId()}" to "auto" (translate is off)`
-  )
-  await UserAppConfig.setTranscriptionLanguageId('auto')
-}
-
 let devices = await findDevices()
 
 let currentPermissions: PermissionState = {

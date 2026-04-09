@@ -276,9 +276,27 @@ export class AppConfig {
     return this.transcriptionLanguageId
   }
 
-  /** Whisper `--language` value, or `null` when using auto-detect. */
+  /** Whisper `--language` value for normal transcription, or `null` when using auto-detect. */
   public getTranscriptionWhisperCode(): string | null {
     return whisperCodeForTranscriptionId(this.transcriptionLanguageId)
+  }
+
+  /**
+   * Runtime Whisper `--language` value for the current mode.
+   * Translate mode needs a fixed source language, but normal transcription keeps
+   * its own setting and should never be rewritten just because translate toggled.
+   */
+  public getRuntimeTranscriptionWhisperCode(): string | null {
+    if (!this.translateToEnglish) {
+      return this.getTranscriptionWhisperCode()
+    }
+
+    const sourceLanguageId =
+      this.transcriptionLanguageId !== 'auto'
+        ? this.transcriptionLanguageId
+        : this.translateDefaultLanguageId
+
+    return whisperCodeForTranscriptionId(sourceLanguageId)
   }
 
   public getShortcutId(): ShortcutId {
@@ -337,9 +355,8 @@ export class AppConfig {
   }
 
   /**
-   * Atomically enables translate and pins the source language in a single write.
-   * `transcriptionLanguageId` becomes `sourceLanguageId` so whisper knows the
-   * source; turning translate off resets it back to auto.
+   * Enables translate and pins the active source language so the Ready screen
+   * picker reflects the spoken language while translation is active.
    */
   public async setTranslateOn(sourceLanguageId: string): Promise<boolean> {
     if (
@@ -354,7 +371,7 @@ export class AppConfig {
     return true
   }
 
-  /** Atomically disables translate and resets `transcriptionLanguageId` to auto in one write. */
+  /** Disables translate and returns the Ready screen language picker to auto-detect. */
   public async setTranslateOff(): Promise<void> {
     this.translateToEnglish = false
     this.transcriptionLanguageId = 'auto'
