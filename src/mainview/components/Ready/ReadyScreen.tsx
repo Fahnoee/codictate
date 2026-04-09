@@ -342,6 +342,7 @@ export function ReadyScreen({
               compact
               value={languageId}
               onChange={handleLanguageChange}
+              excludeAuto={isTranslateOn}
               className={!isIdle ? "pointer-events-none" : undefined}
             />
           </div>
