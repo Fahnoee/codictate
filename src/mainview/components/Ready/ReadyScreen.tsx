@@ -142,26 +142,17 @@ export function ReadyScreen({
       return;
     }
 
-    // Auto-detect + translate default: enable translate in one backend write (setTranslateOn).
-    // Do NOT call setTranscriptionLanguage first — that briefly (or permanently if the second
-    // RPC fails) leaves translate OFF with a fixed language, which mis-transcribes e.g. English as Danish.
-    if (languageIsAuto && settings.translateDefaultLanguageId) {
-      const defaultLang = settings.translateDefaultLanguageId;
-      queryClient.setQueryData(["settings"], {
-        ...settings,
-        transcriptionLanguageId: defaultLang,
-        translateToEnglish: true,
-      });
-      const ok = await setTranslateToEnglish(true);
-      if (!ok) {
-        queryClient.setQueryData(["settings"], await fetchSettings());
-      }
-      return;
-    }
-
+    // Backend handles everything atomically via setTranslateOn / setTranslateToEnglish.
+    // Optimistic UI: backend will set transcriptionLanguageId to the source language
+    // when auto is active, so mirror that here.
+    const srcLang =
+      languageIsAuto && settings.translateDefaultLanguageId !== "auto"
+        ? settings.translateDefaultLanguageId
+        : settings.transcriptionLanguageId;
     queryClient.setQueryData(["settings"], {
       ...settings,
       translateToEnglish: true,
+      transcriptionLanguageId: srcLang,
     });
     const ok = await setTranslateToEnglish(true);
     if (!ok) {

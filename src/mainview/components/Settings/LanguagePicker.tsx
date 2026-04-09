@@ -25,6 +25,8 @@ export function LanguagePicker({
   compact = false,
   allowEmpty = false,
   excludeAuto = false,
+  /** Disabled first row (e.g. “pick a language”) — value must match when nothing chosen yet. */
+  leadingDisabledOption,
   ariaLabel = "Transcription language",
 }: {
   value: string;
@@ -37,6 +39,7 @@ export function LanguagePicker({
   allowEmpty?: boolean;
   /** Omit the auto-detect option from the list. */
   excludeAuto?: boolean;
+  leadingDisabledOption?: { value: string; label: string };
   ariaLabel?: string;
 }) {
   const options = TRANSCRIPTION_LANGUAGE_OPTIONS.filter(
@@ -53,9 +56,18 @@ export function LanguagePicker({
         className={`${selectClass} w-full ${sizeClass} ${className ?? ""}`}
         aria-label={ariaLabel}
       >
+        {leadingDisabledOption && (
+          <option
+            value={leadingDisabledOption.value}
+            disabled
+            className="bg-zinc-900 text-white/45"
+          >
+            {leadingDisabledOption.label}
+          </option>
+        )}
         {allowEmpty && (
           <option value="" className="bg-zinc-900 text-white/50">
-            — Not set (manual selection required) —
+            — Auto-detect —
           </option>
         )}
         {options.map((o) => (

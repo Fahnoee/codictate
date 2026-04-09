@@ -172,7 +172,7 @@ export async function setTranslateToEnglish(
 }
 
 export async function setTranslateDefaultLanguage(
-  languageId: string | null
+  languageId: string
 ): Promise<boolean> {
   return rpc.request.setTranslateDefaultLanguage({ languageId })
 }

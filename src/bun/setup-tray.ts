@@ -210,17 +210,15 @@ export const setupTray = (
             return
           }
           if (appConfig.getTranscriptionLanguageId() === 'auto') {
-            const fallback = appConfig.getTranslateDefaultLanguageId()
-            if (fallback) {
-              // Atomically set source language + enable translate in one disk write.
-              await appConfig.setTranslateOn(fallback)
-            } else {
+            const srcLang = appConfig.getTranslateDefaultLanguageId()
+            if (srcLang === 'auto') {
               onOpenSettings?.()
               tray.setMenu(
                 buildMenu(appConfig.resolveAudioDevice(currentDevices))
               )
               return
             }
+            await appConfig.setTranslateOn(srcLang)
           } else {
             await appConfig.setTranslateToEnglish(true)
           }

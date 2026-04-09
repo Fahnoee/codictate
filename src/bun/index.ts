@@ -102,16 +102,17 @@ if (UserAppConfig.getTranslateToEnglish()) {
   }
 }
 
-// Heal: previous versions mutated transcriptionLanguageId to translateDefaultLanguageId
-// when enabling translate mode (two-step write). If the app crashed between the two
-// writes, the disk could be left with translateToEnglish=false but transcriptionLanguageId
-// set to the translate default language. Detect and reset that orphaned state.
-if (!UserAppConfig.getTranslateToEnglish()) {
-  const tlId = UserAppConfig.getTranslateDefaultLanguageId()
-  const txId = UserAppConfig.getTranscriptionLanguageId()
-  if (tlId !== null && txId === tlId) {
-    await UserAppConfig.setTranscriptionLanguageId('auto')
-  }
+// One-time heal: older versions wrote the translate default language into
+// transcriptionLanguageId. If translate is off, the language MUST be auto.
+// This catches every orphaned state regardless of what translateDefaultLanguageId is.
+if (
+  !UserAppConfig.getTranslateToEnglish() &&
+  UserAppConfig.getTranscriptionLanguageId() !== 'auto'
+) {
+  console.log(
+    `[heal] resetting transcriptionLanguageId from "${UserAppConfig.getTranscriptionLanguageId()}" to "auto" (translate is off)`
+  )
+  await UserAppConfig.setTranscriptionLanguageId('auto')
 }
 
 let devices = await findDevices()

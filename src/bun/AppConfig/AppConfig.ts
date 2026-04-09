@@ -67,7 +67,8 @@ export class AppConfig {
   private maxRecordingDuration: RecordingDurationPresetSeconds
   private whisperModelId: string
   private translateToEnglish: boolean
-  private translateDefaultLanguageId: string | null
+  /** Always `'auto'` or a valid transcription language id (never null). */
+  private translateDefaultLanguageId: string
   /** False until first-run onboarding finishes; true for legacy configs missing the key. */
   private onboardingCompleted: boolean
   private recordingIndicatorMode: RecordingIndicatorMode
@@ -89,7 +90,7 @@ export class AppConfig {
     this.maxRecordingDuration = DEFAULT_MAX_RECORDING_DURATION_SECONDS
     this.whisperModelId = DEFAULT_MODEL_ID
     this.translateToEnglish = false
-    this.translateDefaultLanguageId = null
+    this.translateDefaultLanguageId = 'auto'
     this.onboardingCompleted = false
     this.recordingIndicatorMode = 'always'
     this.recordingIndicatorPosition = null
@@ -137,13 +138,17 @@ export class AppConfig {
       if (raw.translateToEnglish !== undefined) {
         this.translateToEnglish = Boolean(raw.translateToEnglish)
       }
-      if (
-        raw.translateDefaultLanguageId !== undefined &&
-        raw.translateDefaultLanguageId !== null &&
-        isValidTranscriptionLanguageId(raw.translateDefaultLanguageId) &&
-        raw.translateDefaultLanguageId !== 'auto'
-      ) {
-        this.translateDefaultLanguageId = raw.translateDefaultLanguageId
+      {
+        const rawTd = raw.translateDefaultLanguageId
+        if (
+          typeof rawTd === 'string' &&
+          isValidTranscriptionLanguageId(rawTd)
+        ) {
+          this.translateDefaultLanguageId = rawTd
+        } else {
+          // Legacy `null` / missing / invalid → treat as unset default
+          this.translateDefaultLanguageId = 'auto'
+        }
       }
       if (raw.onboardingCompleted === true) {
         this.onboardingCompleted = true
@@ -332,47 +337,36 @@ export class AppConfig {
   }
 
   /**
-   * Atomically enables translate mode and sets the source language in a single
-   * disk write. If the current transcription language is already a specific
-   * language (not auto-detect), it is preserved; otherwise it is set to
-   * `effectiveLanguageId` so Whisper knows the source language.
+   * Atomically enables translate and pins the source language in a single write.
+   * `transcriptionLanguageId` becomes `sourceLanguageId` so whisper knows the
+   * source; turning translate off resets it back to auto.
    */
-  public async setTranslateOn(effectiveLanguageId: string): Promise<boolean> {
+  public async setTranslateOn(sourceLanguageId: string): Promise<boolean> {
     if (
-      !isValidTranscriptionLanguageId(effectiveLanguageId) ||
-      effectiveLanguageId === 'auto'
+      !isValidTranscriptionLanguageId(sourceLanguageId) ||
+      sourceLanguageId === 'auto'
     ) {
       return false
     }
-    if (this.transcriptionLanguageId === 'auto') {
-      this.transcriptionLanguageId = effectiveLanguageId
-    }
+    this.transcriptionLanguageId = sourceLanguageId
     this.translateToEnglish = true
     await this.save()
     return true
   }
 
-  /**
-   * Atomically disables translate mode and resets the transcription language to
-   * auto-detect in a single disk write — prevents the window where disk has
-   * { translateToEnglish: false, transcriptionLanguageId: "da" }.
-   */
+  /** Atomically disables translate and resets `transcriptionLanguageId` to auto in one write. */
   public async setTranslateOff(): Promise<void> {
     this.translateToEnglish = false
     this.transcriptionLanguageId = 'auto'
     await this.save()
   }
 
-  public getTranslateDefaultLanguageId(): string | null {
+  public getTranslateDefaultLanguageId(): string {
     return this.translateDefaultLanguageId
   }
 
-  public async setTranslateDefaultLanguageId(
-    id: string | null
-  ): Promise<boolean> {
-    if (id !== null && (!isValidTranscriptionLanguageId(id) || id === 'auto')) {
-      return false
-    }
+  public async setTranslateDefaultLanguageId(id: string): Promise<boolean> {
+    if (!isValidTranscriptionLanguageId(id)) return false
     this.translateDefaultLanguageId = id
     await this.save()
     return true

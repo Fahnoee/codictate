@@ -233,8 +233,9 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           return ok
         },
         setTranslateDefaultLanguage: async ({ languageId }) => {
+          const normalized = languageId === '' ? 'auto' : languageId
           const ok =
-            await deps.appConfig.setTranslateDefaultLanguageId(languageId)
+            await deps.appConfig.setTranslateDefaultLanguageId(normalized)
           if (ok) {
             rpc.send.updateSettings(deps.appConfig.getSettings())
             deps.onTranslateChanged?.()
@@ -254,13 +255,12 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
               return false
             }
             if (deps.appConfig.getTranscriptionLanguageId() === 'auto') {
-              const fallback = deps.appConfig.getTranslateDefaultLanguageId()
-              if (!fallback) {
+              const srcLang = deps.appConfig.getTranslateDefaultLanguageId()
+              if (srcLang === 'auto') {
                 rpc.send.updateSettings(deps.appConfig.getSettings())
                 return false
               }
-              // Atomically set source language + enable translate in one disk write.
-              const ok = await deps.appConfig.setTranslateOn(fallback)
+              const ok = await deps.appConfig.setTranslateOn(srcLang)
               if (!ok) {
                 rpc.send.updateSettings(deps.appConfig.getSettings())
                 return false

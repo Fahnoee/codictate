@@ -54,7 +54,7 @@ const INDICATOR_ONBOARDING_OPTIONS: readonly {
 
 /** Concrete language for translate-default picker (never `auto`). */
 function initialTranslateDefaultDraft(s: AppSettings): string {
-  if (s.translateDefaultLanguageId && s.translateDefaultLanguageId !== "auto") {
+  if (s.translateDefaultLanguageId !== "auto") {
     return s.translateDefaultLanguageId;
   }
   if (s.transcriptionLanguageId !== "auto") {

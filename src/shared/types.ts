@@ -52,10 +52,11 @@ export interface AppSettings {
   /** When true, Whisper translates speech to English using the selected Small or Large model (not Turbo). */
   translateToEnglish: boolean
   /**
-   * Default source language applied automatically when translate mode is enabled
-   * while auto-detect is active. `null` means the user hasn't set one yet.
+   * Default source language when translate mode is on and main transcription is
+   * auto-detect. Always set: `'auto'` = no fixed default yet (translate-from-auto
+   * requires a concrete language); else a key from `TRANSCRIPTION_LANGUAGE_OPTIONS`.
    */
-  translateDefaultLanguageId: string | null
+  translateDefaultLanguageId: string
   /** First-run product onboarding after permissions; persisted, false until completed. */
   onboardingCompleted: boolean
   /** Desktop activity indicator: off, always visible, or only while recording/transcribing. */
@@ -107,7 +108,7 @@ export type WebviewRPCType = {
       setWhisperModel: { params: { modelId: string }; response: boolean }
       setTranslateToEnglish: { params: { enabled: boolean }; response: boolean }
       setTranslateDefaultLanguage: {
-        params: { languageId: string | null }
+        params: { languageId: string }
         response: boolean
       }
       completeOnboarding: { params: {}; response: boolean }

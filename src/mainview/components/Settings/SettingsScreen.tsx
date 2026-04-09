@@ -65,6 +65,9 @@ import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 const settingsHelperClass =
   "mt-3 text-[18px] text-white/44 leading-relaxed font-sans font-normal";
 
+/** Select value when translate default is still `auto` on disk — not a real language id. */
+const TRANSLATE_DEFAULT_PLACEHOLDER = "__translate_pick__";
+
 const devPreviewSelectClass =
   "w-full appearance-none rounded-lg border font-medium text-white/78 outline-none " +
   "border-white/12 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] " +
@@ -550,9 +553,15 @@ export function SettingsScreen({
     );
 
     if (readiness.kind === "ready") {
+      const srcLang =
+        settings.transcriptionLanguageId === "auto" &&
+        settings.translateDefaultLanguageId !== "auto"
+          ? settings.translateDefaultLanguageId
+          : settings.transcriptionLanguageId;
       queryClient.setQueryData(["settings"], {
         ...settings,
         translateToEnglish: true,
+        transcriptionLanguageId: srcLang,
       });
       const ok = await setTranslateToEnglish(true);
       if (!ok) {
@@ -580,12 +589,17 @@ export function SettingsScreen({
 
   const handleTranslateDefaultLanguageChange = useCallback(
     async (languageId: string) => {
-      const id = languageId === "" ? null : languageId;
+      if (
+        languageId === TRANSLATE_DEFAULT_PLACEHOLDER ||
+        languageId === "auto"
+      ) {
+        return;
+      }
       queryClient.setQueryData(["settings"], {
         ...settings,
-        translateDefaultLanguageId: id,
+        translateDefaultLanguageId: languageId,
       });
-      await setTranslateDefaultLanguage(id);
+      await setTranslateDefaultLanguage(languageId);
     },
     [queryClient, settings],
   );
@@ -888,20 +902,27 @@ export function SettingsScreen({
               Default source language
             </p>
             <LanguagePicker
-              value={settings.translateDefaultLanguageId ?? ""}
+              value={
+                settings.translateDefaultLanguageId === "auto"
+                  ? TRANSLATE_DEFAULT_PLACEHOLDER
+                  : settings.translateDefaultLanguageId
+              }
               onChange={handleTranslateDefaultLanguageChange}
-              allowEmpty
+              leadingDisabledOption={{
+                value: TRANSLATE_DEFAULT_PLACEHOLDER,
+                label: "Choose source language (required for translate mode)…",
+              }}
               excludeAuto
               ariaLabel="Default source language for translation"
             />
           </div>
 
           <p className={settingsHelperClass}>
-            Speak in any language — Codictate will transcribe and translate to
-            English using your selected Small or Large model (not Turbo). If
-            neither is installed, download one under Transcription Model. Set a
-            default source language to use translate from the main screen while
-            auto-detect is active.
+            Translate mode needs a fixed source language. Auto-detect applies
+            only to normal transcription, not to this setting. Choose the
+            language you speak when using translate from the main screen while
+            transcription is auto-detect. Requires a Small or Large model (not
+            Turbo); download one under Transcription Model if needed.
           </p>
         </motion.div>
 

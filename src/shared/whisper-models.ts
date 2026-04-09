@@ -90,11 +90,11 @@ export type TranslateReadiness =
 export function getTranslateReadiness(
   whisperModelId: string,
   transcriptionLanguageId: string,
-  translateDefaultLanguageId: string | null,
+  translateDefaultLanguageId: string,
   isModelAvailable: (id: string) => boolean
 ): TranslateReadiness {
   const langOk =
-    transcriptionLanguageId !== 'auto' || translateDefaultLanguageId != null
+    transcriptionLanguageId !== 'auto' || translateDefaultLanguageId !== 'auto'
   if (!langOk) {
     return { kind: 'need_language' }
   }
