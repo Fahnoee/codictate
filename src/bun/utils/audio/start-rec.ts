@@ -1,6 +1,6 @@
 import { AppConfig } from '../../AppConfig/AppConfig'
 import { speech2text, RECORDING_PATH } from '../whisper/speech2text'
-import { playEndSound } from '../sound/play-sound'
+import { duckDelayAfterStartChimeMs, playEndSound } from '../sound/play-sound'
 import { findMicRecorderBinary } from './find-mic-recorder'
 import { findDevices } from './devices'
 import { log } from '../logger'
@@ -41,6 +41,7 @@ export const startRecording = async (
   })
 
   const maxRecordSeconds = appConfig.getMaxRecordingDurationSeconds()
+  const outputDuckDelayMs = duckDelayAfterStartChimeMs()
 
   const proc = Bun.spawn(
     [
@@ -49,6 +50,7 @@ export const startRecording = async (
       RECORDING_PATH,
       String(device),
       String(maxRecordSeconds),
+      String(outputDuckDelayMs),
     ],
     {
       stderr: 'pipe',
@@ -84,7 +86,10 @@ export const startRecording = async (
     }
   )
 
-  log('mic', 'spawned', { pid: proc.pid })
+  log('mic', 'spawned', {
+    pid: proc.pid,
+    outputDuckDelayMs,
+  })
 
   return proc
 }

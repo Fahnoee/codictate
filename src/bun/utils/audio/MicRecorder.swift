@@ -5,6 +5,9 @@ import Foundation
 
 // macOS marks AVAudioSession / duckOthers as unavailable, so we approximate “duck” by briefly
 // lowering the default output device’s hardware volume when routing is built-in speakers.
+// There is no public API to lower other apps but exclude the host (Codictate) — the scalar is
+// device-wide. After `record()` starts, we delay ducking by `duckDelayMs` (from the WAV length +
+// pad, passed from Bun) so the start chime finishes, then other audio drops quickly.
 // Bluetooth/USB and name hints (headphones, AirPods) skip this so private listening is unchanged.
 
 private func getDefaultOutputDevice() -> AudioDeviceID {
@@ -103,7 +106,8 @@ private func restoreOutputDuck(_ saved: SavedOutputVolume) {
 }
 
 // CLI: MicRecorder --list-devices  → one line JSON {"0":"Mic Name",...}
-//      MicRecorder record <path> <index> <maxSeconds>
+//      MicRecorder record <path> <index> <maxSeconds> [duckDelayMs]
+// duckDelayMs: optional 0…10000, ms to wait after record() before lowering output (default 248).
 // Stop early: SIGINT (graceful WAV finalize) or SIGTERM.
 
 private func deviceHasInput(_ id: AudioDeviceID) -> Bool {
@@ -199,10 +203,31 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
     private var savedOutputVolume: SavedOutputVolume?
     let lock = NSLock()
 
-    private func applyOutputDuckingIfNeeded() {
-        // Runs before signal/timer handlers; `savedOutputVolume` is only read in `finish()` (under lock).
-        if let s = tryApplyOutputDuck() {
-            savedOutputVolume = s
+    private func applyOutputDuckFromScheduledCallback() {
+        lock.lock()
+        let stopped = shouldStop
+        lock.unlock()
+        if stopped { return }
+        guard let applied = tryApplyOutputDuck() else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        if shouldStop {
+            restoreOutputDuck(applied)
+            return
+        }
+        if savedOutputVolume != nil { return }
+        savedOutputVolume = applied
+    }
+
+    private func scheduleDelayedOutputDuckingIfNeeded(delay: TimeInterval) {
+        if delay <= 0 {
+            DispatchQueue.global().async { [weak self] in
+                self?.applyOutputDuckFromScheduledCallback()
+            }
+        } else {
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.applyOutputDuckFromScheduledCallback()
+            }
         }
     }
 
@@ -224,7 +249,7 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
         }
     }
 
-    func run(path: String, deviceIndex: Int, maxSeconds: Int) -> Int32 {
+    func run(path: String, deviceIndex: Int, maxSeconds: Int, outputDuckDelaySeconds: TimeInterval) -> Int32 {
         let devices = listInputDevices()
         guard !devices.isEmpty else {
             fputs("MicRecorder: no input devices\n", stderr)
@@ -247,8 +272,6 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
         let url = URL(fileURLWithPath: path)
         try? FileManager.default.removeItem(at: url)
 
-        applyOutputDuckingIfNeeded()
-
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
             AVSampleRateKey: 48_000.0,
@@ -267,6 +290,7 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
                 finish()
                 return 1
             }
+            scheduleDelayedOutputDuckingIfNeeded(delay: outputDuckDelaySeconds)
         } catch {
             fputs("MicRecorder: \(error)\n", stderr)
             finish()
@@ -327,7 +351,7 @@ if args.count >= 2, args[1] == "--list-devices" {
 
 guard args.count >= 5, args[1] == "record" else {
     fputs(
-        "usage: MicRecorder --list-devices\n       MicRecorder record <wavPath> <deviceIndex> <maxSeconds>\n",
+        "usage: MicRecorder --list-devices\n       MicRecorder record <wavPath> <deviceIndex> <maxSeconds> [duckDelayMs]\n",
         stderr
     )
     exit(2)
@@ -339,5 +363,22 @@ guard let idx = Int(args[3]), let maxSec = Int(args[4]), maxSec > 0 else {
     exit(2)
 }
 
+// Matches Bun fallback when WAV is missing: 220 ms + 28 ms pad.
+var outputDuckDelaySeconds = 0.248
+if args.count >= 6 {
+    guard let ms = Int(args[5]), ms >= 0, ms <= 10_000 else {
+        fputs("MicRecorder: duckDelayMs must be 0...10000\n", stderr)
+        exit(2)
+    }
+    outputDuckDelaySeconds = Double(ms) / 1000.0
+}
+
 let session = RecordSession()
-exit(session.run(path: outPath, deviceIndex: idx, maxSeconds: maxSec))
+exit(
+    session.run(
+        path: outPath,
+        deviceIndex: idx,
+        maxSeconds: maxSec,
+        outputDuckDelaySeconds: outputDuckDelaySeconds
+    )
+)
