@@ -332,8 +332,29 @@ export class AppConfig {
   }
 
   /**
+   * Atomically enables translate mode and sets the source language in a single
+   * disk write. If the current transcription language is already a specific
+   * language (not auto-detect), it is preserved; otherwise it is set to
+   * `effectiveLanguageId` so Whisper knows the source language.
+   */
+  public async setTranslateOn(effectiveLanguageId: string): Promise<boolean> {
+    if (
+      !isValidTranscriptionLanguageId(effectiveLanguageId) ||
+      effectiveLanguageId === 'auto'
+    ) {
+      return false
+    }
+    if (this.transcriptionLanguageId === 'auto') {
+      this.transcriptionLanguageId = effectiveLanguageId
+    }
+    this.translateToEnglish = true
+    await this.save()
+    return true
+  }
+
+  /**
    * Atomically disables translate mode and resets the transcription language to
-   * auto-detect in a single save — prevents the window where disk has
+   * auto-detect in a single disk write — prevents the window where disk has
    * { translateToEnglish: false, transcriptionLanguageId: "da" }.
    */
   public async setTranslateOff(): Promise<void> {

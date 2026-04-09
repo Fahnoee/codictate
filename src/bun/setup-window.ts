@@ -259,17 +259,18 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
                 rpc.send.updateSettings(deps.appConfig.getSettings())
                 return false
               }
-              const ok =
-                await deps.appConfig.setTranscriptionLanguageId(fallback)
+              // Atomically set source language + enable translate in one disk write.
+              const ok = await deps.appConfig.setTranslateOn(fallback)
               if (!ok) {
                 rpc.send.updateSettings(deps.appConfig.getSettings())
                 return false
               }
+            } else {
+              await deps.appConfig.setTranslateToEnglish(true)
             }
-            await deps.appConfig.setTranslateToEnglish(true)
           } else {
-            // Atomic: sets translateToEnglish=false and transcriptionLanguageId='auto'
-            // in a single save — no window where disk can have stale lang state.
+            // Atomically resets translateToEnglish=false and transcriptionLanguageId='auto'
+            // in a single write — no window where disk can have stale lang state.
             await deps.appConfig.setTranslateOff()
           }
           rpc.send.updateSettings(deps.appConfig.getSettings())

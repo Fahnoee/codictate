@@ -7,7 +7,7 @@ import Foundation
 // lowering the default output device’s hardware volume when routing is built-in speakers.
 // There is no public API to lower other apps but exclude the host (Codictate) — the scalar is
 // device-wide. After `record()` starts, we delay ducking by `duckDelayMs` (from the WAV length +
-// pad, passed from Bun) so the start chime finishes, then other audio drops quickly.
+// pad, passed from Bun) so the start chime finishes, then other audio is ducked to scalar 0.
 // Bluetooth/USB and name hints (headphones, AirPods) skip this so private listening is unchanged.
 
 private func getDefaultOutputDevice() -> AudioDeviceID {
@@ -85,7 +85,7 @@ private func tryApplyOutputDuck() -> SavedOutputVolume? {
     var current: Float32 = 1
     var size = UInt32(MemoryLayout<Float32>.size)
     guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &current) == noErr else { return nil }
-    let ducked = max(0.04, min(current * 0.2, 0.18))
+    let ducked: Float32 = 0
     guard ducked + 0.02 < current else { return nil }
     var toWrite = ducked
     guard AudioObjectSetPropertyData(device, &addr, 0, nil, size, &toWrite) == noErr else { return nil }
