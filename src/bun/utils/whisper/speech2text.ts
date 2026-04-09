@@ -18,6 +18,8 @@ const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
   [/\bkodi\s+dicate\b/gi, 'Codictate'],
   [/\bkodi\s+tat\b/gi, 'Codictate'],
   [/\bkodik\s+tat\b/gi, 'Codictate'],
+  [/\bkodig\s+tate\b/gi, 'Codictate'],
+  [/\bkodigtate\b/gi, 'Codictate'],
   [/\bKodak\s+Tech\b/gi, 'Codictate'],
   [/\bKodakTech\b/gi, 'Codictate'],
   [/\bcodec\s+cheat\b/gi, 'Codictate'],
