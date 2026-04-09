@@ -8,6 +8,8 @@
 
 Codictate puts your words wherever your cursor is with a local-first dictation workflow built for macOS. No copy-pasting, no account, no cloud processing of your voice.
 
+**Website:** [codictate.app](https://codictate.app)
+
 ## Support
 
 Codictate is free. If it saves you time or money compared to other tools, consider supporting the project.
@@ -25,7 +27,7 @@ I'm saving toward an **Apple Developer Program** membership so the app can be **
 
 ## Download
 
-Go to [**Releases**](https://github.com/EmilLykke/codictate/releases) and download the latest `.dmg`.
+Visit **[codictate.app](https://codictate.app)** for the project site, then grab the latest `.dmg` from [**Releases**](https://github.com/EmilLykke/codictate/releases).
 
 | Channel | Description |
 |---------|-------------|
@@ -133,6 +135,7 @@ git add electrobun.config.ts version.json && git commit -m "release: vX.X.X"
 
 ## Documentation and community
 
+- [codictate.app](https://codictate.app) — project website
 - [Contributing guide](CONTRIBUTING.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
 - [Security policy](SECURITY.md)
