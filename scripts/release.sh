@@ -351,4 +351,4 @@ fi
 
 echo ""
 echo "Commit the version files:"
-echo "  git add electrobun.config.ts version.json && git commit -m \"release: v${RELEASED_VERSION}\""
+echo "  git add electrobun.config.ts version.json && git commit -m \"release: v${RELEASED_VERSION}\" && git push"
