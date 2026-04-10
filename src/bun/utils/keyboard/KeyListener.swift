@@ -5,18 +5,12 @@ import Foundation
 
 // Read config from stdin (first line) before the command thread consumes stdin.
 var swallowRules: [[String: Any]] = []
-/// When false, skip CGRequestListenEventAccess on launch (Bun respawns this helper to
-/// refresh TCC after the user grants Input Monitoring — a second prompt must not fire).
-var requestListenAccessOnLaunch = true
 if let line = readLine(),
     let data = line.data(using: .utf8),
     let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
 {
     if let rules = parsed["swallow"] as? [[String: Any]] {
         swallowRules = rules
-    }
-    if let v = parsed["requestListenAccessOnLaunch"] as? Bool {
-        requestListenAccessOnLaunch = v
     }
 }
 
@@ -290,12 +284,10 @@ print(
 )
 fflush(stdout)
 
-// First launch: show the Input Monitoring system prompt. Respawned helpers use
-// requestListenAccessOnLaunch=false so we only refresh TCC / attach the tap.
-if requestListenAccessOnLaunch && !imStart {
-    CGRequestListenEventAccess()
-}
-
+// Do NOT auto-request Input Monitoring on startup.
+// The permission flow is: Accessibility → Documents → Microphone → Input Monitoring.
+// The Bun host sends `request_input_monitoring` only after the earlier steps are done,
+// which triggers CGRequestListenEventAccess() at the right time.
 _ = ensureTapIfListenAccessGranted()
 emitPermissionsJSON()
 

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import Electrobun, { Updater, Utils } from 'electrobun/bun'
 import type { PermissionState, SettingsPane } from '../shared/types'
 import { findDevices } from './utils/audio/devices'
+import { checkMicrophoneAuthorization } from './utils/audio/check-mic-authorization'
 import { AppConfig } from './AppConfig/AppConfig'
 import { setupApplicationMenu } from './setup-menu'
 import { setupTray } from './setup-tray'
@@ -32,13 +33,13 @@ function checkDocumentsPermission(): boolean {
   }
 }
 
-/** Only touch ~/Documents (TCC) once the flow has reached step 3, or all native perms are granted. */
+/** Only touch ~/Documents (TCC) once the user has completed the step before it.
+ *  Permission order: Accessibility → Documents → Microphone → Input Monitoring.
+ *  So we probe as soon as accessibility is granted (or all native perms are done). */
 function shouldProbeDocuments(
   p: Pick<PermissionState, 'inputMonitoring' | 'microphone' | 'accessibility'>
 ): boolean {
-  const reachedDocumentsStep = p.inputMonitoring && p.accessibility
-  const allNativeGranted = p.inputMonitoring && p.microphone && p.accessibility
-  return reachedDocumentsStep || allNativeGranted
+  return p.accessibility
 }
 
 function mergeDocumentsField(
@@ -158,8 +159,15 @@ const win = setupWindow({
   windowMinSize: MAIN_WINDOW_MIN_SIZE,
   getCurrentDevices: () => devices,
   getPermissions: async () => {
+    let microphone = currentPermissions.microphone
+    try {
+      microphone = await checkMicrophoneAuthorization()
+    } catch {
+      /* MicRecorder unavailable — leave previous value */
+    }
     currentPermissions = {
       ...currentPermissions,
+      microphone,
       documents: mergeDocumentsField(
         currentPermissions,
         currentPermissions.documents
@@ -198,9 +206,8 @@ const win = setupWindow({
     if (pane === 'inputMonitoring') {
       if (keyboard.isAlive) {
         keyboard.requestInputMonitoringPrompt()
-      } else {
-        Bun.spawn(['open', INPUT_MONITORING_PREFS_URL])
       }
+      Bun.spawn(['open', INPUT_MONITORING_PREFS_URL])
       return
     }
     if (!keyboard.isAlive) return
@@ -307,12 +314,16 @@ trayHandlers = setupTray(
 let permissionPoll: ReturnType<typeof setInterval> | null = null
 let lastKeyboardRespawnMs = 0
 const KEYBOARD_RESPAWN_MIN_MS = 30_000
-/** macOS often keeps CGPreflightListenEventAccess() false in a long-lived helper until the process is replaced after the user grants Input Monitoring. */
-const INPUT_MONITORING_TCC_REFRESH_GRACE_MS = 12_000
 
-const appKeyboardBootTime = Date.now()
+// After the user grants Input Monitoring in System Settings, macOS requires the
+// KeyListener process to restart before CGPreflightListenEventAccess() returns true.
+// We restart it — but only once all other permissions are done and IM is the sole
+// remaining step. Restarting earlier would be pointless (IM hasn't been touched yet)
+// and could cause confusion during earlier permission steps.
+const IM_TCC_REFRESH_GRACE_MS = 8_000
+let imRefreshScheduled = false
 
-function startKeyboard(options?: { requestListenAccessOnLaunch?: boolean }) {
+function startKeyboard() {
   return setupRecording(
     UserAppConfig,
     trayHandlers,
@@ -335,27 +346,40 @@ function startKeyboard(options?: { requestListenAccessOnLaunch?: boolean }) {
           clearInterval(permissionPoll)
           permissionPoll = null
         }
-      } else if (!permissionPoll) {
+        imRefreshScheduled = false
+        return
+      }
+
+      // Only poll for permission changes when something is still outstanding.
+      if (!permissionPoll) {
         permissionPoll = setInterval(() => {
           if (allPermissionsGranted(currentPermissions)) {
-            if (permissionPoll) {
-              clearInterval(permissionPoll)
-              permissionPoll = null
-            }
+            clearInterval(permissionPoll!)
+            permissionPoll = null
+            imRefreshScheduled = false
             return
           }
 
-          const pastImGrace =
-            Date.now() - appKeyboardBootTime >=
-            INPUT_MONITORING_TCC_REFRESH_GRACE_MS
+          // Restart KeyListener for IM TCC refresh ONLY when IM is the last step.
+          // (Accessibility + Documents + Microphone must all be done first.)
+          const imIsLastStep =
+            currentPermissions.accessibility &&
+            currentPermissions.documents &&
+            currentPermissions.microphone &&
+            !currentPermissions.inputMonitoring
 
-          if (
-            pastImGrace &&
-            !currentPermissions.inputMonitoring &&
-            keyboard.isAlive
-          ) {
-            keyboard.stop()
-            keyboard = startKeyboard({ requestListenAccessOnLaunch: false })
+          if (imIsLastStep && !imRefreshScheduled && keyboard.isAlive) {
+            imRefreshScheduled = true
+            setTimeout(() => {
+              if (
+                !allPermissionsGranted(currentPermissions) &&
+                !currentPermissions.inputMonitoring &&
+                keyboard.isAlive
+              ) {
+                keyboard.stop()
+                keyboard = startKeyboard()
+              }
+            }, IM_TCC_REFRESH_GRACE_MS)
             return
           }
 
@@ -365,15 +389,12 @@ function startKeyboard(options?: { requestListenAccessOnLaunch?: boolean }) {
             const now = Date.now()
             if (now - lastKeyboardRespawnMs >= KEYBOARD_RESPAWN_MIN_MS) {
               lastKeyboardRespawnMs = now
-              keyboard = startKeyboard({ requestListenAccessOnLaunch: false })
+              keyboard = startKeyboard()
             }
           }
         }, 3000)
       }
-    },
-    options?.requestListenAccessOnLaunch === false
-      ? { requestListenAccessOnLaunch: false }
-      : undefined
+    }
   )
 }
 

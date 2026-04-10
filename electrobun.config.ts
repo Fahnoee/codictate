@@ -1,9 +1,24 @@
 import type { ElectrobunConfig } from "electrobun";
 
+const buildChannel = process.env.CODICTATE_CHANNEL ?? "dev";
+const appIdentifier =
+  buildChannel === "canary"
+    ? "app.codictate.canary"
+    : buildChannel === "dev"
+      ? "app.codictate.dev"
+      : "app.codictate";
+
+/** Single product name — do not append "canary" / "dev" here. Electrobun combines
+ *  this with `electrobun build --env=…` to produce macOS bundle folder + CFBundleName:
+ *  stable → "Codictate", canary → "Codictate-canary", dev → "Codictate-dev"
+ *  (see getMacOSBundleDisplayName in Electrobun). Putting the channel in `name`
+ *  would yield broken names like "Codictate Canary-canary". */
+const APP_NAME = "Codictate";
+
 export default {
   app: {
-    name: "Codictate",
-    identifier: "app.codictate",
+    name: APP_NAME,
+    identifier: appIdentifier,
     version: "0.0.24",
   },
   runtime: {
@@ -36,11 +51,14 @@ export default {
     mac: {
       icons: "icon.iconset",
       bundleCEF: false,
-      // codesign: true,
-      // notarize: true,
+      codesign: true,
+      notarize: true,
+      // Must be boolean `true` — Electrobun copies this object into the *signed*
+      // entitlements plist. A string becomes `<string>…</string>`, which is invalid
+      // for this key; TCC/mic then fails silently under hardened runtime.
+      // NSMicrophoneUsageDescription is set in scripts/post-build.ts (+ post-wrap).
       entitlements: {
-        "com.apple.security.device.audio-input":
-          "Microphone access for dictation recording",
+        "com.apple.security.device.audio-input": true,
       },
     },
     linux: {
@@ -60,5 +78,6 @@ export default {
   scripts: {
     preBuild: "./scripts/pre-build.ts",
     postBuild: "./scripts/post-build.ts",
+    postWrap: "./scripts/post-wrap.ts",
   },
 } satisfies ElectrobunConfig;

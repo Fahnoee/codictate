@@ -6,12 +6,12 @@ import { PermissionRow } from "./PermissionRow";
 import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 import { triggerPermissionPrompt } from "../../rpc";
 
-/** System prompts run in this order (Input Monitoring → Accessibility → Documents → Microphone). */
+/** System prompts run in this order (Accessibility → Documents → Microphone → Input Monitoring). */
 export const PERMISSION_ORDER: SettingsPane[] = [
-  "inputMonitoring",
   "accessibility",
   "documents",
   "microphone",
+  "inputMonitoring",
 ];
 
 const ROWS: {
@@ -19,11 +19,6 @@ const ROWS: {
   label: string;
   description: string;
 }[] = [
-  {
-    pane: "inputMonitoring",
-    label: "Input Monitoring",
-    description: "Detect the shortcut while the app is in background",
-  },
   {
     pane: "accessibility",
     label: "Accessibility",
@@ -38,6 +33,11 @@ const ROWS: {
     pane: "microphone",
     label: "Microphone",
     description: "Record your voice to transcribe into text",
+  },
+  {
+    pane: "inputMonitoring",
+    label: "Input Monitoring",
+    description: "Detect the shortcut while the app is in background",
   },
 ];
 
@@ -67,8 +67,9 @@ export function PermissionScreen({
       if (permissions[pane]) promptedPanes.current.delete(pane);
     }
     if (allGranted || !activePane) return;
-    // Input Monitoring: KeyListener calls CGRequestListenEventAccess() on startup —
-    // do not auto-trigger here or we double-prompt; "Allow →" still re-requests.
+    // Input Monitoring is the last step. The user clicks "Allow →" to trigger
+    // CGRequestListenEventAccess() via keyboard.requestInputMonitoringPrompt().
+    // Never auto-trigger — the system dialog must only appear when the user asks.
     if (activePane === "inputMonitoring") return;
     if (promptedPanes.current.has(activePane)) return;
     promptedPanes.current.add(activePane);
@@ -179,9 +180,7 @@ export function PermissionScreen({
               transition={{ delay: 0.5, duration: 0.3 }}
               className="mt-5 text-[18px] text-white/15 text-center leading-relaxed"
             >
-              One system prompt at a time — return here after each step. If the
-              shortcut still does not work after Input Monitoring, quit and
-              reopen the app once.
+              One system prompt at a time — return here after each step.
             </motion.p>
           )}
         </AnimatePresence>

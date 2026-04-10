@@ -103,6 +103,8 @@ If you want to sign or notarize your own builds, copy `.env.example` to `.env` a
 cp .env.example .env
 ```
 
+Details, nested helper signing, and troubleshooting failed notarization: **[docs/MACOS_SIGNING_AND_NOTARIZATION.md](docs/MACOS_SIGNING_AND_NOTARIZATION.md)**.
+
 ## Releasing
 
 ```bash
@@ -156,6 +158,7 @@ scripts/
   post-build.ts         # App bundle patching
   release.sh            # Release pipeline
 docs/
-  INSTALL.md            # User install guide
-  StepByStep/           # Install guide images
+  INSTALL.md                        # User install guide
+  MACOS_SIGNING_AND_NOTARIZATION.md # Maintainer: signing & notary
+  StepByStep/                       # Install guide images
 ```

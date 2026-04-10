@@ -4,10 +4,13 @@
 // sizes so a fresh clone still builds correctly.
 
 import { join } from "path";
-import { existsSync, renameSync, readdirSync, mkdirSync } from "fs";
+import {
+  existsSync,
+  readdirSync,
+  mkdirSync,
+} from "fs";
 
 const buildDir = process.env.ELECTROBUN_BUILD_DIR;
-const buildEnv = process.env.ELECTROBUN_BUILD_ENV;
 
 if (!buildDir) {
   console.error("[post-build] Missing ELECTROBUN_BUILD_DIR");
@@ -22,7 +25,6 @@ if (!appBundle) {
 console.log(`[post-build] Patching bundle: ${appBundle}`);
 
 const contentsDir = join(buildDir, appBundle, "Contents");
-const macosDir = join(contentsDir, "MacOS");
 const resourcesDir = join(contentsDir, "Resources");
 const plistPath = join(contentsDir, "Info.plist");
 
@@ -42,6 +44,23 @@ setOrAdd(
   "NSMicrophoneUsageDescription",
   '"Codictate uses the microphone to record your voice for dictation."',
 );
+// Required on current macOS for system permission dialogs to appear for signed apps.
+// Without these, CGRequestListenEventAccess / accessibility prompts can fail silently.
+setOrAdd(
+  "NSInputMonitoringUsageDescription",
+  '"Codictate listens for your global dictation shortcut while you use other apps."',
+);
+setOrAdd(
+  "NSAccessibilityUsageDescription",
+  '"Codictate uses accessibility to paste transcribed text into the app that has focus."',
+);
+
+// Do NOT rename the `launcher` binary — Electrobun's codesignAppBundle() signs
+// `Contents/MacOS/launcher` by path; renaming breaks TCC / System Settings listing.
+//
+// CFBundleName (and the .app folder name) already come from electrobun.config.ts
+// `app.name` + `--env` via Electrobun's getMacOSBundleDisplayName — no PlistBuddy
+// needed here for display naming.
 
 // ─── Ensure icon.iconset is populated ────────────────────────────────────────
 
@@ -76,31 +95,19 @@ if (existsSync(sourceIcon)) {
   }
 }
 
-// ─── Rename launcher binary (non-dev only) ────────────────────────────────────
-// stable → "Codictate"   canary → "Codictate Canary"
-// Electrobun may name the binary "launcher" (older) or after ELECTROBUN_APP_NAME
-// (e.g. "Codictate-canary"). We try both so the rename is always applied.
-
-if (buildEnv !== "dev") {
-  const appName = buildEnv === "stable" ? "Codictate" : "Codictate-canary";
-  const newBinaryPath = join(macosDir, appName);
-  const electrobunBinaryName = process.env.ELECTROBUN_APP_NAME; // e.g. "Codictate-canary"
-  const candidates = ["launcher", electrobunBinaryName].filter(Boolean) as string[];
-
-  const sourcePath = candidates
-    .map((name) => join(macosDir, name))
-    .find((p) => existsSync(p) && p !== newBinaryPath);
-
-  if (sourcePath) {
-    renameSync(sourcePath, newBinaryPath);
-    setOrAdd("CFBundleExecutable", `"${appName}"`);
-    setOrAdd("CFBundleDisplayName", `"${appName}"`);
-    setOrAdd("CFBundleName", `"${appName}"`);
-    console.log(`[post-build] Renamed: ${sourcePath.split("/").pop()} → ${appName}`);
-  } else {
-    console.log("[post-build] Binary already named correctly or not found — skipping rename.");
-  }
-}
+// AppLauncher swap was removed.
+//
+// Rationale: With a signed/notarized build the Bun runtime must remain the
+// CFBundleExecutable so that macOS Launch Services registers it as the
+// "responsible process" for the app bundle. Subprocesses (KeyListener, etc.)
+// inherit that responsibility and their CGRequestListenEventAccess / TCC calls
+// are attributed to app.codictate.canary correctly.
+//
+// Inserting an AppLauncher shim as CFBundleExecutable pushes Bun one level
+// down the process tree (grandchild relationship with KeyListener), breaking
+// TCC attribution on macOS 13+.  The premature CGRequestListenEventAccess()
+// call in AppLauncher (before any UI window exists) also consumed the one-shot
+// TCC dialog opportunity, preventing subsequent calls from showing the sheet.
 
 // ─── Compile iconset → .icns and embed in bundle ──────────────────────────────
 // Without CFBundleIconFile + a valid .icns in Resources/, macOS shows a generic
@@ -118,6 +125,97 @@ if (existsSync(iconsetDir)) {
     console.log("[post-build] Compiled icon.iconset → AppIcon.icns");
   } else {
     console.warn("[post-build] iconutil failed — icon may be missing in permission dialogs");
+  }
+}
+
+// ─── Sign bundled native helpers (required for notarization) ────────────────
+// Electrobun signs MacOS/, Frameworks/, and Resources/app/bun/**/*.node but does
+// not sign arbitrary executables under Resources/app/. Apple notarization rejects
+// any unsigned Mach-O inside the zip, so we Developer ID–sign helpers here with
+// hardened runtime + secure timestamp — same flags Electrobun uses elsewhere.
+//
+// Each helper must embed its own entitlements: with `--options runtime`, macOS
+// denies mic / ML capabilities unless the binary declares them (silent failure or
+// stale TCC behavior). See entitlements/*.entitlements.
+//
+// Runs before Electrobun's codesignAppBundle (see node_modules/electrobun/...).
+
+const developerId = process.env.ELECTROBUN_DEVELOPER_ID;
+
+// Electrobun always sets ELECTROBUN_APP_IDENTIFIER from electrobun.config.ts
+// (app.identifier ← CODICTATE_CHANNEL): canary → app.codictate.canary,
+// dev → app.codictate.dev, stable → app.codictate.
+// Fallbacks only if the hook is run without that env (e.g. manual script run).
+function resolveAppIdentifier(): string {
+  const fromElectrobun = process.env.ELECTROBUN_APP_IDENTIFIER?.trim();
+  if (fromElectrobun) return fromElectrobun;
+
+  const env = process.env.ELECTROBUN_BUILD_ENV;
+  if (env === "canary") return "app.codictate.canary";
+  if (env === "dev") return "app.codictate.dev";
+  return "app.codictate";
+}
+
+const appIdentifier = resolveAppIdentifier();
+const nativeHelpersDir = join(resourcesDir, "app", "native-helpers");
+const nativeHelperNames = ["KeyListener", "MicRecorder", "whisper-cli"] as const;
+const entitlementsRoot = join(import.meta.dir, "..", "entitlements");
+const helperEntitlements: Record<(typeof nativeHelperNames)[number], string> = {
+  KeyListener: join(entitlementsRoot, "KeyListener.entitlements"),
+  MicRecorder: join(entitlementsRoot, "MicRecorder.entitlements"),
+  "whisper-cli": join(entitlementsRoot, "whisper-cli.entitlements"),
+};
+const CODESIGN_RETRIES = 3;
+
+if (developerId && existsSync(nativeHelpersDir)) {
+  for (const name of nativeHelperNames) {
+    const binaryPath = join(nativeHelpersDir, name);
+    if (!existsSync(binaryPath)) continue;
+
+    const id = `${appIdentifier}.native.${name.toLowerCase().replace(/-/g, "")}`;
+    const entitlementsPath = helperEntitlements[name];
+    const entitlementArgs =
+      existsSync(entitlementsPath) ? (["--entitlements", entitlementsPath] as const) : [];
+    if (entitlementArgs.length === 0) {
+      console.warn(
+        `[post-build] Missing entitlements for ${name} at ${entitlementsPath} — signing without`,
+      );
+    }
+
+    console.log(`[post-build] codesign native helper: ${name}`);
+    let signed = false;
+    for (let attempt = 1; attempt <= CODESIGN_RETRIES; attempt += 1) {
+      const result = Bun.spawnSync(
+        [
+          "codesign",
+          "--force",
+          "--verbose",
+          "--timestamp",
+          "--options",
+          "runtime",
+          "--sign",
+          developerId,
+          "--identifier",
+          id,
+          ...entitlementArgs,
+          binaryPath,
+        ],
+        { stdio: ["ignore", "inherit", "inherit"] },
+      );
+      if (result.exitCode === 0) {
+        signed = true;
+        break;
+      }
+      if (attempt < CODESIGN_RETRIES) {
+        console.warn(
+          `[post-build] codesign retry ${attempt}/${CODESIGN_RETRIES - 1} for native-helpers/${name}`,
+        );
+      }
+    }
+    if (!signed) {
+      console.error(`[post-build] codesign failed for native-helpers/${name}`);
+      process.exit(1);
+    }
   }
 }
 

@@ -275,29 +275,20 @@ export interface PermissionStatus {
   accessibility: boolean
 }
 
-export type StartKeyboardListenerOptions = {
-  /** When false, KeyListener will not call CGRequestListenEventAccess() on launch (TCC refresh respawn). Default true. */
-  requestListenAccessOnLaunch?: boolean
-}
-
 /** NSPasteboard + Cmd+V — Unicode-safe in bundled apps (no pbcopy / shell locale). */
 let keyListenerPasteText: ((text: string) => void) | null = null
 
 export function startKeyboardListener(
   onKeyEvent: (event: KeyEvent) => void,
   swallowRules: KeyEvent[] = [],
-  onPermissions?: (status: PermissionStatus) => void,
-  options?: StartKeyboardListenerOptions
+  onPermissions?: (status: PermissionStatus) => void
 ) {
   const binaryPath = join(import.meta.dir, '../native-helpers/KeyListener')
   const proc = Bun.spawn([binaryPath], { stdout: 'pipe', stdin: 'pipe' })
   let procAlive = true
 
-  const requestListenAccessOnLaunch =
-    options?.requestListenAccessOnLaunch !== false
   const config = JSON.stringify({
     swallow: swallowRules.map(serializeSwallowRule),
-    requestListenAccessOnLaunch,
   })
   proc.stdin.write(config + '\n')
   proc.stdin.flush()
@@ -356,6 +347,13 @@ export function startKeyboardListener(
   const reader = proc.stdout.getReader()
   const decoder = new TextDecoder()
 
+  // Track last-known permission state so tap_attached can merge into it.
+  let lastPermissions: PermissionStatus = {
+    inputMonitoring: false,
+    microphone: false,
+    accessibility: false,
+  }
+
   ;(async () => {
     let buffer = ''
 
@@ -377,17 +375,24 @@ export function startKeyboardListener(
             const ev = normalizeKeyEvent(parsed)
             if (ev) onKeyEvent(ev)
           } else if (parsed.status === 'started') {
-            onPermissions?.({
+            lastPermissions = {
               inputMonitoring: parsed.inputMonitoring === true,
               microphone: parsed.microphone === true,
               accessibility: parsed.accessibility === true,
-            })
+            }
+            onPermissions?.(lastPermissions)
           } else if (parsed.type === 'permissions') {
-            onPermissions?.({
-              inputMonitoring: parsed.inputMonitoring === true,
+            lastPermissions = {
+              // Preserve tap-confirmed inputMonitoring=true — CGPreflightListenEventAccess()
+              // can return false even when the tap is successfully attached (e.g. dev builds
+              // or apps that haven't been toggled yet in System Settings).
+              inputMonitoring:
+                lastPermissions.inputMonitoring ||
+                parsed.inputMonitoring === true,
               microphone: parsed.microphone === true,
               accessibility: parsed.accessibility === true,
-            })
+            }
+            onPermissions?.(lastPermissions)
           } else if (parsed.type === 'paste_result') {
             log('paste', 'CGEvent paste result from KeyListener', {
               success: parsed.success,
@@ -396,7 +401,13 @@ export function startKeyboardListener(
           } else if (parsed.type === 'clipboard_set') {
             log('clipboard', 'NSPasteboard set (copy-only)')
           } else if (parsed.type === 'tap_attached') {
-            console.log('[KeyListener] Event tap attached')
+            // The event tap attached successfully — this is ground-truth evidence that
+            // input monitoring is working, regardless of what CGPreflightListenEventAccess() says.
+            console.log(
+              '[KeyListener] Event tap attached — input monitoring confirmed'
+            )
+            lastPermissions = { ...lastPermissions, inputMonitoring: true }
+            onPermissions?.(lastPermissions)
           } else if (parsed.type === 'tap_create_failed') {
             console.error(
               `[KeyListener] ${String(parsed.message ?? 'tap_create_failed')}`

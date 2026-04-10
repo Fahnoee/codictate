@@ -10,7 +10,6 @@ import {
   startKeyboardListener,
   type KeyEvent,
   type PermissionStatus,
-  type StartKeyboardListenerOptions,
 } from './utils/keyboard/keyboard-events'
 import { playStartSound } from './utils/sound/play-sound'
 import { AppConfig } from './AppConfig/AppConfig'
@@ -20,6 +19,7 @@ import {
   RIGHT_OPTION_PTT_DEFER_MS,
 } from '../shared/dictation-shortcut'
 import type { AppStatus, ShortcutId } from '../shared/types'
+import { checkMicrophoneAuthorization } from './utils/audio/check-mic-authorization'
 
 /** Keycodes that should not cancel "wait for Fn chord" when main is fn-globe + hold is fn-* (non-globe). */
 const FN_GLOBE_DEFER_CANCEL_SUPPRESS = new Set<number>([
@@ -77,8 +77,7 @@ export const setupRecording = (
   appConfig: AppConfig,
   { setTrayIdle, setTrayRecording, setTrayTranscribing }: TrayHandlers,
   onStatusChange?: (status: AppStatus) => void,
-  onPermissions?: (status: PermissionStatus) => void,
-  keyboardOptions?: StartKeyboardListenerOptions
+  onPermissions?: (status: PermissionStatus) => void
 ) => {
   let recorderProc: ReturnType<typeof Bun.spawn> | null = null
   let recordingSession: RecordingSession | null = null
@@ -347,13 +346,26 @@ export const setupRecording = (
     }
   }
 
+  const relayPermissions = onPermissions
+    ? (status: PermissionStatus) => {
+        void (async () => {
+          let microphone = status.microphone
+          try {
+            microphone = await checkMicrophoneAuthorization()
+          } catch {
+            /* MicRecorder missing in some dev setups — keep KeyListener value */
+          }
+          onPermissions({ ...status, microphone })
+        })()
+      }
+    : undefined
+
   const keyboard = startKeyboardListener(
     (keyEvent) => {
       void handleKeyEvent(keyEvent)
     },
     getMergedSwallowRules(),
-    onPermissions,
-    keyboardOptions
+    relayPermissions
   )
 
   return keyboard

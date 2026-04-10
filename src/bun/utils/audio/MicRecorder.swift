@@ -333,6 +333,14 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
 
 let args = CommandLine.arguments
 
+/// One-shot read for the Bun host. Prefer this over KeyListener for permission UI:
+/// a long-lived process can keep a stale `authorizationStatus` after TCC grants access.
+if args.count >= 2, args[1] == "--mic-authorization" {
+    let mic = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+    print("{\"microphone\": \(mic)}")
+    exit(0)
+}
+
 if args.count >= 2, args[1] == "--list-devices" {
     let devs = listInputDevices()
     var dict: [String: String] = [:]
@@ -351,7 +359,7 @@ if args.count >= 2, args[1] == "--list-devices" {
 
 guard args.count >= 5, args[1] == "record" else {
     fputs(
-        "usage: MicRecorder --list-devices\n       MicRecorder record <wavPath> <deviceIndex> <maxSeconds> [duckDelayMs]\n",
+        "usage: MicRecorder --mic-authorization\n       MicRecorder --list-devices\n       MicRecorder record <wavPath> <deviceIndex> <maxSeconds> [duckDelayMs]\n",
         stderr
     )
     exit(2)

@@ -11,6 +11,7 @@ export default defineConfig(
       "dist/**",
       "artifacts/**",
       "scripts/**",
+      "postcss.config.js",
     ],
   },
   eslint.configs.recommended,
