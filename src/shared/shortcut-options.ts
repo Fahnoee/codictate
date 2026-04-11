@@ -120,5 +120,5 @@ export function dictationShortcutBehaviorHint(): string {
 
 /** Explains optional second shortcut (push-to-talk only). */
 export function dictationHoldOnlyShortcutHint(): string {
-  return 'Optional second shortcut: always push-to-talk — release stops and pastes. The main shortcut above keeps tap-to-latch or hold as described.'
+  return 'Optional second shortcut: always push-to-talk — release stops and pastes.'
 }

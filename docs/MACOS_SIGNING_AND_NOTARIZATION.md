@@ -65,7 +65,7 @@ Without per-helper entitlements, hardened runtime can **deny** those capabilitie
 
 Helpers are signed with an identifier derived from the app bundle id, e.g. `app.codictate.native.keylistener` (stable) or `app.codictate.canary.native.keylistener` (canary). **`ELECTROBUN_APP_IDENTIFIER`** is set by Electrobun from `electrobun.config.ts`; `post-build.ts` falls back to `ELECTROBUN_BUILD_ENV` if needed.
 
-If you add another Mach-O under `native-helpers/`, add it to `nativeHelperNames` in `post-build.ts`, add an entitlements plist if it needs runtime exceptions, or notarization / runtime will fail.
+If you add another Mach-O under `native-helpers/`, `post-build.ts` discovers it automatically (`file(1)`). Add `entitlements/<Basename>.entitlements` (or extend `helperEntitlementsByBasename`) if it needs runtime exceptions, or notarization / runtime may fail.
 
 ## Channels: `app.name`, `identifier`, and TCC
 

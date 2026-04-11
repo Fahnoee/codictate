@@ -21,6 +21,14 @@ Requirements:
 - Bun v1.3+
 - Xcode Command Line Tools
 - `cmake` for vendoring `whisper-cli`
+- Xcode (Swift toolchain) for vendoring `CodictateParakeetHelper` (Parakeet / Core ML stream + one-shot path)
+- [Rust / cargo](https://rustup.rs) for NeMo inverse text normalization ([FluidInference/text-processing-rs](https://github.com/FluidInference/text-processing-rs)), linked into the Parakeet helper
+
+```bash
+brew install cmake sdl2
+```
+
+> **Note:** Stream mode uses the Parakeet Core ML model (user download, ~2.5 GB) plus the `CodictateParakeetHelper` binary built in `scripts/pre-build.ts` (FluidAudio + NeMo ITN from text-processing-rs). Whisper models still use vendored `whisper-cli`.
 
 If you need signing or notarization for local release testing, copy `.env.example` to `.env` and fill in your Apple developer credentials.
 

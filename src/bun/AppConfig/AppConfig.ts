@@ -15,12 +15,15 @@ import type {
   AppSettings,
   RecordingIndicatorMode,
   ShortcutId,
+  StreamTranscriptionMode,
 } from '../../shared/types'
 import {
   DEFAULT_MODEL_ID,
+  getStreamModeReadiness,
   isValidWhisperModelId,
 } from '../../shared/whisper-models'
-import { disableDebug, enableDebug } from '../utils/logger'
+import { modelManager } from '../utils/whisper/model-manager'
+import { disableDebug, enableDebug, log } from '../utils/logger'
 
 const CONFIG_DIR = join(
   homedir(),
@@ -73,6 +76,8 @@ export class AppConfig {
   private onboardingCompleted: boolean
   private recordingIndicatorMode: RecordingIndicatorMode
   private recordingIndicatorPosition: { x: number; y: number } | null
+  private streamMode: boolean
+  private streamTranscriptionMode: StreamTranscriptionMode
   /**
    * In-memory only: while set, the indicator window uses this mode during
    * onboarding preview (not persisted).
@@ -94,6 +99,8 @@ export class AppConfig {
     this.onboardingCompleted = false
     this.recordingIndicatorMode = 'always'
     this.recordingIndicatorPosition = null
+    this.streamMode = false
+    this.streamTranscriptionMode = 'vad'
   }
 
   // --- Persistence ---
@@ -184,8 +191,30 @@ export class AppConfig {
       ) {
         this.shortcutHoldOnlyId = null
       }
+      if (typeof raw.streamMode === 'boolean') {
+        this.streamMode = raw.streamMode
+      }
+      if (
+        raw.streamTranscriptionMode === 'live' ||
+        raw.streamTranscriptionMode === 'vad'
+      ) {
+        this.streamTranscriptionMode = raw.streamTranscriptionMode
+      }
+      log('config', 'loaded app config', {
+        shortcutId: this.shortcutId,
+        shortcutHoldOnlyId: this.shortcutHoldOnlyId ?? undefined,
+        streamMode: this.streamMode,
+        streamTranscriptionMode: this.streamTranscriptionMode,
+        translateToEnglish: this.translateToEnglish,
+        transcriptionLanguageId: this.transcriptionLanguageId,
+      })
     } catch {
       // No config file yet, defaults will be used
+      log('config', 'using default app config', {
+        shortcutId: this.shortcutId,
+        streamMode: this.streamMode,
+        streamTranscriptionMode: this.streamTranscriptionMode,
+      })
     }
   }
 
@@ -210,6 +239,8 @@ export class AppConfig {
       onboardingCompleted: this.onboardingCompleted,
       recordingIndicatorMode: this.recordingIndicatorMode,
       recordingIndicatorPosition: this.recordingIndicatorPosition,
+      streamMode: this.streamMode,
+      streamTranscriptionMode: this.streamTranscriptionMode,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -402,7 +433,55 @@ export class AppConfig {
       onboardingCompleted: this.onboardingCompleted,
       recordingIndicatorMode: this.recordingIndicatorMode,
       recordingIndicatorPosition: this.recordingIndicatorPosition,
+      streamMode: this.streamMode,
+      streamTranscriptionMode: this.streamTranscriptionMode,
     }
+  }
+
+  public getStreamMode(): boolean {
+    return this.streamMode
+  }
+
+  public async setStreamMode(enabled: boolean): Promise<boolean> {
+    if (enabled) {
+      const readiness = getStreamModeReadiness(
+        this.whisperModelId,
+        this.transcriptionLanguageId,
+        (id) => modelManager.isModelAvailable(id)
+      )
+      if (readiness.kind !== 'ready') {
+        log('config', 'stream mode blocked', {
+          reason: readiness.kind,
+          whisperModelId: this.whisperModelId,
+          transcriptionLanguageId: this.transcriptionLanguageId,
+        })
+        return false
+      }
+    }
+    const previous = this.streamMode
+    this.streamMode = enabled
+    log('config', 'set stream mode', {
+      previous,
+      next: enabled,
+    })
+    await this.save()
+    return true
+  }
+
+  public getStreamTranscriptionMode(): StreamTranscriptionMode {
+    return this.streamTranscriptionMode
+  }
+
+  public async setStreamTranscriptionMode(
+    mode: StreamTranscriptionMode
+  ): Promise<void> {
+    const previous = this.streamTranscriptionMode
+    this.streamTranscriptionMode = mode
+    log('config', 'set stream transcription mode', {
+      previous,
+      next: mode,
+    })
+    await this.save()
   }
 
   public async setOnboardingCompleted(completed: boolean): Promise<void> {

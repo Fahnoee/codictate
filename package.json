@@ -29,8 +29,9 @@
     "postbuild": "chmod +x build/dev-macos-arm64/react-tailwind-vite-dev.app/Contents/Resources/native-helpers/KeyListener build/dev-macos-arm64/react-tailwind-vite-dev.app/Contents/Resources/native-helpers/MicRecorder"
   },
   "dependencies": {
-    "@fontsource/iceland": "^5.2.5",
     "@fontsource/iceberg": "^5.2.5",
+    "@fontsource/iceland": "^5.2.5",
+    "@huggingface/hub": "^1.0.0",
     "@tanstack/react-query": "5.96.0",
     "electrobun": "1.16.0",
     "motion": "^12.36.0",

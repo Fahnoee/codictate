@@ -36,6 +36,8 @@ export default {
       "src/bun/utils/audio/MicRecorder": "native-helpers/MicRecorder",
       // -- Whisper (vendored by preBuild, not committed to git)
       "vendors/whisper/whisper-cli": "native-helpers/whisper-cli",
+      "vendors/parakeet/CodictateParakeetHelper":
+        "native-helpers/CodictateParakeetHelper",
       "vendors/whisper/ggml-large-v3-turbo-q5_0.bin":
         "native-helpers/ggml-large-v3-turbo-q5_0.bin",
       // -- Sounds (src/assets/sounds → app/sounds)

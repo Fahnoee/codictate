@@ -6,10 +6,12 @@ import type {
   DeviceInfo,
   PermissionState,
   SettingsPane,
+  StreamTranscriptionMode,
   UpdateCheckState,
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
+import { log } from './utils/logger'
 import { modelManager } from './utils/whisper/model-manager'
 import {
   isTranslateCapableModelId,
@@ -126,6 +128,8 @@ interface WindowDeps {
   onOnboardingCompleted?: () => void
   /** Indicator preview during onboarding (step 3). */
   onOnboardingIndicatorPreviewChanged?: () => void
+  /** Refresh tray and webview after stream mode toggled (from tray or webview). */
+  onStreamModeChanged?: () => void
 }
 
 export interface WindowHandle {
@@ -288,6 +292,30 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
             deps.onRecordingIndicatorModeChanged?.()
           }
           return ok
+        },
+        setStreamMode: async ({ enabled }) => {
+          log('config', 'rpc setStreamMode request', { enabled })
+          const ok = await deps.appConfig.setStreamMode(enabled)
+          log('config', 'rpc setStreamMode applied', {
+            ok,
+            streamMode: deps.appConfig.getStreamMode(),
+          })
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+            deps.onStreamModeChanged?.()
+          }
+          return ok
+        },
+        setStreamTranscriptionMode: async ({
+          mode,
+        }: {
+          mode: StreamTranscriptionMode
+        }) => {
+          log('config', 'rpc setStreamTranscriptionMode request', { mode })
+          await deps.appConfig.setStreamTranscriptionMode(mode)
+          rpc.send.updateSettings(deps.appConfig.getSettings())
+          deps.onStreamModeChanged?.()
+          return true
         },
         setOnboardingIndicatorPreview: async ({ active, mode }) => {
           deps.appConfig.setRecordingIndicatorOnboardingPreview(active, mode)

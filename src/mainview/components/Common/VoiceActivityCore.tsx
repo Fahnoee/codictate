@@ -42,6 +42,8 @@ export function VoiceActivityCore({
 }) {
   const isRecording = status === "recording";
   const isTranscribing = status === "transcribing";
+  const isStreaming = status === "streaming";
+  const isActive = isRecording || isStreaming;
   const vc = variantClass[variant];
 
   if (isTranscribing) {
@@ -91,7 +93,7 @@ export function VoiceActivityCore({
 
   if (variant === "indicator") {
     return (
-      <motion.div className={vc.row} animate={isRecording ? "active" : "idle"}>
+      <motion.div className={vc.row} animate={isActive ? "active" : "idle"}>
         {READY_BASES.map((base, i) => (
           <motion.span
             key={i}
@@ -99,19 +101,19 @@ export function VoiceActivityCore({
             style={{
               height: "100%",
               transformOrigin: "bottom",
-              backgroundColor: isRecording
+              backgroundColor: isActive
                 ? `rgb(255 255 255 / ${INDICATOR_REC_OPACITY[i]})`
                 : `rgb(255 255 255 / ${INDICATOR_IDLE_OPACITY[i]})`,
             }}
             animate={
-              isRecording
+              isActive
                 ? {
                     scaleY: [base, base * 0.32 + 0.1, base + 0.2, base],
                   }
                 : { scaleY: base }
             }
             transition={
-              isRecording
+              isActive
                 ? {
                     duration: 0.52 + i * 0.055,
                     repeat: Infinity,
@@ -126,8 +128,14 @@ export function VoiceActivityCore({
     );
   }
 
+  const barColor = isStreaming
+    ? (opacity: string) => `rgb(96 165 250 / ${opacity})`
+    : isRecording
+      ? (opacity: string) => `rgb(248 113 113 / ${opacity})`
+      : (opacity: string) => `rgb(255 255 255 / ${opacity})`;
+
   return (
-    <motion.div className={vc.row} animate={isRecording ? "active" : "idle"}>
+    <motion.div className={vc.row} animate={isActive ? "active" : "idle"}>
       {READY_BASES.map((base, i) => (
         <motion.span
           key={i}
@@ -135,19 +143,19 @@ export function VoiceActivityCore({
           style={{
             height: "100%",
             transformOrigin: "bottom",
-            backgroundColor: isRecording
-              ? `rgb(248 113 113 / ${READY_REC_OPACITY[i]})`
-              : `rgb(255 255 255 / ${READY_IDLE_OPACITY[i]})`,
+            backgroundColor: isActive
+              ? barColor(READY_REC_OPACITY[i])
+              : barColor(READY_IDLE_OPACITY[i]),
           }}
           animate={
-            isRecording
+            isActive
               ? {
                   scaleY: [base, base * 0.35 + 0.12, base + 0.18, base],
                 }
               : { scaleY: base }
           }
           transition={
-            isRecording
+            isActive
               ? {
                   duration: 0.58 + i * 0.06,
                   repeat: Infinity,

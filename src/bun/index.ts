@@ -17,7 +17,11 @@ import {
 } from './setup-indicator-window'
 import { setOnAutoDisable } from './utils/logger'
 import { modelManager } from './utils/whisper/model-manager'
-import { WHISPER_MODELS, getTranslateReadiness } from '../shared/whisper-models'
+import { SPEECH_MODELS } from '../shared/speech-models'
+import {
+  getStreamModeReadiness,
+  getTranslateReadiness,
+} from '../shared/whisper-models'
 
 const DEV_SERVER_PORT = 5173
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`
@@ -104,6 +108,17 @@ if (UserAppConfig.getTranslateToEnglish()) {
   }
 }
 
+if (UserAppConfig.getStreamMode()) {
+  const streamReady = getStreamModeReadiness(
+    UserAppConfig.getWhisperModelId(),
+    UserAppConfig.getTranscriptionLanguageId(),
+    (id) => modelManager.isModelAvailable(id)
+  )
+  if (streamReady.kind !== 'ready') {
+    await UserAppConfig.setStreamMode(false)
+  }
+}
+
 let devices = await findDevices()
 duckDelayAfterStartChimeMs()
 
@@ -134,7 +149,7 @@ const pushInitialState = () => {
   indicatorRef.current?.onAppStatus('ready')
   win.send.updatePermissions(currentPermissions)
   // Push availability for all non-bundled models so the UI knows what's downloaded.
-  for (const model of WHISPER_MODELS) {
+  for (const model of SPEECH_MODELS) {
     if (!model.bundled) {
       win.send.updateModelAvailability({
         modelId: model.id,
@@ -179,6 +194,7 @@ const win = setupWindow({
     return currentPermissions
   },
   onSettingsChanged: async () => {
+    await keyboard.stopActiveParakeetStream()
     keyboard.stop()
     keyboard = startKeyboard()
     win.send.updateSettings(UserAppConfig.getSettings())
@@ -203,6 +219,12 @@ const win = setupWindow({
   },
   onTranslateChanged: () => {
     trayHandlers.syncTranslateState()
+  },
+  onStreamModeChanged: () => {
+    if (!UserAppConfig.getStreamMode()) {
+      void keyboard.stopActiveParakeetStream()
+    }
+    trayHandlers.syncStreamModeState()
   },
   onTriggerPermissionPrompt: (pane: SettingsPane) => {
     if (pane === 'inputMonitoring') {
@@ -297,20 +319,27 @@ menuHandlers = setupApplicationMenu(
   onOpenSettings
 )
 
+const pushSettingsToWebview = () =>
+  win.send.updateSettings(UserAppConfig.getSettings())
+
 trayHandlers = setupTray(
   (onAction) => win.getOrCreateWindow(onAction),
   devices,
   UserAppConfig,
   () => {
-    keyboard.stop()
-    setTimeout(() => Utils.quit(), 150)
+    void (async () => {
+      await keyboard.stopActiveParakeetStream()
+      keyboard.stop()
+      setTimeout(() => Utils.quit(), 150)
+    })()
   },
   onDeviceSelected,
   onOpenSettings,
   onApplyUpdate,
   () => checkForUpdates(),
-  () => win.send.updateSettings(UserAppConfig.getSettings()),
-  () => win.send.updateSettings(UserAppConfig.getSettings())
+  pushSettingsToWebview,
+  pushSettingsToWebview,
+  pushSettingsToWebview
 )
 
 let permissionPoll: ReturnType<typeof setInterval> | null = null
@@ -378,8 +407,11 @@ function startKeyboard() {
                 !currentPermissions.inputMonitoring &&
                 keyboard.isAlive
               ) {
-                keyboard.stop()
-                keyboard = startKeyboard()
+                void (async () => {
+                  await keyboard.stopActiveParakeetStream()
+                  keyboard.stop()
+                  keyboard = startKeyboard()
+                })()
               }
             }, IM_TCC_REFRESH_GRACE_MS)
             return
@@ -410,7 +442,10 @@ startDeviceMonitor()
 
 Electrobun.events.on('before-quit', () => {
   trayHandlers.setTrayIdle()
-  keyboard.stop()
+  void (async () => {
+    await keyboard.stopActiveParakeetStream()
+    keyboard.stop()
+  })()
   indicatorRef.current?.dispose()
 })
 process.on('exit', () => keyboard.stop())

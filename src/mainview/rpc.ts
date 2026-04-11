@@ -7,13 +7,13 @@ import type {
   AppSettings,
   SettingsPane,
   ShortcutId,
+  StreamTranscriptionMode,
   UpdateCheckState,
   RecordingIndicatorMode,
+  AppStatus,
 } from '../shared/types'
-
-import type { AppStatus } from '../shared/types'
 import { appEvents } from './app-events'
-import { WHISPER_MODELS } from '../shared/whisper-models'
+import { SPEECH_MODELS } from '../shared/speech-models'
 
 export const queryClient = new QueryClient()
 
@@ -21,7 +21,7 @@ export const queryClient = new QueryClient()
 // Non-bundled entries will be updated by updateModelAvailability messages from the backend.
 queryClient.setQueryData(
   ['modelAvailability'],
-  Object.fromEntries(WHISPER_MODELS.map((m) => [m.id, m.bundled ?? false]))
+  Object.fromEntries(SPEECH_MODELS.map((m) => [m.id, m.bundled ?? false]))
 )
 
 // rpc is not exported — the inferred type references an internal electrobun path
@@ -175,6 +175,16 @@ export async function setTranslateDefaultLanguage(
   languageId: string
 ): Promise<boolean> {
   return rpc.request.setTranslateDefaultLanguage({ languageId })
+}
+
+export async function setStreamMode(enabled: boolean): Promise<boolean> {
+  return rpc.request.setStreamMode({ enabled })
+}
+
+export async function setStreamTranscriptionMode(
+  mode: StreamTranscriptionMode
+): Promise<boolean> {
+  return rpc.request.setStreamTranscriptionMode({ mode })
 }
 
 export function downloadWhisperModel(modelId: string): void {

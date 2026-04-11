@@ -16,6 +16,13 @@ export const startRecording = async (
   /** Live snapshot from the main process (refreshed at startup + on an interval). Avoids spawning `MicRecorder --list-devices` on every shortcut press. */
   getDeviceMap?: () => Record<string, string>
 ) => {
+  if (appConfig.getStreamMode()) {
+    log(
+      'stream',
+      'unexpected fallback into MicRecorder while stream mode is enabled'
+    )
+  }
+
   const micPath = await findMicRecorderBinary()
 
   let currentDevices = getDeviceMap?.() ?? {}

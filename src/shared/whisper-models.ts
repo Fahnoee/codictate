@@ -1,38 +1,39 @@
-export interface WhisperModel {
-  id: string
-  filename: string
-  sizeMB: number
-  label: string
-  description: string
-  bundled?: boolean
+import {
+  SPEECH_MODELS,
+  type SpeechModel,
+  DEFAULT_MODEL_ID as SPEECH_DEFAULT_MODEL_ID,
+  DEFAULT_STREAM_CAPABLE_MODEL_ID,
+  formatModelSize,
+  getSpeechModel,
+  isValidSpeechModelId,
+  supportsStreamMode,
+  parakeetSupportsTranscriptionLanguageId,
+} from './speech-models'
+
+/** @deprecated Use SpeechModel — retained for Whisper.ggml entries in UI */
+export type WhisperModel = Pick<
+  SpeechModel,
+  'id' | 'label' | 'description' | 'bundled'
+> & { filename: string; sizeMB: number }
+
+export const WHISPER_MODELS: WhisperModel[] = SPEECH_MODELS.filter(
+  (m) => m.engine === 'whisper_cpp'
+).map((m) => ({
+  id: m.id,
+  filename: m.artifactName,
+  sizeMB: m.downloadSizeMB,
+  label: m.label,
+  description: m.description,
+  bundled: m.bundled,
+}))
+
+export const DEFAULT_MODEL_ID = SPEECH_DEFAULT_MODEL_ID
+
+export {
+  DEFAULT_STREAM_CAPABLE_MODEL_ID,
+  formatModelSize,
+  parakeetSupportsTranscriptionLanguageId,
 }
-
-export const WHISPER_MODELS: WhisperModel[] = [
-  {
-    id: 'small-q5_1',
-    filename: 'ggml-small-q5_1.bin',
-    sizeMB: 181,
-    label: 'Small',
-    description: 'Good accuracy',
-  },
-  {
-    id: 'large-v3-turbo-q5_0',
-    filename: 'ggml-large-v3-turbo-q5_0.bin',
-    sizeMB: 574,
-    label: 'Turbo',
-    description: 'Fast & very accurate — default',
-    bundled: true,
-  },
-  {
-    id: 'large-v3-q5_0',
-    filename: 'ggml-large-v3-q5_0.bin',
-    sizeMB: 1100,
-    label: 'Large',
-    description: 'Most accurate, best for translation',
-  },
-]
-
-export const DEFAULT_MODEL_ID = 'large-v3-turbo-q5_0'
 
 /** Whisper models that support the `-tr` (translate to English) flag. Turbo cannot. */
 export const TRANSLATE_CAPABLE_MODEL_IDS = [
@@ -43,10 +44,8 @@ export const TRANSLATE_CAPABLE_MODEL_IDS = [
 export type TranslateCapableModelId =
   (typeof TRANSLATE_CAPABLE_MODEL_IDS)[number]
 
-/** Large-accuracy model id (translate-capable). Use this instead of a generic “translate model” alias. */
 export const LARGE_V3_Q5_MODEL_ID: TranslateCapableModelId = 'large-v3-q5_0'
 
-/** When Turbo is selected and no translate model is on disk yet, prefer downloading Small first (smaller). */
 export const DEFAULT_TRANSLATE_DOWNLOAD_MODEL_ID: TranslateCapableModelId =
   'small-q5_1'
 
@@ -83,10 +82,6 @@ export type TranslateReadiness =
   | { kind: 'need_switch_model' }
   | { kind: 'need_language' }
 
-/**
- * Whether translate can run from the current transcription model + language settings.
- * Turbo + downloaded Small/Large → `need_switch_model` (user must select Small or Large).
- */
 export function getTranslateReadiness(
   whisperModelId: string,
   transcriptionLanguageId: string,
@@ -119,15 +114,38 @@ export function getWhisperModel(id: string): WhisperModel | undefined {
 }
 
 export function isValidWhisperModelId(id: string): boolean {
-  return WHISPER_MODEL_IDS.includes(id)
+  return isValidSpeechModelId(id)
 }
 
-export function formatModelSize(sizeMB: number): string {
-  if (sizeMB >= 1000) return `${(sizeMB / 1000).toFixed(1)} GB`
-  return `${sizeMB} MB`
-}
-
-/** Download URL pattern from the whisper.cpp download script. */
 export function whisperModelDownloadUrl(filename: string): string {
   return `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${filename}`
+}
+
+export function isStreamCapableModelId(id: string): boolean {
+  const m = getSpeechModel(id)
+  return m != null && supportsStreamMode(m)
+}
+
+export type StreamModeReadiness =
+  | { kind: 'ready' }
+  | { kind: 'need_parakeet_download' }
+  | { kind: 'need_switch_model' }
+  | { kind: 'need_language' }
+
+/** Whether stream (Parakeet) dictation can be enabled with the given config. */
+export function getStreamModeReadiness(
+  whisperModelId: string,
+  transcriptionLanguageId: string,
+  isModelAvailable: (id: string) => boolean
+): StreamModeReadiness {
+  if (!isModelAvailable(DEFAULT_STREAM_CAPABLE_MODEL_ID)) {
+    return { kind: 'need_parakeet_download' }
+  }
+  if (!isStreamCapableModelId(whisperModelId)) {
+    return { kind: 'need_switch_model' }
+  }
+  if (!parakeetSupportsTranscriptionLanguageId(transcriptionLanguageId)) {
+    return { kind: 'need_language' }
+  }
+  return { kind: 'ready' }
 }

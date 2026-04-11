@@ -8,6 +8,7 @@ import {
   existsSync,
   readdirSync,
   mkdirSync,
+  statSync,
 } from "fs";
 
 const buildDir = process.env.ELECTROBUN_BUILD_DIR;
@@ -158,27 +159,107 @@ function resolveAppIdentifier(): string {
 
 const appIdentifier = resolveAppIdentifier();
 const nativeHelpersDir = join(resourcesDir, "app", "native-helpers");
-const nativeHelperNames = ["KeyListener", "MicRecorder", "whisper-cli"] as const;
 const entitlementsRoot = join(import.meta.dir, "..", "entitlements");
-const helperEntitlements: Record<(typeof nativeHelperNames)[number], string> = {
+/** Basename → entitlements plist (Developer ID + hardened runtime). */
+const helperEntitlementsByBasename: Record<string, string> = {
   KeyListener: join(entitlementsRoot, "KeyListener.entitlements"),
   MicRecorder: join(entitlementsRoot, "MicRecorder.entitlements"),
   "whisper-cli": join(entitlementsRoot, "whisper-cli.entitlements"),
+  CodictateParakeetHelper: join(
+    entitlementsRoot,
+    "CodictateParakeetHelper.entitlements",
+  ),
 };
 const CODESIGN_RETRIES = 3;
+const buildEnv = process.env.ELECTROBUN_BUILD_ENV ?? "dev";
 
-if (developerId && existsSync(nativeHelpersDir)) {
-  for (const name of nativeHelperNames) {
-    const binaryPath = join(nativeHelpersDir, name);
-    if (!existsSync(binaryPath)) continue;
+function resolveEntitlementsForHelper(basename: string): string | undefined {
+  const mapped = helperEntitlementsByBasename[basename];
+  if (mapped && existsSync(mapped)) return mapped;
+  const fallback = join(entitlementsRoot, `${basename}.entitlements`);
+  if (existsSync(fallback)) return fallback;
+  return undefined;
+}
 
-    const id = `${appIdentifier}.native.${name.toLowerCase().replace(/-/g, "")}`;
-    const entitlementsPath = helperEntitlements[name];
+/** True for Mach-O binaries Electrobun does not sign (executables, dylibs, bundles); not .o / dSYM / data. */
+function isCodesignableMachO(binaryPath: string): boolean {
+  let st: ReturnType<typeof statSync>;
+  try {
+    st = statSync(binaryPath);
+  } catch {
+    return false;
+  }
+  if (!st.isFile()) return false;
+  const desc = Bun.spawnSync(["file", "-b", binaryPath], { stdout: "pipe" })
+    .stdout.toString();
+  if (!desc.includes("Mach-O") || desc.includes("dSYM")) return false;
+  if (desc.includes("Mach-O object")) return false;
+  return (
+    desc.includes("executable") ||
+    desc.includes("dynamically linked shared library") ||
+    desc.includes("bundle")
+  );
+}
+
+function listCodesignableNativeHelpers(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const names = readdirSync(dir);
+  const paths = names
+    .map((n) => join(dir, n))
+    .filter((p) => isCodesignableMachO(p));
+  paths.sort();
+  return paths;
+}
+
+const parakeetHelperPath = join(nativeHelpersDir, "CodictateParakeetHelper");
+
+if (!existsSync(parakeetHelperPath)) {
+  console.error(
+    "[post-build] CodictateParakeetHelper missing from native-helpers — run pre-build",
+  );
+  process.exit(1);
+}
+
+const parakeetFileType = Bun.spawnSync(["file", "-b", parakeetHelperPath], {
+  stdout: "pipe",
+});
+const parakeetKind = parakeetFileType.stdout.toString();
+if (
+  !parakeetKind.includes("Mach-O") ||
+  !parakeetKind.includes("executable") ||
+  parakeetKind.includes("dSYM")
+) {
+  console.error(
+    "[post-build] CodictateParakeetHelper is not a Mach-O executable (often a copied dSYM stub). Re-run: bun run scripts/pre-build.ts",
+  );
+  console.error(`[post-build] file(1) said: ${parakeetKind.trim()}`);
+  process.exit(1);
+}
+console.log("[post-build] Verified CodictateParakeetHelper is a Mach-O executable");
+
+const machoNativeHelpers = listCodesignableNativeHelpers(nativeHelpersDir);
+
+// Non-dev builds are code-signed and notarized by Electrobun; unsigned Mach-O under
+// Resources/app/ fails notarization. Fail fast if we cannot sign helpers.
+if (buildEnv !== "dev" && machoNativeHelpers.length > 0 && !developerId) {
+  console.error(
+    "[post-build] ELECTROBUN_DEVELOPER_ID is required to sign native helpers (stable/canary build).",
+  );
+  process.exit(1);
+}
+
+if (developerId && existsSync(nativeHelpersDir) && machoNativeHelpers.length > 0) {
+  for (const binaryPath of machoNativeHelpers) {
+    const name = binaryPath.split("/").pop() ?? binaryPath;
+    const id = `${appIdentifier}.native.${name.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+    const entitlementsPath = resolveEntitlementsForHelper(name);
     const entitlementArgs =
-      existsSync(entitlementsPath) ? (["--entitlements", entitlementsPath] as const) : [];
+      entitlementsPath && existsSync(entitlementsPath)
+        ? (["--entitlements", entitlementsPath] as const)
+        : [];
     if (entitlementArgs.length === 0) {
       console.warn(
-        `[post-build] Missing entitlements for ${name} at ${entitlementsPath} — signing without`,
+        `[post-build] Missing entitlements for ${name} — signing without (add entitlements/${name}.entitlements if notarization fails)`,
       );
     }
 
@@ -216,7 +297,25 @@ if (developerId && existsSync(nativeHelpersDir)) {
       console.error(`[post-build] codesign failed for native-helpers/${name}`);
       process.exit(1);
     }
+
+    const verify = Bun.spawnSync(
+      ["codesign", "--verify", "--strict", "--verbose=2", binaryPath],
+      { stdio: ["ignore", "inherit", "inherit"] },
+    );
+    if (verify.exitCode !== 0) {
+      console.error(
+        `[post-build] codesign --verify failed for native-helpers/${name}`,
+      );
+      process.exit(1);
+    }
   }
+  console.log(
+    `[post-build] Signed and verified ${machoNativeHelpers.length} Mach-O native helper(s)`,
+  );
+} else if (buildEnv === "dev" && machoNativeHelpers.length > 0 && !developerId) {
+  console.log(
+    "[post-build] Skipping native helper codesign (dev build, no ELECTROBUN_DEVELOPER_ID)",
+  );
 }
 
 // ─── Releases are handled by scripts/release.sh ──────────────────────────────

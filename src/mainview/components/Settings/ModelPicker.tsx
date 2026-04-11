@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import {
-  WHISPER_MODELS,
+  SPEECH_MODELS,
   formatModelSize,
-} from "../../../shared/whisper-models";
+  parakeetSupportedLanguagesTooltipText,
+} from "../../../shared/speech-models";
+import { InstantTooltip } from "../Common/InstantTooltip";
 
 export function ModelPicker({
   value,
@@ -25,10 +27,11 @@ export function ModelPicker({
   onDelete: (modelId: string) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const parakeetLangsTooltip = parakeetSupportedLanguagesTooltipText();
 
   return (
     <div className="flex flex-col gap-1">
-      {WHISPER_MODELS.map((model) => {
+      {SPEECH_MODELS.map((model) => {
         const isSelected = model.id === value;
         const isAvailable =
           modelAvailability[model.id] ?? model.bundled ?? false;
@@ -36,6 +39,10 @@ export function ModelPicker({
         const isDownloading = progress !== undefined;
         const isDeletable = isAvailable && !model.bundled && !isSelected;
         const isPendingDelete = confirmDelete === model.id;
+        const streamLabel =
+          model.modeSupport === "both" || model.modeSupport === "stream"
+            ? "Stream"
+            : null;
 
         return (
           <motion.div
@@ -53,7 +60,6 @@ export function ModelPicker({
               if (isAvailable) onSelect(model.id);
             }}
           >
-            {/* Selection indicator */}
             <div
               className="shrink-0 w-4 h-4 rounded-full border flex items-center justify-center transition-colors duration-200"
               style={{
@@ -72,9 +78,8 @@ export function ModelPicker({
               )}
             </div>
 
-            {/* Label + description */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span
                   className={`text-[21px] font-medium font-sans transition-colors duration-200 ${
                     isSelected ? "text-white/78" : "text-white/62"
@@ -82,9 +87,44 @@ export function ModelPicker({
                 >
                   {model.label}
                 </span>
+                {model.engine === "whisperkit" && (
+                  <InstantTooltip
+                    text={parakeetLangsTooltip}
+                    side="bottom"
+                    tooltipClassName="pointer-events-auto w-[min(100vw-2rem,26rem)] max-h-[min(55vh,22rem)] overflow-y-auto whitespace-pre-line"
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/12 bg-white/5 text-white/38 hover:text-white/55 hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 transition-[border-color,background-color,box-shadow] cursor-pointer"
+                      aria-label={parakeetLangsTooltip}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 16v-4" />
+                        <path d="M12 8h.01" />
+                      </svg>
+                    </button>
+                  </InstantTooltip>
+                )}
                 {model.bundled && (
                   <span className="px-1.5 py-0.5 rounded text-[13px] font-medium bg-white/8 text-white/38 border border-white/10">
                     Default
+                  </span>
+                )}
+                {streamLabel && (
+                  <span className="px-1.5 py-0.5 rounded text-[13px] font-medium bg-blue-500/12 text-blue-300/55 border border-blue-400/18">
+                    {streamLabel}
                   </span>
                 )}
               </div>
@@ -92,7 +132,6 @@ export function ModelPicker({
                 {model.description}
               </span>
 
-              {/* Download progress bar */}
               {isDownloading && (
                 <div className="mt-2 h-1 rounded-full bg-white/10 overflow-hidden">
                   <motion.div
@@ -105,10 +144,9 @@ export function ModelPicker({
               )}
             </div>
 
-            {/* Right side: size + action buttons */}
             <div className="shrink-0 flex items-center gap-2">
               <span className="text-[17px] text-white/30 font-sans tabular-nums">
-                {formatModelSize(model.sizeMB)}
+                {formatModelSize(model.downloadSizeMB)}
               </span>
 
               {!isAvailable && !isDownloading && (

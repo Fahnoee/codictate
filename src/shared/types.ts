@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { RPCSchema } from 'electrobun'
 
-export type AppStatus = 'ready' | 'recording' | 'transcribing'
+export type AppStatus = 'ready' | 'recording' | 'transcribing' | 'streaming'
 export type UpdateCheckState =
   | 'idle'
   | 'checking'
@@ -20,6 +20,7 @@ export type DevAppPreviewRoute = 'permissions' | 'onboarding' | 'ready'
 
 /** Floating recording / activity chip on the desktop (separate transparent window). */
 export type RecordingIndicatorMode = 'off' | 'always' | 'when-active'
+export type StreamTranscriptionMode = 'vad' | 'live'
 
 export type ShortcutId =
   | 'option-space'
@@ -67,6 +68,13 @@ export interface AppSettings {
    * `null` = use default placement (bottom-right of primary work area).
    */
   recordingIndicatorPosition: { x: number; y: number } | null
+  /**
+   * When true, use hands-free stream dictation (Parakeet / Core ML). Requires the Parakeet model
+   * download; normal shortcut toggles the stream instead of push-to-talk recording.
+   */
+  streamMode: boolean
+  /** Stream transcription behavior: VAD utterance commits or low-latency live chunks. */
+  streamTranscriptionMode: StreamTranscriptionMode
 }
 
 export interface PermissionState {
@@ -115,6 +123,11 @@ export type WebviewRPCType = {
       completeOnboarding: { params: {}; response: boolean }
       setRecordingIndicatorMode: {
         params: { mode: RecordingIndicatorMode }
+        response: boolean
+      }
+      setStreamMode: { params: { enabled: boolean }; response: boolean }
+      setStreamTranscriptionMode: {
+        params: { mode: StreamTranscriptionMode }
         response: boolean
       }
       /** Ephemeral: show the floating indicator during onboarding to preview the chosen mode. */

@@ -45,6 +45,21 @@ func pasteViaKeyEvent() {
     keyUp.post(tap: .cgSessionEventTap)
 }
 
+func deleteBackward(count: Int) {
+    guard count > 0 else { return }
+    let src = CGEventSource(stateID: .hidSystemState)
+    let vKey: CGKeyCode = 0x33 // delete
+
+    for _ in 0..<count {
+        guard
+            let keyDown = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: true),
+            let keyUp = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: false)
+        else { return }
+        keyDown.post(tap: .cgSessionEventTap)
+        keyUp.post(tap: .cgSessionEventTap)
+    }
+}
+
 // Serial queue for stdout writes. Must be declared before commandThread because
 // the thread body captures it. Keeps the event tap callback from ever blocking
 // on pipe I/O — a stalled callback causes macOS to disable the tap.
@@ -230,6 +245,19 @@ let commandThread = Thread {
             _ = NSPasteboard.general.setString(text, forType: .string)
             Thread.sleep(forTimeInterval: 0.05)
             let axOk = AXIsProcessTrusted()
+            pasteViaKeyEvent()
+            let pasteResult = "{\"type\": \"paste_result\", \"success\": \(axOk), \"accessibility\": \(axOk)}"
+            outputQueue.async { print(pasteResult); fflush(stdout) }
+
+        case "replace_text":
+            guard let text = msg["text"] as? String else { break }
+            let deleteText = msg["deleteText"] as? String ?? ""
+            NSPasteboard.general.clearContents()
+            _ = NSPasteboard.general.setString(text, forType: .string)
+            Thread.sleep(forTimeInterval: 0.02)
+            let axOk = AXIsProcessTrusted()
+            deleteBackward(count: deleteText.count)
+            Thread.sleep(forTimeInterval: 0.02)
             pasteViaKeyEvent()
             let pasteResult = "{\"type\": \"paste_result\", \"success\": \(axOk), \"accessibility\": \(axOk)}"
             outputQueue.async { print(pasteResult); fflush(stdout) }

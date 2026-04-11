@@ -14,6 +14,7 @@ import type {
   DevAppPreviewRoute,
   RecordingIndicatorMode,
   ShortcutId,
+  StreamTranscriptionMode,
   UpdateCheckState,
 } from "../../../shared/types";
 import {
@@ -23,15 +24,23 @@ import {
 import { TRANSCRIPTION_LANGUAGE_HINT } from "../../../shared/transcription-languages";
 import { formatRecordingDurationLabel } from "../../../shared/recording-duration-presets";
 import {
-  WHISPER_MODELS,
   DEFAULT_MODEL_ID,
+  DEFAULT_STREAM_CAPABLE_MODEL_ID,
   DEFAULT_TRANSLATE_DOWNLOAD_MODEL_ID,
   LARGE_V3_Q5_MODEL_ID,
   formatModelSize,
   getWhisperModel,
   getTranslateReadiness,
   isTranslateCapableModelId,
+  parakeetSupportsTranscriptionLanguageId,
 } from "../../../shared/whisper-models";
+import {
+  PARAKEET_FIRST_RUN_SETTINGS_HINT,
+  PARAKEET_FIRST_RUN_STREAM_HELPER,
+  SPEECH_MODELS,
+  coerceTranscriptionLanguageIdForModel,
+  speechModelLocksTranscriptionLanguage,
+} from "../../../shared/speech-models";
 import {
   setShortcut,
   setShortcutHoldOnly,
@@ -48,6 +57,8 @@ import {
   setWhisperModel,
   setTranslateToEnglish,
   setTranslateDefaultLanguage,
+  setStreamMode,
+  setStreamTranscriptionMode,
   downloadWhisperModel,
   cancelModelDownload,
   deleteWhisperModel,
@@ -75,6 +86,126 @@ const devPreviewSelectClass =
   "focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 " +
   "cursor-pointer transition-[border-color,background-color,box-shadow] duration-200 " +
   "[color-scheme:dark] pl-4 pr-11 py-3.5 text-[21px] leading-snug";
+
+type SettingsCategory =
+  | "transcription"
+  | "modes"
+  | "shortcuts"
+  | "audio"
+  | "general";
+
+const CATEGORIES: {
+  id: SettingsCategory;
+  label: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    id: "transcription",
+    label: "Transcription",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <line x1="12" x2="12" y1="19" y2="22" />
+      </svg>
+    ),
+  },
+  {
+    id: "modes",
+    label: "Modes",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect width="7" height="7" x="3" y="3" rx="1" />
+        <rect width="7" height="7" x="14" y="3" rx="1" />
+        <rect width="7" height="7" x="14" y="14" rx="1" />
+        <rect width="7" height="7" x="3" y="14" rx="1" />
+      </svg>
+    ),
+  },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect width="20" height="16" x="2" y="4" rx="2" ry="2" />
+        <path d="M6 8h.01" />
+        <path d="M10 8h.01" />
+        <path d="M14 8h.01" />
+        <path d="M18 8h.01" />
+        <path d="M8 12h.01" />
+        <path d="M12 12h.01" />
+        <path d="M16 12h.01" />
+        <path d="M7 16h10" />
+      </svg>
+    ),
+  },
+  {
+    id: "audio",
+    label: "Audio & UI",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      </svg>
+    ),
+  },
+  {
+    id: "general",
+    label: "General",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    ),
+  },
+];
 
 function updateStateLabel(state: UpdateCheckState, message?: string): string {
   switch (state) {
@@ -259,6 +390,8 @@ export function SettingsScreen({
     queryFn: fetchDevices,
   });
 
+  const [activeCategory, setActiveCategory] =
+    useState<SettingsCategory>("transcription");
   const [updateState, setUpdateState] = useState<UpdateCheckState>("idle");
   const [updateMessage, setUpdateMessage] = useState<string | undefined>();
   const [isCopied, setIsCopied] = useState(false);
@@ -272,7 +405,7 @@ export function SettingsScreen({
       "modelAvailability",
     ]);
     const defaults = Object.fromEntries(
-      WHISPER_MODELS.map((m) => [m.id, m.bundled ?? false]),
+      SPEECH_MODELS.map((m) => [m.id, m.bundled ?? false]),
     );
     return cached ? { ...defaults, ...cached } : defaults;
   });
@@ -328,11 +461,19 @@ export function SettingsScreen({
             const current = queryClient.getQueryData<AppSettings>(["settings"]);
             const sel = current?.whisperModelId ?? DEFAULT_MODEL_ID;
             if (!isTranslateCapableModelId(sel) || sel !== modelId) {
+              const hadStream = current?.streamMode ?? false;
               await setWhisperModel(modelId);
               queryClient.setQueryData(["settings"], (old: AppSettings) => ({
                 ...old,
                 whisperModelId: modelId,
+                ...(hadStream ? { streamMode: false } : {}),
               }));
+              if (hadStream) {
+                const ok = await setStreamMode(false);
+                if (!ok) {
+                  queryClient.setQueryData(["settings"], await fetchSettings());
+                }
+              }
             }
             const ok = await setTranslateToEnglish(true);
             if (ok) {
@@ -354,11 +495,28 @@ export function SettingsScreen({
             pendingTranslate !== modelId &&
             modelId !== LARGE_V3_Q5_MODEL_ID
           ) {
+            const cur = queryClient.getQueryData<AppSettings>(["settings"]);
+            const hadStream = cur?.streamMode ?? false;
+            const nextLang = coerceTranscriptionLanguageIdForModel(
+              modelId,
+              cur?.transcriptionLanguageId ?? "auto",
+            );
             await setWhisperModel(modelId);
             queryClient.setQueryData(["settings"], (old: AppSettings) => ({
               ...old,
               whisperModelId: modelId,
+              transcriptionLanguageId: nextLang,
+              ...(hadStream ? { streamMode: false } : {}),
             }));
+            if (nextLang !== cur?.transcriptionLanguageId) {
+              await setTranscriptionLanguage(nextLang);
+            }
+            if (hadStream) {
+              const ok = await setStreamMode(false);
+              if (!ok) {
+                queryClient.setQueryData(["settings"], await fetchSettings());
+              }
+            }
           }
         }
       },
@@ -476,11 +634,28 @@ export function SettingsScreen({
 
   const handleModelSelect = useCallback(
     async (modelId: string) => {
+      if (modelId === settings.whisperModelId) return;
+      const hadStream = settings.streamMode;
+      const nextLang = coerceTranscriptionLanguageIdForModel(
+        modelId,
+        settings.transcriptionLanguageId,
+      );
       queryClient.setQueryData(["settings"], {
         ...settings,
         whisperModelId: modelId,
+        transcriptionLanguageId: nextLang,
+        ...(hadStream ? { streamMode: false } : {}),
       });
       await setWhisperModel(modelId);
+      if (nextLang !== settings.transcriptionLanguageId) {
+        await setTranscriptionLanguage(nextLang);
+      }
+      if (hadStream) {
+        const ok = await setStreamMode(false);
+        if (!ok) {
+          queryClient.setQueryData(["settings"], await fetchSettings());
+        }
+      }
     },
     [queryClient, settings],
   );
@@ -510,6 +685,7 @@ export function SettingsScreen({
 
       // If the deleted model was selected, fall back to the default model.
       if (settings.whisperModelId === modelId) {
+        const hadStream = settings.streamMode;
         queryClient.setQueryData(
           ["settings"],
           (old: AppSettings | undefined) =>
@@ -517,10 +693,17 @@ export function SettingsScreen({
               ? {
                   ...old,
                   whisperModelId: DEFAULT_MODEL_ID,
+                  ...(hadStream ? { streamMode: false } : {}),
                 }
               : old,
         );
         await setWhisperModel(DEFAULT_MODEL_ID);
+        if (hadStream) {
+          const ok = await setStreamMode(false);
+          if (!ok) {
+            queryClient.setQueryData(["settings"], await fetchSettings());
+          }
+        }
       }
 
       if (
@@ -623,36 +806,68 @@ export function SettingsScreen({
     [queryClient, settings],
   );
 
+  const handleStreamModeToggle = useCallback(async () => {
+    const newValue = !settings.streamMode;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, streamMode: newValue } : old,
+    );
+    const ok = await setStreamMode(newValue);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+    }
+  }, [settings.streamMode, queryClient]);
+
+  const handleStreamTranscriptionModeChange = useCallback(
+    async (mode: StreamTranscriptionMode) => {
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old ? { ...old, streamTranscriptionMode: mode } : old,
+      );
+      await setStreamTranscriptionMode(mode);
+    },
+    [queryClient],
+  );
+
   const durationLabel = formatRecordingDurationLabel(
     settings.maxRecordingDuration,
   );
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-codictate-page text-white select-none px-6 py-10">
-      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
-      <div className="w-full max-w-[450px]">
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className="flex justify-center mb-5"
-        >
+    <div className="flex h-screen bg-codictate-page text-white select-none overflow-hidden">
+      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200 z-50" />
+
+      {/* Sidebar */}
+      <div className="w-[220px] shrink-0 border-r border-white/10 bg-white/2 flex flex-col pt-10 pb-6 px-3">
+        <div className="mb-8 px-3">
           <WordmarkCodictate
             showMark
-            className="text-[21px] font-semibold tracking-tight text-white/68"
+            className="text-[18px] font-semibold tracking-tight text-white/80"
           />
-        </motion.div>
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="flex items-center gap-3 mb-8"
-        >
+        </div>
+        <nav className="flex flex-col gap-1">
+          {CATEGORIES.map((c) => {
+            const isActive = activeCategory === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setActiveCategory(c.id)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[16px] font-medium transition-colors duration-200 cursor-pointer ${
+                  isActive
+                    ? "bg-white/10 text-white/90"
+                    : "text-white/50 hover:bg-white/5 hover:text-white/70"
+                }`}
+              >
+                <div className={isActive ? "text-white/80" : "text-white/40"}>
+                  {c.icon}
+                </div>
+                {c.label}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="mt-auto pt-4 px-3">
           <button
             onClick={onBack}
-            className="flex items-center justify-center w-8 h-8 rounded-lg border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/7 transition-colors duration-200 cursor-pointer"
-            aria-label="Back"
+            className="flex items-center gap-2 text-[15px] font-medium text-white/40 hover:text-white/70 transition-colors duration-200 cursor-pointer"
           >
             <svg
               width="14"
@@ -660,563 +875,674 @@ export function SettingsScreen({
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.5"
+              strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-white/52"
             >
               <path d="M19 12H5" />
               <path d="m12 19-7-7 7-7" />
             </svg>
+            Back to App
           </button>
-          <h1 className="text-[23px] font-semibold tracking-tight text-white/82">
-            Settings
-          </h1>
-        </motion.div>
+        </div>
+      </div>
 
-        {/* Activation Shortcut */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Main shortcut
-          </h2>
-          <ShortcutPicker
-            value={settings.shortcutId}
-            onChange={handleShortcutChange}
-          />
-          <p className={settingsHelperClass}>
-            {dictationShortcutBehaviorHint()} Fn and Control combos vary by
-            keyboard; macOS may use Fn for system shortcuts.
-          </p>
-          <h3 className="text-[15px] text-white/40 font-medium uppercase tracking-wider mt-6 mb-2">
-            Hold-only shortcut
-          </h3>
-          <HoldOnlyShortcutPicker
-            value={settings.shortcutHoldOnlyId}
-            mainShortcutId={settings.shortcutId}
-            onChange={handleHoldOnlyShortcutChange}
-          />
-          <p className={settingsHelperClass}>
-            {dictationHoldOnlyShortcutHint()}
-          </p>
-        </motion.div>
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto pt-12 pb-16 px-10">
+        <div className="max-w-[540px]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeCategory}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {activeCategory === "transcription" && (
+                <>
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Transcription Model
+                    </h2>
+                    <ModelPicker
+                      value={settings.whisperModelId}
+                      modelAvailability={modelAvailability}
+                      downloadProgress={downloadProgress}
+                      onSelect={handleModelSelect}
+                      onDownload={handleModelDownload}
+                      onCancelDownload={handleCancelDownload}
+                      onDelete={handleModelDelete}
+                    />
+                    <p className={settingsHelperClass}>
+                      Whisper models run on your Mac. Turbo is bundled; other
+                      models download on demand. Stream mode always uses
+                      Parakeet. Translate to English needs Small or Large
+                      Whisper; Parakeet does not translate in this version.
+                    </p>
+                    <p className={settingsHelperClass}>
+                      {PARAKEET_FIRST_RUN_SETTINGS_HINT}
+                    </p>
+                  </div>
 
-        {/* Input Device */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Input Device
-          </h2>
-          <DevicePicker
-            devices={deviceInfo?.devices ?? {}}
-            selectedDevice={deviceInfo?.selectedDevice ?? 0}
-            onChange={handleDeviceChange}
-          />
-          <p className={settingsHelperClass}>
-            The microphone used for dictation. Updates automatically when
-            devices are connected or disconnected.
-          </p>
-        </motion.div>
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Transcription Language
+                    </h2>
+                    <LanguagePicker
+                      value={settings.transcriptionLanguageId}
+                      onChange={handleTranscriptionLanguageChange}
+                      speechModelId={settings.whisperModelId}
+                    />
+                    <p className={settingsHelperClass}>
+                      {speechModelLocksTranscriptionLanguage(
+                        settings.whisperModelId,
+                      )
+                        ? "Parakeet is multilingual and detects the spoken language on its own. Transcription language is fixed to Auto-detect and cannot be changed for this model."
+                        : TRANSCRIPTION_LANGUAGE_HINT}
+                    </p>
+                  </div>
 
-        {/* Recording indicator */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.11, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Recording indicator
-          </h2>
-          <div className="flex flex-col gap-2">
-            {(
-              [
-                {
-                  mode: "off" as const,
-                  label: "Off",
-                  hint: "No floating indicator on the desktop.",
-                },
-                {
-                  mode: "when-active" as const,
-                  label: "When recording",
-                  hint: "Shows while dictating or transcribing.",
-                },
-                {
-                  mode: "always" as const,
-                  label: "Always",
-                  hint: "Always visible in the corner (subtle when idle).",
-                },
-              ] as const
-            ).map(({ mode, label, hint }) => {
-              const selected = settings.recordingIndicatorMode === mode;
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => handleRecordingIndicatorModeChange(mode)}
-                  className={`w-full text-left rounded-xl border px-4 py-3.5 transition-colors duration-200 cursor-pointer ${
-                    selected
-                      ? "border-white/22 bg-white/8"
-                      : "border-white/11 bg-white/4 hover:border-white/16 hover:bg-white/6"
-                  }`}
-                >
-                  <span
-                    className={`block text-[21px] font-medium ${selected ? "text-white/88" : "text-white/62"}`}
-                  >
-                    {label}
-                  </span>
-                  <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
-                    {hint}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </motion.div>
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Recording Limit
+                    </h2>
+                    <RecordingLimitPicker
+                      valueSeconds={settings.maxRecordingDuration}
+                      onChange={handleMaxRecordingDurationChange}
+                    />
+                    <p className={settingsHelperClass}>
+                      Recording will automatically stop after {durationLabel} to
+                      keep transcription fast and accurate.
+                    </p>
+                    <p className={settingsHelperClass}>
+                      Longer limits use a bit more disk space for the recording
+                      and can make transcription take a little longer for very
+                      long clips.
+                    </p>
+                  </div>
+                </>
+              )}
 
-        {/* Transcription Model */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.12, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Transcription Model
-          </h2>
-          <ModelPicker
-            value={settings.whisperModelId}
-            modelAvailability={modelAvailability}
-            downloadProgress={downloadProgress}
-            onSelect={handleModelSelect}
-            onDownload={handleModelDownload}
-            onCancelDownload={handleCancelDownload}
-            onDelete={handleModelDelete}
-          />
-          <p className={settingsHelperClass}>
-            Smaller models are faster but less accurate. All models shown are
-            multilingual. The Turbo model is bundled with the app — others are
-            downloaded on demand. Translate to English uses the model selected
-            here when it is Small or Large — Turbo cannot translate, so switch
-            model to enable translation.
-          </p>
-        </motion.div>
+              {activeCategory === "modes" && (
+                <>
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Translate to English
+                    </h2>
+                    <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+                      <div className="flex items-center gap-3 px-4 py-3.5">
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-[21px] font-medium ${settings.translateToEnglish ? "text-white/78" : "text-white/58"}`}
+                          >
+                            {settings.translateToEnglish
+                              ? "Translation active"
+                              : "Translate to English"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleTranslateToggle}
+                          disabled={translateDownloadModelId !== null}
+                          className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                            settings.translateToEnglish
+                              ? "bg-blue-500/30 border-blue-400/30"
+                              : "bg-white/7 border-white/14"
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          aria-label="Toggle translate to English"
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                              settings.translateToEnglish
+                                ? "left-4 bg-blue-400/90"
+                                : "left-0.5 bg-white/40"
+                            }`}
+                          />
+                        </button>
+                      </div>
 
-        {/* Transcription language */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.14, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Transcription Language
-          </h2>
-          <LanguagePicker
-            value={settings.transcriptionLanguageId}
-            onChange={handleTranscriptionLanguageChange}
-          />
-          <p className={settingsHelperClass}>{TRANSCRIPTION_LANGUAGE_HINT}</p>
-        </motion.div>
-
-        {/* Translate to English */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.16, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Translate to English
-          </h2>
-          <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3.5">
-              <div className="flex-1 min-w-0">
-                <span
-                  className={`block text-[21px] font-medium ${settings.translateToEnglish ? "text-white/78" : "text-white/58"}`}
-                >
-                  {settings.translateToEnglish
-                    ? "Translation active"
-                    : "Translate to English"}
-                </span>
-              </div>
-              <button
-                onClick={handleTranslateToggle}
-                disabled={translateDownloadModelId !== null}
-                className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                  settings.translateToEnglish
-                    ? "bg-blue-500/30 border-blue-400/30"
-                    : "bg-white/7 border-white/14"
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-                aria-label="Toggle translate to English"
-              >
-                <span
-                  className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
-                    settings.translateToEnglish
-                      ? "left-4 bg-blue-400/90"
-                      : "left-0.5 bg-white/40"
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Download prompt when toggling on without the model */}
-            <AnimatePresence>
-              {translateDownloadModelId !== null && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="border-t border-white/10 px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <p className="text-[18px] text-white/55 font-sans leading-relaxed">
-                        Downloading the{" "}
-                        {getWhisperModel(translateDownloadModelId)?.label ??
-                          translateDownloadModelId}{" "}
-                        model (
-                        {formatModelSize(
-                          getWhisperModel(translateDownloadModelId)?.sizeMB ??
-                            0,
+                      <AnimatePresence>
+                        {translateDownloadModelId !== null && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="border-t border-white/10 px-4 py-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1">
+                                <p className="text-[18px] text-white/55 font-sans leading-relaxed">
+                                  Downloading the{" "}
+                                  {getWhisperModel(translateDownloadModelId)
+                                    ?.label ?? translateDownloadModelId}{" "}
+                                  model (
+                                  {formatModelSize(
+                                    getWhisperModel(translateDownloadModelId)
+                                      ?.sizeMB ?? 0,
+                                  )}
+                                  )…
+                                </p>
+                                <div className="mt-2 h-1 rounded-full bg-white/10 overflow-hidden">
+                                  <motion.div
+                                    className="h-full rounded-full bg-blue-400/60"
+                                    animate={{
+                                      width: `${Math.round((downloadProgress[translateDownloadModelId] ?? 0) * 100)}%`,
+                                    }}
+                                    transition={{ duration: 0.2 }}
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  handleCancelDownload(translateDownloadModelId)
+                                }
+                                className="shrink-0 px-2.5 py-1 rounded-lg text-[17px] font-medium border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/8 text-white/44 hover:text-white/64 transition-colors duration-200 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </motion.div>
                         )}
-                        )…
+                      </AnimatePresence>
+                    </div>
+
+                    <div className="mt-3">
+                      <p className="text-[17px] text-white/44 font-sans mb-2">
+                        Default source language
                       </p>
-                      <div className="mt-2 h-1 rounded-full bg-white/10 overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full bg-blue-400/60"
-                          animate={{
-                            width: `${Math.round((downloadProgress[translateDownloadModelId] ?? 0) * 100)}%`,
-                          }}
-                          transition={{ duration: 0.2 }}
-                        />
+                      <LanguagePicker
+                        value={
+                          settings.translateDefaultLanguageId === "auto"
+                            ? TRANSLATE_DEFAULT_PLACEHOLDER
+                            : settings.translateDefaultLanguageId
+                        }
+                        onChange={handleTranslateDefaultLanguageChange}
+                        leadingDisabledOption={{
+                          value: TRANSLATE_DEFAULT_PLACEHOLDER,
+                          label:
+                            "Choose source language (required for translate mode)…",
+                        }}
+                        excludeAuto
+                        ariaLabel="Default source language for translation"
+                      />
+                    </div>
+
+                    <p className={settingsHelperClass}>
+                      Translate mode needs a fixed source language instead of
+                      Auto-detect. Requires the a Small or Large Whisper model
+                      (not Turbo); download one under <b>Transcription</b> in
+                      this settings window if needed.
+                    </p>
+                  </div>
+
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Stream mode
+                    </h2>
+                    <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+                      <div className="flex items-center gap-3 px-4 py-3.5">
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-[21px] font-medium ${settings.streamMode ? "text-white/78" : "text-white/58"}`}
+                          >
+                            {settings.streamMode
+                              ? "Stream mode active"
+                              : "Stream mode"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleStreamModeToggle}
+                          className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                            settings.streamMode
+                              ? "bg-blue-500/30 border-blue-400/30"
+                              : "bg-white/7 border-white/14"
+                          }`}
+                          aria-label="Toggle stream mode"
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                              settings.streamMode
+                                ? "left-4 bg-blue-400/90"
+                                : "left-0.5 bg-white/40"
+                            }`}
+                          />
+                        </button>
                       </div>
                     </div>
-                    <button
-                      onClick={() =>
-                        handleCancelDownload(translateDownloadModelId)
-                      }
-                      className="shrink-0 px-2.5 py-1 rounded-lg text-[17px] font-medium border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/8 text-white/44 hover:text-white/64 transition-colors duration-200 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Default source language for translate mode */}
-          <div className="mt-3">
-            <p className="text-[17px] text-white/44 font-sans mb-2">
-              Default source language
-            </p>
-            <LanguagePicker
-              value={
-                settings.translateDefaultLanguageId === "auto"
-                  ? TRANSLATE_DEFAULT_PLACEHOLDER
-                  : settings.translateDefaultLanguageId
-              }
-              onChange={handleTranslateDefaultLanguageChange}
-              leadingDisabledOption={{
-                value: TRANSLATE_DEFAULT_PLACEHOLDER,
-                label: "Choose source language (required for translate mode)…",
-              }}
-              excludeAuto
-              ariaLabel="Default source language for translation"
-            />
-          </div>
-
-          <p className={settingsHelperClass}>
-            Translate mode needs a fixed source language. Auto-detect applies
-            only to normal transcription, not to this setting. Choose the
-            language you speak when using translate from the main screen while
-            transcription is auto-detect. Requires a Small or Large model (not
-            Turbo); download one under Transcription Model if needed.
-          </p>
-        </motion.div>
-
-        {/* Recording Limit */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Recording Limit
-          </h2>
-          <RecordingLimitPicker
-            valueSeconds={settings.maxRecordingDuration}
-            onChange={handleMaxRecordingDurationChange}
-          />
-          <p className={settingsHelperClass}>
-            Recording will automatically stop after {durationLabel} to keep
-            transcription fast and accurate.
-          </p>
-          <p className={settingsHelperClass}>
-            Longer limits use a bit more disk space for the recording and can
-            make transcription take a little longer for very long clips.
-          </p>
-        </motion.div>
-
-        {/* Updates */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Updates
-          </h2>
-          <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3.5">
-              {/* Status icon */}
-              <div className="shrink-0 w-4 h-4 flex items-center justify-center">
-                <UpdateIcon state={updateState} />
-              </div>
-
-              {/* Status text */}
-              <div className="flex-1 min-w-0">
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={updateState}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.18 }}
-                    className={`block text-[21px] font-medium ${updateStateTextClass(updateState)}`}
-                  >
-                    {updateStateLabel(updateState, updateMessage)}
-                  </motion.span>
-                </AnimatePresence>
-              </div>
-
-              {/* Action */}
-              <UpdateAction
-                state={updateState}
-                onCheck={handleCheckForUpdates}
-                onRestart={handleApplyUpdate}
-              />
-            </div>
-
-            {/* Error detail bar */}
-            <AnimatePresence>
-              {updateState === "error" && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="border-t border-white/10 px-4 py-2.5"
-                >
-                  <p className="text-[18px] text-orange-300/85 leading-relaxed font-sans font-normal">
-                    {updateMessage ??
-                      "Something went wrong. Check your internet connection and try again."}
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </motion.div>
-
-        {/* Diagnostics */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-8"
-        >
-          <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-            Diagnostics
-          </h2>
-          <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3.5">
-              <div className="shrink-0 w-4 h-4 flex items-center justify-center">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={
-                    settings.debugMode ? "text-amber-400/70" : "text-white/38"
-                  }
-                >
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <span
-                  className={`block text-[21px] font-medium ${settings.debugMode ? "text-amber-400/80" : "text-white/58"}`}
-                >
-                  {settings.debugMode
-                    ? "Debug logging active"
-                    : "Debug logging"}
-                </span>
-              </div>
-              <button
-                onClick={handleDebugToggle}
-                className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                  settings.debugMode
-                    ? "bg-amber-500/30 border-amber-400/30"
-                    : "bg-white/7 border-white/14"
-                }`}
-                aria-label="Toggle debug logging"
-              >
-                <span
-                  className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
-                    settings.debugMode
-                      ? "left-4 bg-amber-400/90"
-                      : "left-0.5 bg-white/40"
-                  }`}
-                />
-              </button>
-            </div>
-
-            <AnimatePresence>
-              {settings.debugMode && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="border-t border-white/10 px-4 py-3"
-                >
-                  <button
-                    onClick={handleCopyLog}
-                    className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[19px] font-medium border transition-colors duration-200 cursor-pointer ${
-                      isCopied
-                        ? "bg-emerald-500/15 border-emerald-400/25 text-emerald-400/80"
-                        : "border-white/12 hover:border-white/20 bg-white/4 hover:bg-white/7 text-white/52 hover:text-white/72"
-                    }`}
-                  >
-                    {isCopied ? (
-                      <>
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                    <p className={settingsHelperClass}>
+                      Press your shortcut once to start the stream, again (or
+                      Esc) to stop. You need the Parakeet model installed.{" "}
+                      {PARAKEET_FIRST_RUN_STREAM_HELPER}
+                    </p>
+                    {!modelAvailability[DEFAULT_STREAM_CAPABLE_MODEL_ID] && (
+                      <div className="mt-4 rounded-xl border border-amber-400/25 bg-amber-500/8 px-4 py-3">
+                        <p className="text-[17px] text-white/70 leading-snug">
+                          Install{" "}
+                          <strong className="text-white/85 font-medium">
+                            Parakeet TDT v3
+                          </strong>{" "}
+                          to use stream mode. After install, the first
+                          transcription or stream may take several minutes while
+                          Core ML prepares on your Mac.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadWhisperModel(
+                              DEFAULT_STREAM_CAPABLE_MODEL_ID,
+                            )
+                          }
+                          className="mt-3 px-3 py-2 rounded-lg text-[17px] font-medium border border-amber-400/35 bg-amber-500/15 hover:bg-amber-500/25 text-amber-100/90 transition-colors cursor-pointer"
                         >
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                        Copied to clipboard
-                      </>
-                    ) : (
-                      <>
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect
-                            x="9"
-                            y="9"
-                            width="13"
-                            height="13"
-                            rx="2"
-                            ry="2"
-                          />
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                        Copy log to clipboard
-                      </>
+                          Download Parakeet
+                        </button>
+                      </div>
                     )}
-                  </button>
-                </motion.div>
+                    {settings.streamMode &&
+                      !parakeetSupportsTranscriptionLanguageId(
+                        settings.transcriptionLanguageId,
+                      ) && (
+                        <p
+                          className={`${settingsHelperClass} text-amber-200/55`}
+                        >
+                          Parakeet supports auto-detect or 25 European
+                          languages. Change transcription language (or use
+                          auto-detect) for stream mode.
+                        </p>
+                      )}
+                    <div className="mt-4 rounded-xl border border-white/11 bg-black/10 p-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        {(
+                          [
+                            {
+                              id: "vad",
+                              title: "VAD / Stable",
+                              body: "Waits for a pause, then pastes completed sentences.",
+                            },
+                            {
+                              id: "live",
+                              title: "Live",
+                              body: "Pastes words as you speak them",
+                            },
+                          ] as const
+                        ).map((mode) => {
+                          const active =
+                            settings.streamTranscriptionMode === mode.id;
+                          return (
+                            <button
+                              key={mode.id}
+                              onClick={() =>
+                                void handleStreamTranscriptionModeChange(
+                                  mode.id,
+                                )
+                              }
+                              className={`rounded-xl border px-3 py-3 text-left transition-colors duration-200 cursor-pointer ${
+                                active
+                                  ? "border-blue-400/30 bg-blue-500/15 text-white/88"
+                                  : "border-white/10 bg-white/4 text-white/62 hover:border-white/18 hover:bg-white/7"
+                              }`}
+                            >
+                              <span className="block text-[18px] font-medium">
+                                {mode.title}
+                              </span>
+                              <span className="mt-1 block text-[15px] leading-snug text-white/48">
+                                {mode.body}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
-            </AnimatePresence>
-          </div>
-          <p className={settingsHelperClass}>
-            Records what happens during each dictation session. Automatically
-            stops after 5 minutes. Share the log with support to diagnose
-            issues.
-          </p>
-        </motion.div>
 
-        {showDevTools && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              delay: 0.3,
-              duration: 0.3,
-              ease: [0.22, 1, 0.36, 1],
-            }}
-            className="mb-8"
-          >
-            <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
-              Development
-            </h2>
-            <div className="relative group">
-              <select
-                value={devPreviewRoute ?? ""}
-                onChange={handleDevPreviewRouteSelect}
-                className={devPreviewSelectClass}
-                aria-label="Preview root screen"
-              >
-                <option value="" className="bg-zinc-900 text-white/78">
-                  Default (normal routing)
-                </option>
-                <option value="permissions" className="bg-zinc-900 text-white">
-                  Permissions
-                </option>
-                <option value="onboarding" className="bg-zinc-900 text-white">
-                  Product onboarding
-                </option>
-                <option value="ready" className="bg-zinc-900 text-white">
-                  Ready (main)
-                </option>
-              </select>
-              <span
-                className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-white/38 transition-colors duration-200 group-hover:text-white/50 right-3.5"
-                aria-hidden
-              >
-                <svg
-                  className="size-[18px]"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </span>
-            </div>
-            <p className={settingsHelperClass}>
-              Vite dev only: jump to a root screen to iterate on UI. Choosing a
-              screen closes Settings; open Settings from the menu again to clear
-              the preview or pick Default routing here first.
-            </p>
-          </motion.div>
-        )}
+              {activeCategory === "shortcuts" && (
+                <>
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Main shortcut
+                    </h2>
+                    <ShortcutPicker
+                      value={settings.shortcutId}
+                      onChange={handleShortcutChange}
+                    />
+                    <p className={settingsHelperClass}>
+                      {dictationShortcutBehaviorHint()}
+                    </p>
+                  </div>
+
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Hold-only shortcut
+                    </h2>
+                    <HoldOnlyShortcutPicker
+                      value={settings.shortcutHoldOnlyId}
+                      mainShortcutId={settings.shortcutId}
+                      onChange={handleHoldOnlyShortcutChange}
+                    />
+                    <p className={settingsHelperClass}>
+                      {dictationHoldOnlyShortcutHint()}
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {activeCategory === "audio" && (
+                <>
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Input Device
+                    </h2>
+                    <DevicePicker
+                      devices={deviceInfo?.devices ?? {}}
+                      selectedDevice={deviceInfo?.selectedDevice ?? 0}
+                      onChange={handleDeviceChange}
+                    />
+                    <p className={settingsHelperClass}>
+                      The microphone used for dictation. Updates automatically
+                      when devices are connected or disconnected.
+                    </p>
+                  </div>
+
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Recording indicator
+                    </h2>
+                    <div className="flex flex-col gap-2">
+                      {(
+                        [
+                          {
+                            mode: "off" as const,
+                            label: "Off",
+                            hint: "No floating indicator on the desktop.",
+                          },
+                          {
+                            mode: "when-active" as const,
+                            label: "When recording",
+                            hint: "Shows while dictating or transcribing.",
+                          },
+                          {
+                            mode: "always" as const,
+                            label: "Always",
+                            hint: "Always visible in the corner (subtle when idle).",
+                          },
+                        ] as const
+                      ).map(({ mode, label, hint }) => {
+                        const selected =
+                          settings.recordingIndicatorMode === mode;
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() =>
+                              handleRecordingIndicatorModeChange(mode)
+                            }
+                            className={`w-full text-left rounded-xl border px-4 py-3.5 transition-colors duration-200 cursor-pointer ${
+                              selected
+                                ? "border-white/22 bg-white/8"
+                                : "border-white/11 bg-white/4 hover:border-white/16 hover:bg-white/6"
+                            }`}
+                          >
+                            <span
+                              className={`block text-[21px] font-medium ${selected ? "text-white/88" : "text-white/62"}`}
+                            >
+                              {label}
+                            </span>
+                            <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
+                              {hint}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {activeCategory === "general" && (
+                <>
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Updates
+                    </h2>
+                    <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+                      <div className="flex items-center gap-3 px-4 py-3.5">
+                        <div className="shrink-0 w-4 h-4 flex items-center justify-center">
+                          <UpdateIcon state={updateState} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <AnimatePresence mode="wait">
+                            <motion.span
+                              key={updateState}
+                              initial={{ opacity: 0, y: 4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -4 }}
+                              transition={{ duration: 0.18 }}
+                              className={`block text-[21px] font-medium ${updateStateTextClass(updateState)}`}
+                            >
+                              {updateStateLabel(updateState, updateMessage)}
+                            </motion.span>
+                          </AnimatePresence>
+                        </div>
+                        <UpdateAction
+                          state={updateState}
+                          onCheck={handleCheckForUpdates}
+                          onRestart={handleApplyUpdate}
+                        />
+                      </div>
+
+                      <AnimatePresence>
+                        {updateState === "error" && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="border-t border-white/10 px-4 py-2.5"
+                          >
+                            <p className="text-[18px] text-orange-300/85 leading-relaxed font-sans font-normal">
+                              {updateMessage ??
+                                "Something went wrong. Check your internet connection and try again."}
+                            </p>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Diagnostics
+                    </h2>
+                    <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+                      <div className="flex items-center gap-3 px-4 py-3.5">
+                        <div className="shrink-0 w-4 h-4 flex items-center justify-center">
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={
+                              settings.debugMode
+                                ? "text-amber-400/70"
+                                : "text-white/38"
+                            }
+                          >
+                            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                            <path d="M2 17l10 5 10-5" />
+                            <path d="M2 12l10 5 10-5" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-[21px] font-medium ${settings.debugMode ? "text-amber-400/80" : "text-white/58"}`}
+                          >
+                            {settings.debugMode
+                              ? "Debug logging active"
+                              : "Debug logging"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleDebugToggle}
+                          className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                            settings.debugMode
+                              ? "bg-amber-500/30 border-amber-400/30"
+                              : "bg-white/7 border-white/14"
+                          }`}
+                          aria-label="Toggle debug logging"
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                              settings.debugMode
+                                ? "left-4 bg-amber-400/90"
+                                : "left-0.5 bg-white/40"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      <AnimatePresence>
+                        {settings.debugMode && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="border-t border-white/10 px-4 py-3"
+                          >
+                            <button
+                              onClick={handleCopyLog}
+                              className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[19px] font-medium border transition-colors duration-200 cursor-pointer ${
+                                isCopied
+                                  ? "bg-emerald-500/15 border-emerald-400/25 text-emerald-400/80"
+                                  : "border-white/12 hover:border-white/20 bg-white/4 hover:bg-white/7 text-white/52 hover:text-white/72"
+                              }`}
+                            >
+                              {isCopied ? (
+                                <>
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                  Copied to clipboard
+                                </>
+                              ) : (
+                                <>
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <rect
+                                      x="9"
+                                      y="9"
+                                      width="13"
+                                      height="13"
+                                      rx="2"
+                                      ry="2"
+                                    />
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                  </svg>
+                                  Copy log to clipboard
+                                </>
+                              )}
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    <p className={settingsHelperClass}>
+                      Records what happens during each dictation session.
+                      Automatically stops after 5 minutes. Share the log with
+                      support to diagnose issues.
+                    </p>
+                  </div>
+
+                  {showDevTools && (
+                    <div className="mb-8">
+                      <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                        Development
+                      </h2>
+                      <div className="relative group">
+                        <select
+                          value={devPreviewRoute ?? ""}
+                          onChange={handleDevPreviewRouteSelect}
+                          className={devPreviewSelectClass}
+                          aria-label="Preview root screen"
+                        >
+                          <option
+                            value=""
+                            className="bg-zinc-900 text-white/78"
+                          >
+                            Default (normal routing)
+                          </option>
+                          <option
+                            value="permissions"
+                            className="bg-zinc-900 text-white"
+                          >
+                            Permissions
+                          </option>
+                          <option
+                            value="onboarding"
+                            className="bg-zinc-900 text-white"
+                          >
+                            Product onboarding
+                          </option>
+                          <option
+                            value="ready"
+                            className="bg-zinc-900 text-white"
+                          >
+                            Ready (main)
+                          </option>
+                        </select>
+                        <span
+                          className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-white/38 transition-colors duration-200 group-hover:text-white/50 right-3.5"
+                          aria-hidden
+                        >
+                          <svg
+                            className="size-[18px]"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
+                        </span>
+                      </div>
+                      <p className={settingsHelperClass}>
+                        Vite dev only: jump to a root screen to iterate on UI.
+                        Choosing a screen closes Settings; open Settings from
+                        the menu again to clear the preview or pick Default
+                        routing here first.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

@@ -4,8 +4,14 @@ import {
   type RecordingSession,
 } from './utils/audio/start-rec'
 import {
+  startParakeetStream,
+  stopParakeetStream,
+  type StreamSession,
+} from './utils/whisper/parakeet-stream-runner'
+import {
   FN_PHYSICAL_KEYCODES,
   Key,
+  KeyCode,
   SHORTCUTS,
   startKeyboardListener,
   type KeyEvent,
@@ -20,6 +26,7 @@ import {
 } from '../shared/dictation-shortcut'
 import type { AppStatus, ShortcutId } from '../shared/types'
 import { checkMicrophoneAuthorization } from './utils/audio/check-mic-authorization'
+import { log } from './utils/logger'
 
 /** Keycodes that should not cancel "wait for Fn chord" when main is fn-globe + hold is fn-* (non-globe). */
 const FN_GLOBE_DEFER_CANCEL_SUPPRESS = new Set<number>([
@@ -75,7 +82,12 @@ function mergeSwallowRules(a: KeyEvent[], b: KeyEvent[]): KeyEvent[] {
 
 export const setupRecording = (
   appConfig: AppConfig,
-  { setTrayIdle, setTrayRecording, setTrayTranscribing }: TrayHandlers,
+  {
+    setTrayIdle,
+    setTrayRecording,
+    setTrayTranscribing,
+    setTrayStreaming,
+  }: TrayHandlers,
   onStatusChange?: (status: AppStatus) => void,
   onPermissions?: (status: PermissionStatus) => void,
   getAudioDevices?: () => Record<string, string>
@@ -86,6 +98,10 @@ export const setupRecording = (
   let sessionStopping = false
   let transcriptionPipelineActive = false
   let pendingHoldReleaseWhileStarting = false
+
+  // Stream mode state
+  let streamSession: StreamSession | null = null
+  let streamStarting = false
 
   let holdArmTimer: ReturnType<typeof setTimeout> | null = null
   /** True after HOLD_QUALIFY_MS with no qualifying release cancelling the arm timer. */
@@ -142,12 +158,113 @@ export const setupRecording = (
     }, DICTATION_HOLD_QUALIFY_MS)
   }
 
+  const keyLabel = (keycode: number) => KeyCode[keycode] ?? String(keycode)
+
+  const logShortcutDecision = (
+    reason: string,
+    mode: 'hybrid' | 'holdOnly',
+    action: 'start' | 'stop',
+    keyEvent?: KeyEvent
+  ) => {
+    log('shortcut', 'routing shortcut', {
+      reason,
+      mode,
+      action,
+      streamMode: appConfig.getStreamMode(),
+      streamSessionActive: streamSession !== null,
+      recorderActive: recorderProc !== null,
+      transcriptionPipelineActive,
+      keycode: keyEvent?.keycode,
+      key: keyEvent ? keyLabel(keyEvent.keycode) : undefined,
+    })
+  }
+
+  const routeShortcutAction = async (
+    mode: 'hybrid' | 'holdOnly',
+    keyEvent: KeyEvent,
+    reason: string
+  ) => {
+    const streamMode = appConfig.getStreamMode()
+    if (!streamMode && streamSession !== null) {
+      log('shortcut', 'stopping orphan Parakeet stream (stream mode off)')
+      await tryStopStream()
+    }
+    if (streamMode) {
+      logShortcutDecision(
+        reason,
+        mode,
+        streamSession !== null ? 'stop' : 'start',
+        keyEvent
+      )
+      if (streamSession !== null) await tryStopStream()
+      else await tryStartStream()
+      return
+    }
+
+    logShortcutDecision(reason, mode, 'start', keyEvent)
+    await tryStart(mode)
+  }
+
+  const tryStartStream = async () => {
+    if (!appConfig.getStreamMode()) return
+    if (
+      streamSession !== null ||
+      streamStarting ||
+      recorderProc !== null ||
+      transcriptionPipelineActive
+    )
+      return
+    streamStarting = true
+    try {
+      log('stream', 'starting Parakeet stream session', {
+        streamMode: appConfig.getStreamMode(),
+        streamTranscriptionMode: appConfig.getStreamTranscriptionMode(),
+        whisperModelId: appConfig.getWhisperModelId(),
+      })
+      playStartSound()
+      setTrayStreaming()
+      onStatusChange?.('streaming')
+      streamSession = await startParakeetStream(
+        appConfig.getStreamTranscriptionMode(),
+        {
+          onStopped: () => {
+            streamSession = null
+            setTrayIdle()
+            onStatusChange?.('ready')
+          },
+        }
+      )
+    } catch (err) {
+      log('stream', 'failed to start stream session', {
+        err: String(err),
+      })
+      streamSession = null
+      setTrayIdle()
+      onStatusChange?.('ready')
+    } finally {
+      streamStarting = false
+    }
+  }
+
+  const tryStopStream = async () => {
+    if (streamSession === null) return
+    log('stream', 'stopping stream session')
+    const session = streamSession
+    streamSession = null
+    await stopParakeetStream(session)
+    setTrayIdle()
+    onStatusChange?.('ready')
+  }
+
   const tryStop = async () => {
     if (!recorderProc || sessionStopping) return
     sessionStopping = true
     clearRightOptionPttDeferTimer()
     resetHoldGate()
     try {
+      log('shortcut', 'stopping recorder session', {
+        activeRecordingMode: activeRecordingMode ?? undefined,
+      })
       console.log('END RECORD')
       const proc = recorderProc
       await stopRecording(proc)
@@ -170,6 +287,10 @@ export const setupRecording = (
     pendingHoldReleaseWhileStarting = false
     activeRecordingMode = mode
     try {
+      log('shortcut', 'starting recorder session', {
+        mode,
+        streamMode: appConfig.getStreamMode(),
+      })
       console.log('START RECORD')
       playStartSound()
       setTrayRecording()
@@ -218,16 +339,23 @@ export const setupRecording = (
     const hybrid = getHybridShortcut()
     const holdOnly = getHoldOnlyShortcut()
 
-    if (keyEvent.keycode === Key.escape && keyEvent.keyDown && recorderProc) {
-      resetHoldGate()
-      activeRecordingMode = null
-      if (recordingSession) recordingSession.discard = true
-      recorderProc.kill()
-      recorderProc = null
-      setTrayIdle()
-      onStatusChange?.('ready')
-      console.log('Recording cancelled')
-      return
+    if (keyEvent.keycode === Key.escape && keyEvent.keyDown) {
+      if (streamSession !== null) {
+        log('shortcut', 'escape stopping active stream session')
+        void tryStopStream()
+        return
+      }
+      if (recorderProc) {
+        resetHoldGate()
+        activeRecordingMode = null
+        if (recordingSession) recordingSession.discard = true
+        recorderProc.kill()
+        recorderProc = null
+        setTrayIdle()
+        onStatusChange?.('ready')
+        console.log('Recording cancelled')
+        return
+      }
     }
 
     if (recorderProc !== null) {
@@ -268,7 +396,11 @@ export const setupRecording = (
     if (deferRightOptionPtt) {
       if (hybrid.matchesToggleDown(keyEvent) && !keyEvent.isRepeat) {
         clearRightOptionPttDeferTimer()
-        await tryStart('hybrid')
+        await routeShortcutAction(
+          'hybrid',
+          keyEvent,
+          'right-option defer hybrid'
+        )
         return
       }
       if (keyEvent.keycode === Key.rightOption && !keyEvent.keyDown) {
@@ -287,7 +419,11 @@ export const setupRecording = (
           ) {
             return
           }
-          void tryStart('holdOnly')
+          void routeShortcutAction(
+            'holdOnly',
+            keyEvent,
+            'right-option defer hold-only'
+          )
         }, RIGHT_OPTION_PTT_DEFER_MS)
         return
       }
@@ -303,12 +439,20 @@ export const setupRecording = (
       if (pendingFnGlobeHybridDefer) {
         if (holdOnly.matchesToggleDown(keyEvent) && !keyEvent.isRepeat) {
           pendingFnGlobeHybridDefer = false
-          await tryStart('holdOnly')
+          await routeShortcutAction(
+            'holdOnly',
+            keyEvent,
+            'fn-globe deferred hold-only'
+          )
           return
         }
         if (fnGlobeDef.matchesHoldUp(keyEvent)) {
           pendingFnGlobeHybridDefer = false
-          await tryStart('hybrid')
+          await routeShortcutAction(
+            'hybrid',
+            keyEvent,
+            'fn-globe deferred hybrid'
+          )
           return
         }
         if (
@@ -340,11 +484,11 @@ export const setupRecording = (
       holdOnly.matchesToggleDown(keyEvent) &&
       !keyEvent.isRepeat
     ) {
-      await tryStart('holdOnly')
+      await routeShortcutAction('holdOnly', keyEvent, 'direct hold-only')
       return
     }
     if (hybrid.matchesToggleDown(keyEvent) && !keyEvent.isRepeat) {
-      await tryStart('hybrid')
+      await routeShortcutAction('hybrid', keyEvent, 'direct hybrid')
     }
   }
 
@@ -370,5 +514,12 @@ export const setupRecording = (
     relayPermissions
   )
 
-  return keyboard
+  const stopActiveParakeetStream = async () => {
+    await tryStopStream()
+  }
+
+  return {
+    ...keyboard,
+    stopActiveParakeetStream,
+  }
 }

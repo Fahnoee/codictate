@@ -1,4 +1,5 @@
 import { whisperCliLanguageArg } from '../../../shared/transcription-languages'
+import { getSpeechModel } from '../../../shared/speech-models'
 import { resolveTranslateModelId } from '../../../shared/whisper-models'
 import { modelManager } from './model-manager'
 import { pasteTranscript } from '../keyboard/keyboard-events'
@@ -46,7 +47,7 @@ const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
   [/\bcodictate\b/gi, 'Codictate'],
 ]
 
-function fixBrandMishearings(text: string): string {
+export function fixBrandMishearings(text: string): string {
   let t = text
   for (const [pattern, replacement] of BRAND_TRANSCRIPT_FIXES) {
     t = t.replace(pattern, replacement)
@@ -54,11 +55,38 @@ function fixBrandMishearings(text: string): string {
   return t
 }
 
+/** Read a subprocess pipe to completion. Must run concurrently with `proc.exited` or the child can deadlock once the pipe buffer fills (Core ML / FluidAudio is verbose on stderr). */
+async function drainReadableStream(
+  stream: ReadableStream<Uint8Array> | undefined
+): Promise<Uint8Array> {
+  if (!stream) return new Uint8Array(0)
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value?.length) chunks.push(value)
+  }
+  const len = chunks.reduce((a, b) => a + b.length, 0)
+  const out = new Uint8Array(len)
+  let o = 0
+  for (const c of chunks) {
+    out.set(c, o)
+    o += c.length
+  }
+  return out
+}
+
 export const transcribe = async (
   whisperLanguageCode: string | null | undefined,
   modelId: string,
   translateToEnglish: boolean
 ) => {
+  const speech = getSpeechModel(modelId)
+  if (speech?.engine === 'whisperkit') {
+    return transcribeParakeet(modelId)
+  }
+
   const binary = join(import.meta.dir, '../native-helpers/whisper-cli')
 
   const translateRunModelId = resolveTranslateModelId(modelId, (id) =>
@@ -114,18 +142,12 @@ export const transcribe = async (
     },
   })
 
+  const stderrPromise = drainReadableStream(proc.stderr)
+  const stdoutPromise = drainReadableStream(proc.stdout)
   await proc.exited
-
-  let stderrText = ''
-  try {
-    stderrText = new TextDecoder('utf-8').decode(
-      await new Response(proc.stderr).arrayBuffer()
-    )
-  } catch {
-    // Ignore — stderr may already be consumed
-  }
-
-  const stdoutBytes = await new Response(proc.stdout).arrayBuffer()
+  const stderrBytes = await stderrPromise
+  const stdoutBytes = await stdoutPromise
+  const stderrText = new TextDecoder('utf-8').decode(stderrBytes)
   const raw = new TextDecoder('utf-8').decode(stdoutBytes).trim()
   const transcript = fixBrandMishearings(raw)
 
@@ -133,6 +155,67 @@ export const transcribe = async (
     exitCode: proc.exitCode,
     transcriptLength: transcript.length,
     stderr: stderrText.slice(0, 500) || undefined,
+  })
+
+  return transcript
+}
+
+async function transcribeParakeet(modelId: string): Promise<string> {
+  const helper = join(
+    import.meta.dir,
+    '../native-helpers/CodictateParakeetHelper'
+  )
+  const modelDir = modelManager.getParakeetInstallDir(modelId)
+
+  log('parakeet', 'spawning CodictateParakeetHelper transcribe', {
+    helper,
+    modelDir,
+  })
+
+  const proc = Bun.spawn([helper, 'transcribe', RECORDING_PATH, modelDir], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: {
+      ...process.env,
+      LC_ALL: 'en_US.UTF-8',
+      LANG: 'en_US.UTF-8',
+    },
+  })
+
+  const stderrPromise = drainReadableStream(proc.stderr)
+  const stdoutPromise = drainReadableStream(proc.stdout)
+  await proc.exited
+  const stderrBytes = await stderrPromise
+  const stdoutBytes = await stdoutPromise
+  const stderrText = new TextDecoder('utf-8').decode(stderrBytes)
+
+  const out = new TextDecoder('utf-8').decode(stdoutBytes).trim()
+  let text = ''
+  for (const line of out.split('\n')) {
+    const t = line.trim()
+    if (!t) continue
+    try {
+      const obj = JSON.parse(t) as { kind?: string; text?: string }
+      if (obj.kind === 'final' && typeof obj.text === 'string') {
+        text = obj.text
+        break
+      }
+    } catch {
+      // ignore non-JSON
+    }
+  }
+
+  const transcript = fixBrandMishearings(text.trim())
+
+  if (stderrText.trim()) {
+    log('parakeet', 'helper stderr', {
+      text: stderrText.slice(0, 4000),
+    })
+  }
+
+  log('parakeet', 'transcription complete', {
+    exitCode: proc.exitCode,
+    transcriptLength: transcript.length,
   })
 
   return transcript

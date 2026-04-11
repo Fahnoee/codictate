@@ -1,6 +1,12 @@
 "use client";
 
-import { TRANSCRIPTION_LANGUAGE_OPTIONS } from "../../../shared/transcription-languages";
+import { useLayoutEffect, useMemo } from "react";
+import {
+  PARAKEET_TRANSCRIPTION_LANGUAGE_LOCK_TOOLTIP,
+  TRANSCRIPTION_LANGUAGE_OPTIONS,
+} from "../../../shared/transcription-languages";
+import { speechModelLocksTranscriptionLanguage } from "../../../shared/speech-models";
+import { InstantTooltip } from "../Common/InstantTooltip";
 
 const selectClass =
   "w-full appearance-none rounded-lg border font-medium text-white/78 outline-none " +
@@ -8,6 +14,7 @@ const selectClass =
   "hover:border-white/18 hover:bg-white/7 " +
   "focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 " +
   "cursor-pointer transition-[border-color,background-color,box-shadow] duration-200 " +
+  "disabled:cursor-not-allowed disabled:text-white/42 disabled:hover:border-white/12 disabled:hover:bg-white/5 " +
   "[color-scheme:dark]";
 
 const sizeDefault = "pl-4 pr-11 py-3.5 text-[21px] leading-snug";
@@ -25,8 +32,8 @@ export function LanguagePicker({
   compact = false,
   allowEmpty = false,
   excludeAuto = false,
-  /** Disabled first row (e.g. “pick a language”) — value must match when nothing chosen yet. */
   leadingDisabledOption,
+  speechModelId = null,
   ariaLabel = "Transcription language",
 }: {
   value: string;
@@ -39,59 +46,127 @@ export function LanguagePicker({
   allowEmpty?: boolean;
   /** Omit the auto-detect option from the list. */
   excludeAuto?: boolean;
+  /** Disabled first row (e.g. “pick a language”) — value must match when nothing chosen yet. */
   leadingDisabledOption?: { value: string; label: string };
+  /** When set to Parakeet (whisperkit), transcription language is fixed to automatic — control is disabled. */
+  speechModelId?: string | null;
   ariaLabel?: string;
 }) {
-  const options = TRANSCRIPTION_LANGUAGE_OPTIONS.filter(
-    (o) => !(excludeAuto && o.id === "auto"),
+  const languageLocked =
+    speechModelId != null &&
+    speechModelLocksTranscriptionLanguage(speechModelId);
+
+  const options = useMemo(
+    () =>
+      TRANSCRIPTION_LANGUAGE_OPTIONS.filter(
+        (o) => !(excludeAuto && o.id === "auto"),
+      ),
+    [excludeAuto],
   );
+
+  const valueAllowed =
+    (leadingDisabledOption && value === leadingDisabledOption.value) ||
+    (allowEmpty && value === "") ||
+    options.some((o) => o.id === value);
+
+  useLayoutEffect(() => {
+    if (!languageLocked || value === "auto") return;
+    onChange("auto");
+  }, [languageLocked, value, onChange]);
+
+  useLayoutEffect(() => {
+    if (languageLocked || valueAllowed) return;
+    const fallback = excludeAuto ? options[0]?.id : "auto";
+    if (fallback != null && fallback !== value) onChange(fallback);
+  }, [languageLocked, valueAllowed, value, excludeAuto, options, onChange]);
+
+  const selectValue = languageLocked
+    ? "auto"
+    : leadingDisabledOption && value === leadingDisabledOption.value
+      ? value
+      : allowEmpty && value === ""
+        ? ""
+        : options.some((o) => o.id === value)
+          ? value
+          : excludeAuto
+            ? (options[0]?.id ?? value)
+            : "auto";
 
   const sizeClass = compact ? sizeCompact : sizeDefault;
 
-  return (
-    <div className="relative group">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${selectClass} w-full ${sizeClass} ${className ?? ""}`}
-        aria-label={ariaLabel}
-      >
-        {leadingDisabledOption && (
-          <option
-            value={leadingDisabledOption.value}
-            disabled
-            className="bg-zinc-900 text-white/45"
-          >
-            {leadingDisabledOption.label}
-          </option>
-        )}
-        {allowEmpty && (
-          <option value="" className="bg-zinc-900 text-white/50">
-            — Auto-detect —
-          </option>
-        )}
-        {options.map((o) => (
-          <option key={o.id} value={o.id} className="bg-zinc-900 text-white">
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <span
-        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-white/38 transition-colors duration-200 group-hover:text-white/50 ${compact ? "right-3" : "right-3.5"}`}
-        aria-hidden
-      >
-        <svg
-          className="size-[18px]"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+  const picker = (
+    <div className="relative w-full max-w-full">
+      <div className={`relative group ${languageLocked ? "opacity-90" : ""}`}>
+        <select
+          value={selectValue}
+          disabled={languageLocked}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${selectClass} w-full ${sizeClass} ${className ?? ""}`}
+          aria-label={
+            languageLocked
+              ? `${ariaLabel} — not available with Parakeet; language is detected automatically`
+              : ariaLabel
+          }
+          aria-disabled={languageLocked}
         >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </span>
+          {leadingDisabledOption && (
+            <option
+              value={leadingDisabledOption.value}
+              disabled
+              className="bg-zinc-900 text-white/45"
+            >
+              {leadingDisabledOption.label}
+            </option>
+          )}
+          {allowEmpty && (
+            <option value="" className="bg-zinc-900 text-white/50">
+              — Auto-detect —
+            </option>
+          )}
+          {options.map((o) => (
+            <option key={o.id} value={o.id} className="bg-zinc-900 text-white">
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <span
+          className={`pointer-events-none absolute top-1/2 -translate-y-1/2 transition-colors duration-200 ${languageLocked ? "text-white/26" : "text-white/38 group-hover:text-white/50"} ${compact ? "right-3" : "right-3.5"}`}
+          aria-hidden
+        >
+          <svg
+            className="size-[18px]"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
+      </div>
+      {languageLocked ? (
+        <div
+          className="absolute inset-0 z-[5] cursor-not-allowed rounded-lg bg-transparent"
+          aria-hidden
+        />
+      ) : null}
     </div>
   );
+
+  if (languageLocked) {
+    return (
+      <InstantTooltip
+        text={PARAKEET_TRANSCRIPTION_LANGUAGE_LOCK_TOOLTIP}
+        side={compact ? "top" : "bottom"}
+        floatInViewport
+        className="block w-full max-w-full"
+      >
+        {picker}
+      </InstantTooltip>
+    );
+  }
+
+  return picker;
 }

@@ -110,3 +110,7 @@ export function whisperCliLanguageArg(
 /** Shared helper / tooltip copy for Settings and Ready screens. */
 export const TRANSCRIPTION_LANGUAGE_HINT =
   'Choosing a language tells the speech model what to expect, which usually improves accuracy. Auto-detect, detects the language on each recording.'
+
+/** Hover copy when Parakeet is selected and the transcription language control is locked. */
+export const PARAKEET_TRANSCRIPTION_LANGUAGE_LOCK_TOOLTIP =
+  'Language selection is not available while Parakeet is the transcription model. Parakeet detects the spoken language automatically.'

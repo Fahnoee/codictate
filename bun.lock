@@ -7,6 +7,7 @@
       "dependencies": {
         "@fontsource/iceberg": "^5.2.5",
         "@fontsource/iceland": "^5.2.5",
+        "@huggingface/hub": "^1.0.0",
         "@tanstack/react-query": "5.96.0",
         "electrobun": "1.16.0",
         "motion": "^12.36.0",
@@ -150,6 +151,10 @@
     "@fontsource/iceberg": ["@fontsource/iceberg@5.2.8", "", {}, "sha512-PIKVXHWJfE2SgfuASRxAusqWuiuYtGei0h14cZDCjZ43AgKvMBotsjknMKvBmDgyBAEhbbyhrETTdeqqrBiPKw=="],
 
     "@fontsource/iceland": ["@fontsource/iceland@5.2.8", "", {}, "sha512-UB1LoJlHFy9CaccxFgLOId7713Uf9irFP+WIyqsgVXk71fqnu0BSJlWYGbLWsaNPWBHSm6VzhogQ0PSyFWO7BA=="],
+
+    "@huggingface/hub": ["@huggingface/hub@1.1.2", "", { "dependencies": { "@huggingface/tasks": "^0.18.2" } }, "sha512-Jf4GhvVj9ABDw4Itb3BV1T7f22iewuZva476qTicQ4kOTbosuUuFDhsVH7ZH6rVNgg20Ll9kaNBF5CXjySIT+w=="],
+
+    "@huggingface/tasks": ["@huggingface/tasks@0.18.12", "", {}, "sha512-hUEYhXJzJCUhLSBNglW+Sji5fuzMnpBimp3kbdcGor+MaN9xb+qrcLnMC7X8aOcZaZdCErwYYIqz2oSP2EM4Bg=="],
 
     "@humanfs/core": ["@humanfs/core@0.19.1", "", {}, "sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA=="],
 

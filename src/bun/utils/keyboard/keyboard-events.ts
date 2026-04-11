@@ -277,6 +277,9 @@ export interface PermissionStatus {
 
 /** NSPasteboard + Cmd+V — Unicode-safe in bundled apps (no pbcopy / shell locale). */
 let keyListenerPasteText: ((text: string) => void) | null = null
+let keyListenerReplaceText:
+  | ((payload: { deleteText: string; text: string }) => void)
+  | null = null
 
 export function startKeyboardListener(
   onKeyEvent: (event: KeyEvent) => void,
@@ -314,6 +317,13 @@ export function startKeyboardListener(
     proc.stdin.flush()
   }
 
+  const replaceText = (deleteText: string, text: string) => {
+    proc.stdin.write(
+      JSON.stringify({ command: 'replace_text', deleteText, text }) + '\n'
+    )
+    proc.stdin.flush()
+  }
+
   const setClipboardOnly = (text: string) => {
     proc.stdin.write(JSON.stringify({ command: 'set_clipboard', text }) + '\n')
     proc.stdin.flush()
@@ -342,6 +352,8 @@ export function startKeyboardListener(
   }
 
   keyListenerPasteText = pasteText
+  keyListenerReplaceText = ({ deleteText, text }) =>
+    replaceText(deleteText, text)
   bindNativePasteboardWriter(setClipboardOnly)
 
   const reader = proc.stdout.getReader()
@@ -433,6 +445,7 @@ export function startKeyboardListener(
     },
     stop: () => {
       keyListenerPasteText = null
+      keyListenerReplaceText = null
       unbindNativePasteboardWriter()
       proc.kill()
     },
@@ -454,4 +467,18 @@ export const pasteTranscript = async (text: string) => {
     charCount: text.length,
   })
   keyListenerPasteText(text)
+}
+
+export const replaceTranscript = async (deleteText: string, text: string) => {
+  if (!keyListenerReplaceText) {
+    console.error(
+      '[replaceTranscript] KeyListener not running; cannot replace transcript.'
+    )
+    return
+  }
+  log('paste', 'replace_text via KeyListener', {
+    deleteChars: [...deleteText].length,
+    insertChars: [...text].length,
+  })
+  keyListenerReplaceText({ deleteText, text })
 }

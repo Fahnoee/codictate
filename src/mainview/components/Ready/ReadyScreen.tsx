@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback, useEffect, useState } from "react";
+import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type { AppStatus, AppSettings, DeviceInfo } from "../../../shared/types";
@@ -15,6 +15,7 @@ import {
   setTranscriptionLanguage,
   setTranslateDefaultLanguage,
   setTranslateToEnglish,
+  setStreamMode,
   fetchSettings,
 } from "../../rpc";
 import {
@@ -22,6 +23,12 @@ import {
   getTranslateReadiness,
   getWhisperModel,
 } from "../../../shared/whisper-models";
+import {
+  PARAKEET_COREML_PREP_STORAGE_KEY,
+  PARAKEET_FIRST_RUN_READY_SUBTITLE,
+  getSpeechModel,
+  speechModelLocksTranscriptionLanguage,
+} from "../../../shared/speech-models";
 import { appEvents } from "../../app-events";
 import { Kbd } from "../Common/Kbd";
 import {
@@ -66,10 +73,55 @@ export function ReadyScreen({
 }) {
   const isRecording = status === "recording";
   const isTranscribing = status === "transcribing";
+  const isStreaming = status === "streaming";
   const isIdle = status === "ready";
+
+  const isWhisperKitModel =
+    settings?.whisperModelId != null &&
+    getSpeechModel(settings.whisperModelId)?.engine === "whisperkit";
+
+  const [parakeetCoreMlPrepDone, setParakeetCoreMlPrepDone] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return (
+        window.localStorage.getItem(PARAKEET_COREML_PREP_STORAGE_KEY) === "1"
+      );
+    } catch {
+      return true;
+    }
+  });
+
+  const prevStatusRef = useRef<AppStatus>(status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    if (
+      (prev === "transcribing" || prev === "streaming") &&
+      status !== "transcribing" &&
+      status !== "streaming" &&
+      isWhisperKitModel
+    ) {
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(PARAKEET_COREML_PREP_STORAGE_KEY, "1");
+        }
+      } catch {
+        /* ignore */
+      }
+      setParakeetCoreMlPrepDone(true);
+    }
+    prevStatusRef.current = status;
+  }, [status, isWhisperKitModel]);
+
+  const showParakeetFirstRunHint =
+    (isTranscribing || isStreaming) &&
+    isWhisperKitModel &&
+    !parakeetCoreMlPrepDone;
 
   const queryClient = useQueryClient();
   const languageId = settings?.transcriptionLanguageId ?? "auto";
+  const transcriptionLanguageLocked =
+    settings?.whisperModelId != null &&
+    speechModelLocksTranscriptionLanguage(settings.whisperModelId);
 
   // Model availability - seeded from query cache, updated via events.
   const [modelAvailability, setModelAvailability] = useState<
@@ -184,6 +236,23 @@ export function ReadyScreen({
     onOpenSettings,
   ]);
 
+  const isStreamMode = settings?.streamMode ?? false;
+  const streamModeLabel =
+    settings?.streamTranscriptionMode === "live" ? "Live" : "VAD";
+
+  const handleStreamToggle = useCallback(async () => {
+    if (!settings) return;
+    const newValue = !isStreamMode;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, streamMode: newValue } : old,
+    );
+    const ok = await setStreamMode(newValue);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+      if (newValue) onOpenSettings();
+    }
+  }, [isStreamMode, queryClient, settings, onOpenSettings]);
+
   const micName = deviceInfo
     ? (deviceInfo.devices[String(deviceInfo.selectedDevice)] ?? "Default")
     : null;
@@ -232,15 +301,33 @@ export function ReadyScreen({
                 ? "text-red-400/85"
                 : isTranscribing
                   ? "text-amber-400/78"
-                  : "text-white/52"
+                  : isStreaming
+                    ? "text-blue-400/85"
+                    : "text-white/52"
             }`}
           >
             {isRecording
               ? "Listening…"
               : isTranscribing
                 ? "Transcribing…"
-                : "Ready"}
+                : isStreaming
+                  ? "Streaming…"
+                  : "Ready"}
           </motion.p>
+        </AnimatePresence>
+        <AnimatePresence>
+          {showParakeetFirstRunHint && (
+            <motion.p
+              key="parakeet-coreml-hint"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.25 }}
+              className="text-[15px] mt-2 max-w-[min(22rem,calc(100vw-2rem))] text-center text-balance font-sans leading-snug text-white/46 px-2"
+            >
+              {PARAKEET_FIRST_RUN_READY_SUBTITLE}
+            </motion.p>
+          )}
         </AnimatePresence>
       </motion.div>
 
@@ -343,12 +430,15 @@ export function ReadyScreen({
               value={languageId}
               onChange={handleLanguageChange}
               excludeAuto={isTranslateOn}
+              speechModelId={settings?.whisperModelId}
               className={!isIdle ? "pointer-events-none" : undefined}
             />
           </div>
-          <TranscriptionLanguageHintButton
-            className={!isIdle ? "pointer-events-none opacity-60" : ""}
-          />
+          {!transcriptionLanguageLocked && (
+            <TranscriptionLanguageHintButton
+              className={!isIdle ? "pointer-events-none opacity-60" : ""}
+            />
+          )}
         </div>
 
         <AnimatePresence>
@@ -401,6 +491,33 @@ export function ReadyScreen({
           transition={{ delay: 0.4, duration: 0.3 }}
           className="pointer-events-auto justify-self-end flex items-stretch gap-1.5"
         >
+          {settings !== undefined && (
+            <InstantTooltip
+              text={
+                isStreamMode
+                  ? "Stream mode active — press shortcut to start, again to stop"
+                  : `Stream mode — continuous hands-free dictation (${streamModeLabel})`
+              }
+              side="top"
+            >
+              <button
+                onClick={handleStreamToggle}
+                disabled={isRecording || isTranscribing}
+                className={`inline-flex items-center ${READY_BAR_PY_CLASS} px-3.5 rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${READY_BAR_TEXT_CLASS} transition-[border-color,background-color,box-shadow] duration-200 disabled:opacity-50 disabled:pointer-events-none ${
+                  isStreamMode
+                    ? "cursor-pointer border-blue-400/30 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400/80"
+                    : "cursor-pointer border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/78 hover:text-white/88"
+                }`}
+                aria-label={
+                  isStreamMode
+                    ? "Stream mode active - click to disable"
+                    : `Stream mode - continuous hands-free dictation (${streamModeLabel})`
+                }
+              >
+                Stream mode
+              </button>
+            </InstantTooltip>
+          )}
           {settings !== undefined &&
             (() => {
               const r = translateReadiness?.kind;

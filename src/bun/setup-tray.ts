@@ -10,13 +10,18 @@ import {
   handleTranscriptionLanguageAction,
 } from './utils/transcription-language-actions'
 import { modelManager } from './utils/whisper/model-manager'
-import { getTranslateReadiness } from '../shared/whisper-models'
+import {
+  getStreamModeReadiness,
+  getTranslateReadiness,
+} from '../shared/whisper-models'
+import { speechModelLocksTranscriptionLanguage } from '../shared/speech-models'
 import { shortcutTrayCompact } from '../shared/shortcut-options'
 
 export type TrayHandlers = {
   setTrayIdle: () => void
   setTrayRecording: () => void
   setTrayTranscribing: () => void
+  setTrayStreaming: () => void
   refreshTrayShortcutTitle: () => void
   rebuildDeviceMenu: (selectedDevice: number) => void
   updateDeviceList: (
@@ -27,6 +32,7 @@ export type TrayHandlers = {
   showUpdateReady: () => void
   resetUpdateState: () => void
   syncTranslateState: () => void
+  syncStreamModeState: () => void
 }
 
 // Resolves to app/images/MacTrayIcon.png in the bundle.
@@ -45,7 +51,9 @@ export const setupTray = (
   /** After tray changes transcription language — sync webview (e.g. updateSettings). */
   onTranscriptionLanguageChanged?: () => void,
   /** After tray toggles translate to English — sync webview. */
-  onTranslateToggled?: () => void
+  onTranslateToggled?: () => void,
+  /** After tray toggles stream mode — sync webview. */
+  onStreamModeToggled?: () => void
 ): TrayHandlers => {
   const tray = new Tray({
     image: trayIconPath,
@@ -130,6 +138,34 @@ export const setupTray = (
     return `Shortcuts: ${main} · ${shortcutTrayCompact(hold)}`
   }
 
+  const buildStreamModeMenuItem = (cfg: AppConfig) => {
+    const readiness = getStreamModeReadiness(
+      cfg.getWhisperModelId(),
+      cfg.getTranscriptionLanguageId(),
+      (id) => modelManager.isModelAvailable(id)
+    )
+    const streamOn = cfg.getStreamMode()
+    if (readiness.kind !== 'ready' && !streamOn) {
+      const labelByKind = {
+        need_parakeet_download: 'Stream mode — download Parakeet in Settings',
+        need_switch_model: 'Stream mode — switch to Parakeet in Settings',
+        need_language: 'Stream mode — set language in Settings',
+      } as const
+      return {
+        type: 'normal' as const,
+        label: labelByKind[readiness.kind],
+        action: 'open-settings',
+        checked: false,
+      }
+    }
+    return {
+      type: 'normal' as const,
+      label: 'Stream mode',
+      action: 'toggle-stream-mode',
+      checked: streamOn,
+    }
+  }
+
   const buildMenu = (selectedDevice: number) => [
     { type: 'normal' as const, label: 'Open Codictate', action: 'open' },
     { type: 'normal' as const, label: 'Settings', action: 'open-settings' },
@@ -146,14 +182,21 @@ export const setupTray = (
       label: 'Microphone',
       submenu: buildDeviceMenuItems(currentDevices, selectedDevice),
     },
-    {
-      type: 'normal' as const,
-      label: 'Transcription language',
-      submenu: buildTranscriptionLanguageMenuItems(
-        appConfig.getTranscriptionLanguageId()
-      ),
-    },
+    speechModelLocksTranscriptionLanguage(appConfig.getWhisperModelId())
+      ? {
+          type: 'normal' as const,
+          label: 'Transcription language — automatic (Parakeet)',
+          action: 'noop',
+        }
+      : {
+          type: 'normal' as const,
+          label: 'Transcription language',
+          submenu: buildTranscriptionLanguageMenuItems(
+            appConfig.getTranscriptionLanguageId()
+          ),
+        },
     buildTranslateMenuItem(appConfig),
+    buildStreamModeMenuItem(appConfig),
     { type: 'divider' as const },
     {
       type: 'normal' as const,
@@ -164,7 +207,7 @@ export const setupTray = (
 
   tray.setMenu(buildMenu(appConfig.resolveAudioDevice(devices)))
 
-  type TrayVisualState = 'idle' | 'recording' | 'transcribing'
+  type TrayVisualState = 'idle' | 'recording' | 'transcribing' | 'streaming'
   let trayVisualState: TrayVisualState = 'idle'
 
   tray.on('tray-clicked', (e) => {
@@ -192,6 +235,18 @@ export const setupTray = (
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
       onTranscriptionLanguageChanged?.()
     })
+    if (event.data.action === 'toggle-stream-mode') {
+      void (async () => {
+        const next = !appConfig.getStreamMode()
+        const ok = await appConfig.setStreamMode(next)
+        tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+        if (ok) {
+          onStreamModeToggled?.()
+        } else if (next) {
+          onOpenSettings?.()
+        }
+      })()
+    }
     if (event.data.action === 'toggle-translate') {
       const translateWasOn = appConfig.getTranslateToEnglish()
       void (async () => {
@@ -250,6 +305,10 @@ export const setupTray = (
       trayVisualState = 'transcribing'
       tray.setTitle(' …')
     },
+    setTrayStreaming: () => {
+      trayVisualState = 'streaming' as TrayVisualState
+      tray.setTitle(' Streaming…')
+    },
     rebuildDeviceMenu: (selectedDevice: number) =>
       tray.setMenu(buildMenu(selectedDevice)),
     updateDeviceList: (
@@ -272,6 +331,9 @@ export const setupTray = (
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
     syncTranslateState: () => {
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+    },
+    syncStreamModeState: () => {
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
   }

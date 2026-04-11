@@ -20,6 +20,9 @@ dist*
 
 # vendored binaries (downloaded by preBuild script, never commit these)
 /vendors
+
+# NeMo ITN static lib (built from text-processing-rs in pre-build)
+/native/CodictateParakeetHelper/Vendor/
 artifacts/
 
 # guard against accidentally committing large binaries back into source tree
