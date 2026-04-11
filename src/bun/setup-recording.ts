@@ -77,7 +77,8 @@ export const setupRecording = (
   appConfig: AppConfig,
   { setTrayIdle, setTrayRecording, setTrayTranscribing }: TrayHandlers,
   onStatusChange?: (status: AppStatus) => void,
-  onPermissions?: (status: PermissionStatus) => void
+  onPermissions?: (status: PermissionStatus) => void,
+  getAudioDevices?: () => Record<string, string>
 ) => {
   let recorderProc: ReturnType<typeof Bun.spawn> | null = null
   let recordingSession: RecordingSession | null = null
@@ -189,7 +190,8 @@ export const setupRecording = (
           setTrayIdle()
           onStatusChange?.('ready')
         },
-        recordingSession
+        recordingSession,
+        getAudioDevices
       )
 
       if (pendingHoldReleaseWhileStarting && recordingSession && recorderProc) {

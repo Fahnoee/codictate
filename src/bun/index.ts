@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import Electrobun, { Updater, Utils } from 'electrobun/bun'
 import type { PermissionState, SettingsPane } from '../shared/types'
 import { findDevices } from './utils/audio/devices'
+import { duckDelayAfterStartChimeMs } from './utils/sound/play-sound'
 import { checkMicrophoneAuthorization } from './utils/audio/check-mic-authorization'
 import { AppConfig } from './AppConfig/AppConfig'
 import { setupApplicationMenu } from './setup-menu'
@@ -104,6 +105,7 @@ if (UserAppConfig.getTranslateToEnglish()) {
 }
 
 let devices = await findDevices()
+duckDelayAfterStartChimeMs()
 
 let currentPermissions: PermissionState = {
   inputMonitoring: false,
@@ -394,7 +396,8 @@ function startKeyboard() {
           }
         }, 3000)
       }
-    }
+    },
+    () => devices
   )
 }
 

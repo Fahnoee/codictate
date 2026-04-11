@@ -12,11 +12,16 @@ export const startRecording = async (
   appConfig: AppConfig,
   onComplete: () => void,
   onDone: () => void,
-  session: RecordingSession
+  session: RecordingSession,
+  /** Live snapshot from the main process (refreshed at startup + on an interval). Avoids spawning `MicRecorder --list-devices` on every shortcut press. */
+  getDeviceMap?: () => Record<string, string>
 ) => {
   const micPath = await findMicRecorderBinary()
 
-  const currentDevices = await findDevices()
+  let currentDevices = getDeviceMap?.() ?? {}
+  if (Object.keys(currentDevices).length === 0) {
+    currentDevices = await findDevices()
+  }
   const resolved = appConfig.resolveAudioDevice(currentDevices)
 
   const deviceExists = resolved.toString() in currentDevices
