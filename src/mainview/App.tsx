@@ -84,7 +84,7 @@ export default function App() {
 
   if (!permissions) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-codictate-page">
+      <div className="flex items-center justify-center min-h-screen bg-codictate-page overflow-hidden">
         <motion.div
           animate={{ opacity: [0.2, 0.5, 0.2] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
@@ -96,7 +96,7 @@ export default function App() {
 
   if (allPermissionsGranted && !settings) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-codictate-page">
+      <div className="flex items-center justify-center min-h-screen bg-codictate-page overflow-hidden">
         <motion.div
           animate={{ opacity: [0.2, 0.5, 0.2] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}

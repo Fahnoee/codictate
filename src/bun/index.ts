@@ -166,14 +166,10 @@ const onApplyUpdate = async () => {
   }
 }
 
-/** Main window cannot shrink below this (see `setup-window` resize clamp). */
-const MAIN_WINDOW_MIN_SIZE = { width: 800, height: 660 } as const
-
 const win = setupWindow({
   url,
   appConfig: UserAppConfig,
   openWindowOnLaunch: true,
-  windowMinSize: MAIN_WINDOW_MIN_SIZE,
   getCurrentDevices: () => devices,
   getPermissions: async () => {
     let microphone = currentPermissions.microphone

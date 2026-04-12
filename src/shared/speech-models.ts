@@ -15,15 +15,15 @@ export const PARAKEET_COREML_PREP_STORAGE_KEY =
 
 /** One line under Transcribing… / Streaming… on first Parakeet use. */
 export const PARAKEET_FIRST_RUN_READY_SUBTITLE =
-  'First Parakeet run: macOS may compile Core ML for the Neural Engine — often one to a few minutes. Later runs are much faster.'
+  'First run: macOS takes 1-2 minutes to prepare the model. Later runs are fast.'
 
 /** Settings / model row: why the first session can feel stuck. */
 export const PARAKEET_FIRST_RUN_SETTINGS_HINT =
-  'The first time you transcribe or stream with Parakeet after installing it, macOS compiles Core ML for your Mac. That step often takes one to a few minutes with little visible progress; after that, Parakeet is usually fast.'
+  'First run: macOS takes 1-2 minutes to prepare Parakeet for your Mac. It may look stuck, but subsequent runs are fast.'
 
 /** Stream mode helper (Transcription section has the full explanation). */
 export const PARAKEET_FIRST_RUN_STREAM_HELPER =
-  'The first stream session can spend extra time on that same Core ML setup — see Transcription for details.'
+  'First stream run takes 1-2 minutes to prepare the model (see Transcription).'
 
 /** European-language set aligned with Parakeet TDT v3 multilingual (25 locales we expose in Settings). */
 const PARAKEET_V3_TRANSCRIPTION_LANGUAGE_IDS = [
@@ -111,7 +111,7 @@ export const SPEECH_MODELS: SpeechModel[] = [
     downloadSizeMB: 2500,
     label: 'Parakeet TDT v3',
     description:
-      'Nvidia model · fastest & live dictation · first session may compile Core ML (minutes)',
+      'Nvidia model · fastest & live dictation · first session may need model prep (minutes)',
     bundled: false,
     translationSupport: false,
     huggingFaceRepoId: 'FluidInference/parakeet-tdt-0.6b-v3-coreml',

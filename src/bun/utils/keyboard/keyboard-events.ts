@@ -41,6 +41,8 @@ export const FN_PHYSICAL_KEYCODES = [Key.fn, Key.globeFn] as const
 export interface KeyEvent {
   keycode: number
   option: boolean
+  leftOption?: boolean
+  rightOption?: boolean
   command: boolean
   control: boolean
   shift: boolean
@@ -56,6 +58,10 @@ export function normalizeKeyEvent(
   return {
     keycode: parsed.keycode,
     option: Boolean(parsed.option),
+    leftOption:
+      typeof parsed.leftOption === 'boolean' ? parsed.leftOption : undefined,
+    rightOption:
+      typeof parsed.rightOption === 'boolean' ? parsed.rightOption : undefined,
     command: Boolean(parsed.command),
     control: Boolean(parsed.control),
     shift: Boolean(parsed.shift),
@@ -70,6 +76,10 @@ export function serializeSwallowRule(r: KeyEvent): Record<string, unknown> {
   return {
     keycode: r.keycode,
     option: r.option,
+    ...(typeof r.leftOption === 'boolean' ? { leftOption: r.leftOption } : {}),
+    ...(typeof r.rightOption === 'boolean'
+      ? { rightOption: r.rightOption }
+      : {}),
     command: r.command,
     control: r.control,
     shift: r.shift,
@@ -80,12 +90,23 @@ export function serializeSwallowRule(r: KeyEvent): Record<string, unknown> {
 function rule(
   keycode: number,
   mods: Partial<
-    Pick<KeyEvent, 'option' | 'command' | 'control' | 'shift' | 'fn'>
+    Pick<
+      KeyEvent,
+      | 'option'
+      | 'leftOption'
+      | 'rightOption'
+      | 'command'
+      | 'control'
+      | 'shift'
+      | 'fn'
+    >
   >
 ): KeyEvent {
   return {
     keycode,
     option: mods.option ?? false,
+    leftOption: mods.leftOption,
+    rightOption: mods.rightOption,
     command: mods.command ?? false,
     control: mods.control ?? false,
     shift: mods.shift ?? false,
@@ -95,19 +116,26 @@ function rule(
   }
 }
 
-function optionComboToggleDown(trigger: number) {
+function optionComboToggleDown(trigger: number, requireLeftOption = false) {
   return (e: KeyEvent) =>
-    e.keyDown && e.keycode === trigger && e.option && !e.isRepeat
+    e.keyDown &&
+    e.keycode === trigger &&
+    e.option &&
+    !e.isRepeat &&
+    (!requireLeftOption || (e.leftOption === true && e.rightOption !== true))
 }
 
-function optionComboHoldDown(trigger: number) {
-  return optionComboToggleDown(trigger)
+function optionComboHoldDown(trigger: number, requireLeftOption = false) {
+  return optionComboToggleDown(trigger, requireLeftOption)
 }
 
-function optionComboHoldUp(trigger: number) {
+function optionComboHoldUp(trigger: number, requireLeftOption = false) {
   return (e: KeyEvent) =>
     (!e.keyDown && e.keycode === trigger) ||
-    ((e.keycode === Key.option || e.keycode === Key.rightOption) && !e.option)
+    (requireLeftOption
+      ? e.keycode === Key.option && !e.keyDown
+      : (e.keycode === Key.option || e.keycode === Key.rightOption) &&
+        !e.option)
 }
 
 function fnComboToggleDown(trigger: number) {
@@ -153,6 +181,10 @@ export interface ShortcutDefinition {
   matchesHoldUp: (e: KeyEvent) => boolean
 }
 
+export type ShortcutDefinitionOptions = {
+  requireLeftOption?: boolean
+}
+
 export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
   'option-space': {
     displayKeys: ['⌥', 'Space'],
@@ -165,24 +197,11 @@ export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
     displayKeys: ['Right ⌥'],
     swallowRules: [rule(Key.rightOption, { option: true })],
     matchesToggleDown: (e) =>
-      e.keyDown && e.keycode === Key.rightOption && e.option,
+      e.keyDown && e.keycode === Key.rightOption && e.option && !e.isRepeat,
     matchesHoldDown: (e) =>
-      e.keyDown && e.keycode === Key.rightOption && e.option,
+      e.keyDown && e.keycode === Key.rightOption && e.option && !e.isRepeat,
+    // Physical key up from KeyListener (`keyState`); do not require `!e.option` — Left ⌥ may stay down.
     matchesHoldUp: (e) => e.keycode === Key.rightOption && !e.keyDown,
-  },
-  'option-f1': {
-    displayKeys: ['⌥', 'F1'],
-    swallowRules: [rule(Key.f1, { option: true })],
-    matchesToggleDown: optionComboToggleDown(Key.f1),
-    matchesHoldDown: optionComboHoldDown(Key.f1),
-    matchesHoldUp: optionComboHoldUp(Key.f1),
-  },
-  'option-f2': {
-    displayKeys: ['⌥', 'F2'],
-    swallowRules: [rule(Key.f2, { option: true })],
-    matchesToggleDown: optionComboToggleDown(Key.f2),
-    matchesHoldDown: optionComboHoldDown(Key.f2),
-    matchesHoldUp: optionComboHoldUp(Key.f2),
   },
   'option-enter': {
     displayKeys: ['⌥', 'Enter'],
@@ -212,13 +231,6 @@ export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
     matchesHoldDown: fnComboHoldDown(Key.f2),
     matchesHoldUp: fnComboHoldUp(Key.f2),
   },
-  'fn-enter': {
-    displayKeys: ['Fn', 'Enter'],
-    swallowRules: [rule(Key.enter, { fn: true })],
-    matchesToggleDown: fnComboToggleDown(Key.enter),
-    matchesHoldDown: fnComboHoldDown(Key.enter),
-    matchesHoldUp: fnComboHoldUp(Key.enter),
-  },
   'fn-globe': {
     displayKeys: ['Fn'],
     swallowRules: [rule(Key.fn, { fn: true }), rule(Key.globeFn, { fn: true })],
@@ -246,20 +258,6 @@ export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
     matchesHoldDown: controlComboHoldDown(Key.space),
     matchesHoldUp: controlComboHoldUp(Key.space),
   },
-  'control-f1': {
-    displayKeys: ['⌃', 'F1'],
-    swallowRules: [rule(Key.f1, { control: true })],
-    matchesToggleDown: controlComboToggleDown(Key.f1),
-    matchesHoldDown: controlComboHoldDown(Key.f1),
-    matchesHoldUp: controlComboHoldUp(Key.f1),
-  },
-  'control-f2': {
-    displayKeys: ['⌃', 'F2'],
-    swallowRules: [rule(Key.f2, { control: true })],
-    matchesToggleDown: controlComboToggleDown(Key.f2),
-    matchesHoldDown: controlComboHoldDown(Key.f2),
-    matchesHoldUp: controlComboHoldUp(Key.f2),
-  },
   'control-enter': {
     displayKeys: ['⌃', 'Enter'],
     swallowRules: [rule(Key.enter, { control: true })],
@@ -267,6 +265,45 @@ export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
     matchesHoldDown: controlComboHoldDown(Key.enter),
     matchesHoldUp: controlComboHoldUp(Key.enter),
   },
+}
+
+function buildOptionShortcutDefinition(
+  displayKeys: string[],
+  trigger: number,
+  requireLeftOption = false
+): ShortcutDefinition {
+  return {
+    displayKeys,
+    swallowRules: [
+      requireLeftOption
+        ? rule(trigger, {
+            option: true,
+            leftOption: true,
+            rightOption: false,
+          })
+        : rule(trigger, { option: true }),
+    ],
+    matchesToggleDown: optionComboToggleDown(trigger, requireLeftOption),
+    matchesHoldDown: optionComboHoldDown(trigger, requireLeftOption),
+    matchesHoldUp: optionComboHoldUp(trigger, requireLeftOption),
+  }
+}
+
+export function getShortcutDefinition(
+  id: ShortcutId,
+  options?: ShortcutDefinitionOptions
+): ShortcutDefinition {
+  const requireLeftOption = options?.requireLeftOption === true
+  if (!requireLeftOption) return SHORTCUTS[id]
+
+  switch (id) {
+    case 'option-space':
+      return buildOptionShortcutDefinition(['⌥', 'Space'], Key.space, true)
+    case 'option-enter':
+      return buildOptionShortcutDefinition(['⌥', 'Enter'], Key.enter, true)
+    default:
+      return SHORTCUTS[id]
+  }
 }
 
 export interface PermissionStatus {

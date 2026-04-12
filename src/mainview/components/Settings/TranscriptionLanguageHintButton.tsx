@@ -11,7 +11,11 @@ export function TranscriptionLanguageHintButton({
   tooltipSide?: "top" | "bottom";
 }) {
   return (
-    <InstantTooltip text={TRANSCRIPTION_LANGUAGE_HINT} side={tooltipSide}>
+    <InstantTooltip
+      text={TRANSCRIPTION_LANGUAGE_HINT}
+      side={tooltipSide}
+      floatInViewport
+    >
       <button
         type="button"
         className={`inline-flex aspect-square w-10 shrink-0 self-stretch items-center justify-center rounded-lg border border-white/12 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] text-white/42 hover:text-white/58 hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 transition-[border-color,background-color,box-shadow] duration-200 cursor-pointer ${className}`}

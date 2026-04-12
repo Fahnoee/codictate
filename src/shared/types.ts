@@ -25,18 +25,13 @@ export type StreamTranscriptionMode = 'vad' | 'live'
 export type ShortcutId =
   | 'option-space'
   | 'right-option'
-  | 'option-f1'
-  | 'option-f2'
   | 'option-enter'
   | 'fn-space'
   | 'fn-f1'
   | 'fn-f2'
-  | 'fn-enter'
   /** Fn / Globe key alone (hardware varies; may not work on all keyboards). */
   | 'fn-globe'
   | 'control-space'
-  | 'control-f1'
-  | 'control-f2'
   | 'control-enter'
 
 export interface AppSettings {

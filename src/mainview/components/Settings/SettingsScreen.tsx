@@ -70,7 +70,10 @@ import { DevicePicker } from "./DevicePicker";
 import { LanguagePicker } from "./LanguagePicker";
 import { RecordingLimitPicker } from "./RecordingLimitPicker";
 import { ModelPicker } from "./ModelPicker";
-import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
+import {
+  WordmarkCodictate,
+  wordmarkCodictateTypographyClass,
+} from "../Brand/WordmarkCodictate";
 
 /** Secondary copy under each block: readable, softer than card content. */
 const settingsHelperClass =
@@ -833,14 +836,14 @@ export function SettingsScreen({
 
   return (
     <div className="flex h-screen bg-codictate-page text-white select-none overflow-hidden">
-      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200 z-50" />
+      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/10 transition-colors duration-200 z-50" />
 
       {/* Sidebar */}
-      <div className="w-[220px] shrink-0 border-r border-white/10 bg-white/2 flex flex-col pt-10 pb-6 px-3">
-        <div className="mb-8 px-3">
+      <div className="w-[248px] shrink-0 border-r border-white/10 bg-white/2 flex flex-col pt-10 pb-6 px-3">
+        <div className="mb-8">
           <WordmarkCodictate
-            showMark
-            className="text-[18px] font-semibold tracking-tight text-white/80"
+            as="h1"
+            className={`text-[30px] ${wordmarkCodictateTypographyClass}`}
           />
         </div>
         <nav className="flex flex-col gap-1">
@@ -914,12 +917,11 @@ export function SettingsScreen({
                       onDelete={handleModelDelete}
                     />
                     <p className={settingsHelperClass}>
-                      Whisper models run on your Mac. Turbo is bundled; other
-                      models download on demand. Stream mode always uses
-                      Parakeet. Translate to English needs Small or Large
-                      Whisper; Parakeet does not translate in this version.
+                      Whisper models run locally. Turbo is bundled; others
+                      download on demand. Stream mode requires Parakeet.
+                      Translate to English requires Small or Large Whisper.
                     </p>
-                    <p className={settingsHelperClass}>
+                    <p className={`${settingsHelperClass} text-amber-200/55`}>
                       {PARAKEET_FIRST_RUN_SETTINGS_HINT}
                     </p>
                   </div>
@@ -937,7 +939,7 @@ export function SettingsScreen({
                       {speechModelLocksTranscriptionLanguage(
                         settings.whisperModelId,
                       )
-                        ? "Parakeet is multilingual and detects the spoken language on its own. Transcription language is fixed to Auto-detect and cannot be changed for this model."
+                        ? "Parakeet auto-detects spoken language. Manual selection is disabled."
                         : TRANSCRIPTION_LANGUAGE_HINT}
                     </p>
                   </div>
@@ -951,13 +953,9 @@ export function SettingsScreen({
                       onChange={handleMaxRecordingDurationChange}
                     />
                     <p className={settingsHelperClass}>
-                      Recording will automatically stop after {durationLabel} to
-                      keep transcription fast and accurate.
-                    </p>
-                    <p className={settingsHelperClass}>
-                      Longer limits use a bit more disk space for the recording
-                      and can make transcription take a little longer for very
-                      long clips.
+                      Recording stops automatically after {durationLabel} to
+                      maintain speed and accuracy. Longer limits use more disk
+                      space and increase transcription time.
                     </p>
                   </div>
                 </>
@@ -1068,10 +1066,9 @@ export function SettingsScreen({
                     </div>
 
                     <p className={settingsHelperClass}>
-                      Translate mode needs a fixed source language instead of
-                      Auto-detect. Requires the a Small or Large Whisper model
-                      (not Turbo); download one under <b>Transcription</b> in
-                      this settings window if needed.
+                      Translate mode requires a fixed source language and a
+                      Small or Large Whisper model (not Turbo). Download models
+                      under <b>Transcription</b>.
                     </p>
                   </div>
 
@@ -1110,9 +1107,11 @@ export function SettingsScreen({
                       </div>
                     </div>
                     <p className={settingsHelperClass}>
-                      Press your shortcut once to start the stream, again (or
-                      Esc) to stop. You need the Parakeet model installed.{" "}
-                      {PARAKEET_FIRST_RUN_STREAM_HELPER}
+                      Press shortcut to start streaming, again (or Esc) to stop.
+                      Requires Parakeet model.{" "}
+                      <span className="text-amber-200/55">
+                        {PARAKEET_FIRST_RUN_STREAM_HELPER}
+                      </span>
                     </p>
                     {!modelAvailability[DEFAULT_STREAM_CAPABLE_MODEL_ID] && (
                       <div className="mt-4 rounded-xl border border-amber-400/25 bg-amber-500/8 px-4 py-3">
@@ -1146,8 +1145,8 @@ export function SettingsScreen({
                           className={`${settingsHelperClass} text-amber-200/55`}
                         >
                           Parakeet supports auto-detect or 25 European
-                          languages. Change transcription language (or use
-                          auto-detect) for stream mode.
+                          languages. Change transcription language for stream
+                          mode.
                         </p>
                       )}
                     <div className="mt-4 rounded-xl border border-white/11 bg-black/10 p-2">
@@ -1240,8 +1239,8 @@ export function SettingsScreen({
                       onChange={handleDeviceChange}
                     />
                     <p className={settingsHelperClass}>
-                      The microphone used for dictation. Updates automatically
-                      when devices are connected or disconnected.
+                      Microphone used for dictation. Updates automatically when
+                      devices change.
                     </p>
                   </div>
 
@@ -1470,9 +1469,8 @@ export function SettingsScreen({
                       </AnimatePresence>
                     </div>
                     <p className={settingsHelperClass}>
-                      Records what happens during each dictation session.
-                      Automatically stops after 5 minutes. Share the log with
-                      support to diagnose issues.
+                      Records session activity. Stops automatically after 5
+                      minutes. Share with support for diagnostics.
                     </p>
                   </div>
 
@@ -1532,9 +1530,7 @@ export function SettingsScreen({
                       </div>
                       <p className={settingsHelperClass}>
                         Vite dev only: jump to a root screen to iterate on UI.
-                        Choosing a screen closes Settings; open Settings from
-                        the menu again to clear the preview or pick Default
-                        routing here first.
+                        Closes Settings. Open Settings from the menu to clear.
                       </p>
                     </div>
                   )}

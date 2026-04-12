@@ -16,6 +16,7 @@ enum StreamInjection {
       let keyDown = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: true),
       let keyUp = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: false)
     else { return }
+    // Force a plain Cmd+V regardless of any shortcut modifier still held physically.
     keyDown.flags = .maskCommand
     keyUp.flags = .maskCommand
     keyDown.post(tap: .cgSessionEventTap)
@@ -31,6 +32,10 @@ enum StreamInjection {
         let keyDown = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: true),
         let keyUp = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: false)
       else { return }
+      // Do not inherit currently-held modifiers (e.g. Right Option push-to-talk),
+      // or macOS may interpret this as Option+Delete and erase whole words.
+      keyDown.flags = []
+      keyUp.flags = []
       keyDown.post(tap: .cgSessionEventTap)
       keyUp.post(tap: .cgSessionEventTap)
     }

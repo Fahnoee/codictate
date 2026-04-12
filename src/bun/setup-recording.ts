@@ -10,6 +10,7 @@ import {
 } from './utils/whisper/parakeet-stream-runner'
 import {
   FN_PHYSICAL_KEYCODES,
+  getShortcutDefinition,
   Key,
   KeyCode,
   SHORTCUTS,
@@ -20,10 +21,7 @@ import {
 import { playStartSound } from './utils/sound/play-sound'
 import { AppConfig } from './AppConfig/AppConfig'
 import type { TrayHandlers } from './setup-tray'
-import {
-  DICTATION_HOLD_QUALIFY_MS,
-  RIGHT_OPTION_PTT_DEFER_MS,
-} from '../shared/dictation-shortcut'
+import { DICTATION_HOLD_QUALIFY_MS } from '../shared/dictation-shortcut'
 import type { AppStatus, ShortcutId } from '../shared/types'
 import { checkMicrophoneAuthorization } from './utils/audio/check-mic-authorization'
 import { log } from './utils/logger'
@@ -53,26 +51,17 @@ function holdFnChordConflictsWithFnGlobeMain(
   )
 }
 
-/** Main shortcuts that use ⌥ + a trigger key (same modifier Right ⌥ can supply). */
+/** Main shortcuts that use ⌥ + a trigger key. */
 const OPTION_CHORD_MAIN_IDS = new Set<ShortcutId>([
   'option-space',
-  'option-f1',
-  'option-f2',
   'option-enter',
 ])
-
-function needsRightOptionPttChordDefer(
-  hybridId: ShortcutId,
-  holdId: ShortcutId | null
-): boolean {
-  return holdId === 'right-option' && OPTION_CHORD_MAIN_IDS.has(hybridId)
-}
 
 function mergeSwallowRules(a: KeyEvent[], b: KeyEvent[]): KeyEvent[] {
   const seen = new Set<string>()
   const out: KeyEvent[] = []
   for (const r of [...a, ...b]) {
-    const k = `${r.keycode}|${r.option}|${r.command}|${r.control}|${r.shift}|${r.fn}`
+    const k = `${r.keycode}|${r.option}|${r.leftOption}|${r.rightOption}|${r.command}|${r.control}|${r.shift}|${r.fn}`
     if (seen.has(k)) continue
     seen.add(k)
     out.push(r)
@@ -98,10 +87,15 @@ export const setupRecording = (
   let sessionStopping = false
   let transcriptionPipelineActive = false
   let pendingHoldReleaseWhileStarting = false
+  let pendingStreamHoldReleaseWhileStarting = false
 
   // Stream mode state
   let streamSession: StreamSession | null = null
   let streamStarting = false
+  /** When stream was started via push-to-talk, release must stop (unlike hybrid tap-to-toggle). */
+  let activeStreamShortcutMode: 'hybrid' | 'holdOnly' | null = null
+  /** Monotonic id for log correlation with Parakeet helper stderr (`[sN]`). */
+  let streamDebugSeq = 0
 
   let holdArmTimer: ReturnType<typeof setTimeout> | null = null
   /** True after HOLD_QUALIFY_MS with no qualifying release cancelling the arm timer. */
@@ -114,21 +108,18 @@ export const setupRecording = (
    */
   let pendingFnGlobeHybridDefer = false
 
-  let rightOptionPttDeferTimer: ReturnType<typeof setTimeout> | null = null
-  let rightOptionPhysicallyDown = false
+  const mainShortcutUsesLeftOptionOnly = () =>
+    appConfig.getShortcutHoldOnlyId() === 'right-option' &&
+    OPTION_CHORD_MAIN_IDS.has(appConfig.getShortcutId())
 
-  const clearRightOptionPttDeferTimer = () => {
-    if (rightOptionPttDeferTimer !== null) {
-      clearTimeout(rightOptionPttDeferTimer)
-      rightOptionPttDeferTimer = null
-    }
-  }
-
-  const getHybridShortcut = () => SHORTCUTS[appConfig.getShortcutId()]
+  const getHybridShortcut = () =>
+    getShortcutDefinition(appConfig.getShortcutId(), {
+      requireLeftOption: mainShortcutUsesLeftOptionOnly(),
+    })
 
   const getHoldOnlyShortcut = () => {
     const id = appConfig.getShortcutHoldOnlyId()
-    return id !== null ? SHORTCUTS[id] : null
+    return id !== null ? getShortcutDefinition(id) : null
   }
 
   const getMergedSwallowRules = (): KeyEvent[] => {
@@ -154,11 +145,27 @@ export const setupRecording = (
     resetHoldGate()
     holdArmTimer = setTimeout(() => {
       holdArmTimer = null
-      if (recorderProc !== null) holdQualified = true
+      if (recorderProc !== null || streamSession !== null || streamStarting) {
+        holdQualified = true
+      }
     }, DICTATION_HOLD_QUALIFY_MS)
   }
 
   const keyLabel = (keycode: number) => KeyCode[keycode] ?? String(keycode)
+
+  const keyEventDebug = (e: KeyEvent) => ({
+    keycode: e.keycode,
+    key: keyLabel(e.keycode),
+    keyDown: e.keyDown,
+    isRepeat: e.isRepeat,
+    option: e.option,
+    leftOption: e.leftOption,
+    rightOption: e.rightOption,
+    command: e.command,
+    control: e.control,
+    shift: e.shift,
+    fn: e.fn,
+  })
 
   const logShortcutDecision = (
     reason: string,
@@ -172,10 +179,13 @@ export const setupRecording = (
       action,
       streamMode: appConfig.getStreamMode(),
       streamSessionActive: streamSession !== null,
+      streamDebugId: streamSession?.streamDebugId,
+      activeStreamShortcutMode,
+      hybridShortcutId: appConfig.getShortcutId(),
+      holdShortcutId: appConfig.getShortcutHoldOnlyId(),
       recorderActive: recorderProc !== null,
       transcriptionPipelineActive,
-      keycode: keyEvent?.keycode,
-      key: keyEvent ? keyLabel(keyEvent.keycode) : undefined,
+      keyEvent: keyEvent ? keyEventDebug(keyEvent) : undefined,
     })
   }
 
@@ -197,7 +207,7 @@ export const setupRecording = (
         keyEvent
       )
       if (streamSession !== null) await tryStopStream()
-      else await tryStartStream()
+      else await tryStartStream(mode)
       return
     }
 
@@ -205,7 +215,7 @@ export const setupRecording = (
     await tryStart(mode)
   }
 
-  const tryStartStream = async () => {
+  const tryStartStream = async (shortcutMode: 'hybrid' | 'holdOnly') => {
     if (!appConfig.getStreamMode()) return
     if (
       streamSession !== null ||
@@ -215,11 +225,16 @@ export const setupRecording = (
     )
       return
     streamStarting = true
+    pendingStreamHoldReleaseWhileStarting = false
+    const streamDebugId = ++streamDebugSeq
+    activeStreamShortcutMode = shortcutMode
     try {
       log('stream', 'starting Parakeet stream session', {
         streamMode: appConfig.getStreamMode(),
         streamTranscriptionMode: appConfig.getStreamTranscriptionMode(),
         whisperModelId: appConfig.getWhisperModelId(),
+        shortcutMode,
+        streamDebugId,
       })
       playStartSound()
       setTrayStreaming()
@@ -228,29 +243,52 @@ export const setupRecording = (
         appConfig.getStreamTranscriptionMode(),
         {
           onStopped: () => {
+            log('stream', 'stream session onStopped (process exit)', {
+              streamDebugId,
+            })
             streamSession = null
+            activeStreamShortcutMode = null
             setTrayIdle()
             onStatusChange?.('ready')
           },
-        }
+        },
+        { streamDebugId }
       )
+      if (pendingStreamHoldReleaseWhileStarting && streamSession !== null) {
+        resetHoldGate()
+        await tryStopStream()
+      } else if (streamSession !== null) {
+        if (shortcutMode === 'hybrid') armHoldGateAfterStart()
+        else resetHoldGate()
+      }
     } catch (err) {
       log('stream', 'failed to start stream session', {
         err: String(err),
+        streamDebugId,
       })
       streamSession = null
+      activeStreamShortcutMode = null
+      resetHoldGate()
       setTrayIdle()
       onStatusChange?.('ready')
     } finally {
       streamStarting = false
+      if (streamSession === null) {
+        activeStreamShortcutMode = null
+        pendingStreamHoldReleaseWhileStarting = false
+      }
     }
   }
 
   const tryStopStream = async () => {
     if (streamSession === null) return
-    log('stream', 'stopping stream session')
+    const streamDebugId = streamSession.streamDebugId
+    log('stream', 'stopping stream session', { streamDebugId })
     const session = streamSession
     streamSession = null
+    activeStreamShortcutMode = null
+    pendingStreamHoldReleaseWhileStarting = false
+    resetHoldGate()
     await stopParakeetStream(session)
     setTrayIdle()
     onStatusChange?.('ready')
@@ -259,7 +297,6 @@ export const setupRecording = (
   const tryStop = async () => {
     if (!recorderProc || sessionStopping) return
     sessionStopping = true
-    clearRightOptionPttDeferTimer()
     resetHoldGate()
     try {
       log('shortcut', 'stopping recorder session', {
@@ -339,6 +376,28 @@ export const setupRecording = (
     const hybrid = getHybridShortcut()
     const holdOnly = getHoldOnlyShortcut()
 
+    if (streamSession !== null && appConfig.getStreamMode()) {
+      const activeStreamShortcut =
+        activeStreamShortcutMode === 'holdOnly' && holdOnly !== null
+          ? holdOnly
+          : hybrid
+      if (activeStreamShortcut.matchesHoldUp(keyEvent)) {
+        if (holdArmTimer !== null) clearHoldArmTimer()
+        const releaseStops =
+          activeStreamShortcutMode === 'holdOnly' || holdQualified
+        if (releaseStops && activeStreamShortcutMode !== null) {
+          logShortcutDecision(
+            'hold release (stream)',
+            activeStreamShortcutMode,
+            'stop',
+            keyEvent
+          )
+          await tryStopStream()
+        }
+        return
+      }
+    }
+
     if (keyEvent.keycode === Key.escape && keyEvent.keyDown) {
       if (streamSession !== null) {
         log('shortcut', 'escape stopping active stream session')
@@ -384,52 +443,28 @@ export const setupRecording = (
 
     if (transcriptionPipelineActive || sessionStarting) return
 
-    if (keyEvent.keycode === Key.rightOption) {
-      rightOptionPhysicallyDown = keyEvent.keyDown
+    if (streamStarting && appConfig.getStreamMode()) {
+      if (
+        activeStreamShortcutMode === 'hybrid' &&
+        hybrid.matchesHoldUp(keyEvent)
+      ) {
+        if (holdArmTimer !== null) clearHoldArmTimer()
+        if (holdQualified) pendingStreamHoldReleaseWhileStarting = true
+        return
+      }
+      if (
+        activeStreamShortcutMode === 'holdOnly' &&
+        holdOnly !== null &&
+        holdOnly.matchesHoldUp(keyEvent)
+      ) {
+        pendingStreamHoldReleaseWhileStarting = true
+        return
+      }
+      return
     }
 
     const hybridId = appConfig.getShortcutId()
     const holdId = appConfig.getShortcutHoldOnlyId()
-    const deferRightOptionPtt =
-      holdOnly !== null && needsRightOptionPttChordDefer(hybridId, holdId)
-
-    if (deferRightOptionPtt) {
-      if (hybrid.matchesToggleDown(keyEvent) && !keyEvent.isRepeat) {
-        clearRightOptionPttDeferTimer()
-        await routeShortcutAction(
-          'hybrid',
-          keyEvent,
-          'right-option defer hybrid'
-        )
-        return
-      }
-      if (keyEvent.keycode === Key.rightOption && !keyEvent.keyDown) {
-        clearRightOptionPttDeferTimer()
-        return
-      }
-      if (holdOnly.matchesToggleDown(keyEvent) && !keyEvent.isRepeat) {
-        clearRightOptionPttDeferTimer()
-        rightOptionPttDeferTimer = setTimeout(() => {
-          rightOptionPttDeferTimer = null
-          if (
-            recorderProc !== null ||
-            sessionStarting ||
-            transcriptionPipelineActive ||
-            !rightOptionPhysicallyDown
-          ) {
-            return
-          }
-          void routeShortcutAction(
-            'holdOnly',
-            keyEvent,
-            'right-option defer hold-only'
-          )
-        }, RIGHT_OPTION_PTT_DEFER_MS)
-        return
-      }
-    } else {
-      clearRightOptionPttDeferTimer()
-    }
 
     const fnGlobeDef = SHORTCUTS['fn-globe']
     const deferFnGlobeForFnChord =

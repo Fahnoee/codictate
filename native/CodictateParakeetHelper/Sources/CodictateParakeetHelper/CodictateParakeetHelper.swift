@@ -1,14 +1,43 @@
 @preconcurrency import AVFoundation
+import CoreAudio
 import Darwin
 import FluidAudio
 import Foundation
 
 // MARK: - Helpers
 
+/// Bun sets `CODICTATE_STREAM_DEBUG_ID` when spawning stream mode so stderr lines match TS `streamDebugId`.
+private enum StreamSessionLog {
+  /// One Parakeet helper process per stream; tag is set once in `streamCommand` before any logging.
+  nonisolated(unsafe) static var stderrTag: String = ""
+}
+
 private func logPhase(_ msg: String) {
-  let line = "[CodictateParakeetHelper] \(msg)\n"
+  let tag = StreamSessionLog.stderrTag
+  let line =
+    tag.isEmpty
+    ? "[CodictateParakeetHelper] \(msg)\n"
+    : "[CodictateParakeetHelper]\(tag) \(msg)\n"
   FileHandle.standardError.write(Data(line.utf8))
   fflush(__stderrp)
+}
+
+/// Set `CODICTATE_LIVE_DEBUG=1` in the environment (app inherits it when spawning the helper)
+/// to log partial vs commit decisions on stderr — surfaced in Bun logs as `parakeet stderr`.
+private func logLiveDebug(_ msg: String) {
+  guard liveStreamDebugEnabled() else { return }
+  logPhase("stream [live][debug] \(msg)")
+}
+
+private func liveStreamDebugEnabled() -> Bool {
+  let v = ProcessInfo.processInfo.environment["CODICTATE_LIVE_DEBUG"]?.lowercased() ?? ""
+  return v == "1" || v == "true" || v == "yes"
+}
+
+private func debugSnippet(_ s: String, maxLen: Int = 100) -> String {
+  let t = s.replacingOccurrences(of: "\n", with: " ")
+  if t.count <= maxLen { return t }
+  return String(t.prefix(maxLen)) + "…"
 }
 
 private func emitJSON(_ obj: [String: Any]) {
@@ -45,6 +74,15 @@ private func padToMinimumTranscribeLength(
 ) -> [Float] {
   if samples.count >= minimum { return samples }
   return samples + Array(repeating: 0, count: minimum - samples.count)
+}
+
+/// Live mode: full-buffer ASR sometimes returns empty (trailing silence / edge cases) while
+/// partials were non-empty — without a fallback the UI keeps stale `injectedDisplay` vs
+/// `committedText` and the next utterance looks like every other phrase was dropped.
+private func resolveLiveUtteranceText(finalRaw: String, lastPartial: String) -> String {
+  let f = finalRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+  if !f.isEmpty { return f }
+  return lastPartial.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 /// Spoken-form ASR → written-form (numbers, money, dates, etc.) via NeMo ITN
@@ -108,6 +146,201 @@ private func convert(_ buffer: AVAudioPCMBuffer, using converter: AVAudioConvert
   return samples
 }
 
+private func getDefaultOutputDevice() -> AudioDeviceID {
+  var id = AudioDeviceID(0)
+  var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+  var address = AudioObjectPropertyAddress(
+    mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+    mScope: kAudioObjectPropertyScopeGlobal,
+    mElement: kAudioObjectPropertyElementMain)
+  _ = AudioObjectGetPropertyData(
+    AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id)
+  return id
+}
+
+private func getDeviceTransportType(_ id: AudioDeviceID) -> UInt32 {
+  var transport: UInt32 = 0
+  var size = UInt32(MemoryLayout<UInt32>.size)
+  var address = AudioObjectPropertyAddress(
+    mSelector: kAudioDevicePropertyTransportType,
+    mScope: kAudioObjectPropertyScopeGlobal,
+    mElement: kAudioObjectPropertyElementMain)
+  guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &transport) == noErr else {
+    return 0
+  }
+  return transport
+}
+
+private func outputDeviceName(_ id: AudioDeviceID) -> String {
+  var address = AudioObjectPropertyAddress(
+    mSelector: kAudioObjectPropertyName,
+    mScope: kAudioObjectPropertyScopeGlobal,
+    mElement: kAudioObjectPropertyElementMain)
+  var cfName: CFString?
+  var size = UInt32(MemoryLayout<CFString?>.size)
+  let err = withUnsafeMutablePointer(to: &cfName) { ptr in
+    AudioObjectGetPropertyData(id, &address, 0, nil, &size, ptr)
+  }
+  if err == noErr, let s = cfName {
+    return s as String
+  }
+  return "Device \(id)"
+}
+
+/// Matches MicRecorder ducking: built-in speakers only, never headphones / AirPods / USB / BT / virtual routes.
+private func shouldLowerOutputForDevice(_ id: AudioDeviceID) -> Bool {
+  guard id != 0 else { return false }
+  let transport = getDeviceTransportType(id)
+  if transport == kAudioDeviceTransportTypeAggregate || transport == kAudioDeviceTransportTypeVirtual {
+    return false
+  }
+  if transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeUSB {
+    return false
+  }
+  let name = outputDeviceName(id)
+  if name.localizedCaseInsensitiveContains("headphone")
+    || name.localizedCaseInsensitiveContains("headset")
+    || name.localizedCaseInsensitiveContains("airpods")
+  {
+    return false
+  }
+  return transport == kAudioDeviceTransportTypeBuiltIn
+}
+
+private struct SavedOutputVolume {
+  let device: AudioDeviceID
+  let scalar: Float32
+}
+
+private func outputVolumeScalarAddress() -> AudioObjectPropertyAddress {
+  AudioObjectPropertyAddress(
+    mSelector: kAudioDevicePropertyVolumeScalar,
+    mScope: kAudioDevicePropertyScopeOutput,
+    mElement: kAudioObjectPropertyElementMain)
+}
+
+private func tryApplyOutputDuck() -> SavedOutputVolume? {
+  let device = getDefaultOutputDevice()
+  guard shouldLowerOutputForDevice(device) else { return nil }
+  var addr = outputVolumeScalarAddress()
+  guard AudioObjectHasProperty(device, &addr) else { return nil }
+  var settable: DarwinBoolean = false
+  guard AudioObjectIsPropertySettable(device, &addr, &settable) == noErr, settable.boolValue else {
+    return nil
+  }
+  var current: Float32 = 1
+  var size = UInt32(MemoryLayout<Float32>.size)
+  guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &current) == noErr else {
+    return nil
+  }
+  let ducked: Float32 = 0
+  guard ducked + 0.02 < current else { return nil }
+  var toWrite = ducked
+  guard AudioObjectSetPropertyData(device, &addr, 0, nil, size, &toWrite) == noErr else {
+    return nil
+  }
+  return SavedOutputVolume(device: device, scalar: current)
+}
+
+private func restoreOutputDuck(_ saved: SavedOutputVolume) {
+  var addr = outputVolumeScalarAddress()
+  guard AudioObjectHasProperty(saved.device, &addr) else {
+    logPhase("stream: output device gone, cannot restore volume")
+    return
+  }
+  let size = UInt32(MemoryLayout<Float32>.size)
+  var scalar = saved.scalar
+  if AudioObjectSetPropertyData(saved.device, &addr, 0, nil, size, &scalar) != noErr {
+    logPhase("stream: failed to restore output volume")
+  }
+}
+
+private final class StreamOutputDuckCoordinator: @unchecked Sendable {
+  static let shared = StreamOutputDuckCoordinator()
+
+  private let lock = NSLock()
+  private var savedOutputVolume: SavedOutputVolume?
+  private var stopped = false
+
+  func begin(delaySeconds: TimeInterval) {
+    lock.lock()
+    stopped = false
+    lock.unlock()
+
+    let apply: () -> Void = { [weak self] in
+      self?.applyIfNeeded()
+    }
+    if delaySeconds <= 0 {
+      DispatchQueue.global().async {
+        apply()
+      }
+    } else {
+      DispatchQueue.global().asyncAfter(deadline: .now() + delaySeconds) {
+        apply()
+      }
+    }
+  }
+
+  private func applyIfNeeded() {
+    lock.lock()
+    let alreadyStopped = stopped || savedOutputVolume != nil
+    lock.unlock()
+    if alreadyStopped { return }
+    guard let applied = tryApplyOutputDuck() else { return }
+    lock.lock()
+    defer { lock.unlock() }
+    if stopped {
+      restoreOutputDuck(applied)
+      return
+    }
+    savedOutputVolume = applied
+  }
+
+  func end() {
+    lock.lock()
+    stopped = true
+    let saved = savedOutputVolume
+    savedOutputVolume = nil
+    lock.unlock()
+    if let saved {
+      restoreOutputDuck(saved)
+    }
+  }
+}
+
+private enum StreamSignalHandlers {
+  nonisolated(unsafe) static var sigint: DispatchSourceSignal?
+  nonisolated(unsafe) static var sigterm: DispatchSourceSignal?
+}
+
+private func outputDuckDelaySecondsFromEnv() -> TimeInterval {
+  let raw = ProcessInfo.processInfo.environment["CODICTATE_OUTPUT_DUCK_DELAY_MS"] ?? ""
+  guard let ms = Int(raw), ms >= 0, ms <= 10_000 else { return 0.248 }
+  return Double(ms) / 1000.0
+}
+
+private func installStreamSignalHandlersForCleanup() {
+  signal(SIGPIPE, SIG_IGN)
+
+  let cleanupAndExit: @convention(block) () -> Void = {
+    StreamOutputDuckCoordinator.shared.end()
+    exit(0)
+  }
+
+  let sigint = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global(qos: .userInitiated))
+  sigint.setEventHandler(handler: cleanupAndExit)
+  signal(SIGINT, SIG_IGN)
+  sigint.resume()
+
+  let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global(qos: .userInitiated))
+  sigterm.setEventHandler(handler: cleanupAndExit)
+  signal(SIGTERM, SIG_IGN)
+  sigterm.resume()
+
+  StreamSignalHandlers.sigint = sigint
+  StreamSignalHandlers.sigterm = sigterm
+}
+
 // MARK: - Main
 
 @main
@@ -142,7 +375,7 @@ struct CodictateParakeetHelperMain {
     let wavPath = args[0]
     let modelDir = URL(fileURLWithPath: args[1], isDirectory: true)
 
-    logPhase("loading models (first run compiles Core ML — can take a few minutes)…")
+    logPhase("loading models (first run may prepare model assets for this Mac — can take a few minutes)…")
     let models = try await loadAsrModels(parakeetDir: modelDir)
     let asr = AsrManager(config: .default)
     try await asr.loadModels(models)
@@ -169,9 +402,21 @@ struct CodictateParakeetHelperMain {
     let mode = args[0]
     let modelDir = URL(fileURLWithPath: args[1], isDirectory: true)
 
+    if let sid = ProcessInfo.processInfo.environment["CODICTATE_STREAM_DEBUG_ID"]?
+      .trimmingCharacters(in: .whitespacesAndNewlines),
+      !sid.isEmpty
+    {
+      StreamSessionLog.stderrTag = " [s\(sid)]"
+    } else {
+      StreamSessionLog.stderrTag = ""
+    }
+
     logPhase("stream [\(mode)]: loading models…")
     let models = try await loadAsrModels(parakeetDir: modelDir)
     logPhase("stream [\(mode)]: models ready")
+    installStreamSignalHandlersForCleanup()
+    StreamOutputDuckCoordinator.shared.begin(delaySeconds: outputDuckDelaySecondsFromEnv())
+    defer { StreamOutputDuckCoordinator.shared.end() }
 
     if mode == "vad" {
       try await runVadMode(models: models)
@@ -287,13 +532,18 @@ struct CodictateParakeetHelperMain {
 
     try engine.start()
     logPhase("stream [live]: audio engine running")
+    if liveStreamDebugEnabled() {
+      logPhase(
+        "stream [live][debug] CODICTATE_LIVE_DEBUG on — logging partials, commits, discards")
+    }
 
     // FluidAudio rejects < 1s of audio (`invalidAudioData`). Do not zero-pad partial
     // snapshots — padding makes TDT hallucinate long junk, then finals are shorter and
     // the UI deletes huge spans. Partials only run on real ≥1s buffers; short tails
     // are padded only once at utterance end.
     let rmsThreshold: Float = 0.010
-    let silenceCommit = 12_000  // ~750ms @ 16kHz — fewer micro segment toggles
+    // ~1.5s @ 16kHz — longer than brief phrase gaps so one PTT hold stays fewer segments / less churn.
+    let silenceCommit = 24_000
     let minUtterance = 2_400
     // FluidAudio requires ≥1s of audio per call; cannot go lower for first partial.
     let minSamplesForInfer = 16_000
@@ -305,6 +555,8 @@ struct CodictateParakeetHelperMain {
     var committedText = ""
     var utterance: [Float] = []
     var inSpeech = false
+    /// Live mode only: increments when the RMS gate opens a new segment after a silence commit (same process).
+    var utteranceSegmentIndex = 0
     var silenceAccum = 0
     var samplesSinceLastUpdate = 0
     var lastLiveText = ""
@@ -317,10 +569,12 @@ struct CodictateParakeetHelperMain {
         silenceAccum = 0
         if !inSpeech {
           inSpeech = true
+          utteranceSegmentIndex += 1
           utterance = []
           samplesSinceLastUpdate = 0
           lastLiveText = ""
-          logPhase("stream [live]: speech start")
+          logPhase(
+            "stream [live]: segment #\(utteranceSegmentIndex) — voice active (same process)")
         }
 
         utterance.append(contentsOf: chunk)
@@ -337,6 +591,8 @@ struct CodictateParakeetHelperMain {
           guard !partialText.isEmpty, partialText != lastLiveText else { continue }
           lastLiveText = partialText
           let fullText = joinTranscript(committedText, partialText)
+          logLiveDebug(
+            "partial utteranceSamples=\(utterance.count) text=\(debugSnippet(partialText))")
           await StreamInjection.updateLiveLine(
             displayed: &injectedDisplay,
             newFull: fullText
@@ -348,17 +604,26 @@ struct CodictateParakeetHelperMain {
             utterance.count >= minSamplesForInfer
             ? utterance
             : padToMinimumTranscribeLength(utterance)
-          let finalText = try await asr
+          let lastPartialSnapshot = lastLiveText
+          let rawFinal = try await asr
             .transcribe(finalInput, source: .microphone)
             .text
+          let finalText = resolveLiveUtteranceText(
+            finalRaw: rawFinal, lastPartial: lastPartialSnapshot)
+          let fallback =
+            rawFinal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !lastPartialSnapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          logLiveDebug(
+            "commit[maxUtterance] samples=\(finalInput.count) fallbackToPartial=\(fallback) text=\(debugSnippet(finalText))"
+          )
           if !finalText.isEmpty {
             committedText = joinTranscript(committedText, finalText)
-            lastLiveText = ""
             await StreamInjection.updateLiveLine(
               displayed: &injectedDisplay,
               newFull: committedText
             )
           }
+          lastLiveText = ""
           utterance = []
           samplesSinceLastUpdate = 0
         }
@@ -369,15 +634,25 @@ struct CodictateParakeetHelperMain {
         if silenceAccum >= silenceCommit {
           inSpeech = false
           silenceAccum = 0
-          logPhase("stream [live]: speech end — finalising utterance")
+          logPhase(
+            "stream [live]: segment #\(utteranceSegmentIndex) — silence commit (finalising)")
           if utterance.count >= minUtterance {
             let finalInput =
               utterance.count >= minSamplesForInfer
               ? utterance
               : padToMinimumTranscribeLength(utterance)
-            let finalText = try await asr
+            let lastPartialSnapshot = lastLiveText
+            let rawFinal = try await asr
               .transcribe(finalInput, source: .microphone)
               .text
+            let finalText = resolveLiveUtteranceText(
+              finalRaw: rawFinal, lastPartial: lastPartialSnapshot)
+            let fallback =
+              rawFinal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              && !lastPartialSnapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            logLiveDebug(
+              "commit[silence] samples=\(finalInput.count) fallbackToPartial=\(fallback) text=\(debugSnippet(finalText))"
+            )
             if !finalText.isEmpty {
               committedText = joinTranscript(committedText, finalText)
               await StreamInjection.updateLiveLine(
@@ -385,6 +660,9 @@ struct CodictateParakeetHelperMain {
                 newFull: committedText
               )
             }
+          } else {
+            logLiveDebug(
+              "discard[short] utteranceSamples=\(utterance.count) min=\(minUtterance) (no commit)")
           }
           utterance = []
           samplesSinceLastUpdate = 0

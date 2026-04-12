@@ -3,6 +3,10 @@ const trayIconUrl = new URL(
   import.meta.url,
 ).href;
 
+/** Weight, tracking, and color shared by Ready and Settings so the mark reads the same. */
+export const wordmarkCodictateTypographyClass =
+  "font-semibold tracking-[-0.02em] text-white/90";
+
 type WordmarkCodictateProps = {
   className?: string;
   as?: "span" | "h1";

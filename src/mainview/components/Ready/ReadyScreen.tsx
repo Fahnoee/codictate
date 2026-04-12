@@ -36,12 +36,11 @@ import {
   UnderlinedDictationTerm,
 } from "../Common/DictationShortcutStartHint";
 import { InstantTooltip } from "../Common/InstantTooltip";
-import { WordmarkCodictate } from "../Brand/WordmarkCodictate";
 import {
-  LanguagePicker,
-  READY_BAR_PY_CLASS,
-  READY_BAR_TEXT_CLASS,
-} from "../Settings/LanguagePicker";
+  WordmarkCodictate,
+  wordmarkCodictateTypographyClass,
+} from "../Brand/WordmarkCodictate";
+import { LanguagePicker } from "../Settings/LanguagePicker";
 import { TranscriptionLanguageHintButton } from "../Settings/TranscriptionLanguageHintButton";
 import { RecordingOrb } from "./RecordingOrb";
 
@@ -268,8 +267,8 @@ export function ReadyScreen({
   }, [settings?.shortcutHoldOnlyId]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none">
-      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
+    <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none overflow-hidden">
+      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/10 transition-colors duration-200" />
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -287,7 +286,7 @@ export function ReadyScreen({
       >
         <WordmarkCodictate
           as="h1"
-          className="text-[30px] font-semibold tracking-[-0.02em] text-white/90"
+          className={`text-[30px] ${wordmarkCodictateTypographyClass}`}
         />
         <AnimatePresence mode="wait">
           <motion.p
@@ -363,11 +362,11 @@ export function ReadyScreen({
               <DictationShortcutStartHint align="end" />
             </div>
 
-            <div className="flex flex-col gap-2 border-t border-white/10 pt-5 md:border-t-0 md:border-l md:border-white/12 md:pl-7 md:pt-0">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-white/70">
+            <div className="flex flex-col items-center gap-2 border-t border-white/10 pt-5 md:items-start md:border-t-0 md:border-l md:border-white/12 md:pl-7 md:pt-0">
+              <span className="text-center text-[12px] font-semibold uppercase tracking-[0.12em] text-white/70 md:text-left">
                 Push-to-talk
               </span>
-              <div className="flex flex-nowrap items-center gap-1.5">
+              <div className="flex flex-nowrap items-center justify-center gap-1.5 md:justify-start">
                 {holdDisplayKeys.map((key, i) => (
                   <span
                     key={`hold-${i}-${key}`}
@@ -499,14 +498,15 @@ export function ReadyScreen({
                   : `Stream mode — continuous hands-free dictation (${streamModeLabel})`
               }
               side="top"
+              floatInViewport
             >
               <button
                 onClick={handleStreamToggle}
                 disabled={isRecording || isTranscribing}
-                className={`inline-flex items-center ${READY_BAR_PY_CLASS} px-3.5 rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${READY_BAR_TEXT_CLASS} transition-[border-color,background-color,box-shadow] duration-200 disabled:opacity-50 disabled:pointer-events-none ${
+                className={`inline-flex aspect-square w-10 shrink-0 self-stretch items-center justify-center rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[border-color,background-color,box-shadow] duration-200 disabled:opacity-50 disabled:pointer-events-none cursor-pointer ${
                   isStreamMode
-                    ? "cursor-pointer border-blue-400/30 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400/80"
-                    : "cursor-pointer border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/78 hover:text-white/88"
+                    ? "border-blue-400/30 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400/80"
+                    : "border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/48 hover:text-white/70"
                 }`}
                 aria-label={
                   isStreamMode
@@ -514,7 +514,23 @@ export function ReadyScreen({
                     : `Stream mode - continuous hands-free dictation (${streamModeLabel})`
                 }
               >
-                Stream mode
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M2 10v3" />
+                  <path d="M6 6v11" />
+                  <path d="M10 3v18" />
+                  <path d="M14 8v7" />
+                  <path d="M18 5v13" />
+                  <path d="M22 10v3" />
+                </svg>
               </button>
             </InstantTooltip>
           )}
@@ -537,27 +553,43 @@ export function ReadyScreen({
                   translateReadiness.kind !== "ready");
 
               return (
-                <InstantTooltip text={tooltipText} side="top">
+                <InstantTooltip text={tooltipText} side="top" floatInViewport>
                   <button
                     onClick={handleTranslateToggle}
                     disabled={!isIdle}
-                    className={`inline-flex items-center ${READY_BAR_PY_CLASS} px-3.5 rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${READY_BAR_TEXT_CLASS} transition-[border-color,background-color,box-shadow] duration-200 disabled:opacity-50 disabled:pointer-events-none ${
+                    className={`inline-flex aspect-square w-10 shrink-0 self-stretch items-center justify-center rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[border-color,background-color,box-shadow] duration-200 disabled:opacity-50 disabled:pointer-events-none cursor-pointer ${
                       isTranslateOn
-                        ? "cursor-pointer border-blue-400/30 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400/80"
+                        ? "border-blue-400/30 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400/80"
                         : isDimmed
-                          ? "cursor-pointer border-white/8 bg-white/3 text-white/30 hover:border-white/14 hover:text-white/44"
-                          : "cursor-pointer border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/78 hover:text-white/88"
+                          ? "border-white/8 bg-white/3 text-white/20 hover:border-white/14 hover:text-white/30"
+                          : "border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/48 hover:text-white/70"
                     }`}
                     aria-label={tooltipText}
                   >
-                    Translate mode
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m5 8 6 6" />
+                      <path d="m4 14 6-6 2-3" />
+                      <path d="M2 5h12" />
+                      <path d="M7 2h1" />
+                      <path d="m22 22-5-10-5 10" />
+                      <path d="M14 18h6" />
+                    </svg>
                   </button>
                 </InstantTooltip>
               );
             })()}
           <button
             onClick={onOpenSettings}
-            className="inline-flex aspect-square w-10 shrink-0 self-stretch items-center justify-center rounded-lg border border-white/12 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 transition-[border-color,background-color,box-shadow] duration-200 cursor-pointer"
+            className="inline-flex aspect-square w-10 shrink-0 self-stretch items-center justify-center rounded-lg border border-white/12 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 transition-[border-color,background-color,box-shadow] duration-200 cursor-pointer text-white/48 hover:text-white/70"
             aria-label="Settings"
           >
             <svg
@@ -569,7 +601,6 @@ export function ReadyScreen({
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-white/48"
             >
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
               <circle cx="12" cy="12" r="3" />

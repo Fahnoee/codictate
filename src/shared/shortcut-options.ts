@@ -20,21 +20,16 @@ export interface ShortcutOption {
 export const SHORTCUT_OPTIONS: ShortcutOption[] = [
   { id: 'option-space', keys: ['⌥', 'Space'], label: 'Option + Space' },
   { id: 'right-option', keys: ['Right ⌥'], label: 'Right Option' },
-  { id: 'option-f1', keys: ['⌥', 'F1'], label: 'Option + F1' },
-  { id: 'option-f2', keys: ['⌥', 'F2'], label: 'Option + F2' },
   { id: 'option-enter', keys: ['⌥', 'Enter'], label: 'Option + Enter' },
   { id: 'fn-space', keys: ['Fn', 'Space'], label: 'Fn + Space' },
   { id: 'fn-f1', keys: ['Fn', 'F1'], label: 'Fn + F1' },
   { id: 'fn-f2', keys: ['Fn', 'F2'], label: 'Fn + F2' },
-  { id: 'fn-enter', keys: ['Fn', 'Enter'], label: 'Fn + Enter' },
   {
     id: 'fn-globe',
     keys: ['Fn'],
     label: 'Fn only (Globe)',
   },
   { id: 'control-space', keys: ['⌃', 'Space'], label: 'Control + Space' },
-  { id: 'control-f1', keys: ['⌃', 'F1'], label: 'Control + F1' },
-  { id: 'control-f2', keys: ['⌃', 'F2'], label: 'Control + F2' },
   { id: 'control-enter', keys: ['⌃', 'Enter'], label: 'Control + Enter' },
 ]
 

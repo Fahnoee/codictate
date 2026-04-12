@@ -15,12 +15,15 @@ if let line = readLine(),
 }
 
 func shouldSwallow(
-    keycode: Int64, option: Bool, command: Bool, control: Bool, shift: Bool, fn: Bool
+    keycode: Int64, option: Bool, leftOption: Bool, rightOption: Bool, command: Bool,
+    control: Bool, shift: Bool, fn: Bool
 ) -> Bool {
     for rule in swallowRules {
         if let ruleKeycode = rule["keycode"] as? Int,
             Int64(ruleKeycode) == keycode,
             (rule["option"] as? Bool ?? false) == option,
+            (rule["leftOption"] as? Bool ?? leftOption) == leftOption,
+            (rule["rightOption"] as? Bool ?? rightOption) == rightOption,
             (rule["command"] as? Bool ?? false) == command,
             (rule["control"] as? Bool ?? false) == control,
             (rule["shift"] as? Bool ?? false) == shift,
@@ -39,6 +42,7 @@ func pasteViaKeyEvent() {
         let keyDown = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: true),
         let keyUp = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: false)
     else { return }
+    // Force a plain Cmd+V regardless of any shortcut modifier still held physically.
     keyDown.flags = .maskCommand
     keyUp.flags = .maskCommand
     keyDown.post(tap: .cgSessionEventTap)
@@ -55,6 +59,9 @@ func deleteBackward(count: Int) {
             let keyDown = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: true),
             let keyUp = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: false)
         else { return }
+        // Neutralize held modifiers so delete cannot become Option+Delete / Fn+Delete / etc.
+        keyDown.flags = []
+        keyUp.flags = []
         keyDown.post(tap: .cgSessionEventTap)
         keyUp.post(tap: .cgSessionEventTap)
     }
@@ -70,6 +77,8 @@ let mainQueue = DispatchQueue.main
 // Stored after tap creation so the callback can re-enable it if macOS disables it.
 var globalTap: CFMachPort? = nil
 var tapRunLoopSource: CFRunLoopSource? = nil
+var leftOptionDown = false
+var rightOptionDown = false
 
 let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
     | CGEventMask(1 << CGEventType.keyUp.rawValue)
@@ -178,12 +187,16 @@ func callback(
             isRepeat = false
         }
 
+        let leftOption = leftOptionDown
+        let rightOption = rightOptionDown
+
         let swallow = shouldSwallow(
-            keycode: keycode, option: option, command: command,
+            keycode: keycode, option: option, leftOption: leftOption, rightOption: rightOption,
+            command: command,
             control: control, shift: shift, fn: fn)
 
         let keyMsg =
-            "{\"keycode\": \(keycode), \"option\": \(option), \"command\": \(command), \"control\": \(control), \"shift\": \(shift), \"fn\": \(fn), \"keyDown\": \(keyDown), \"isRepeat\": \(isRepeat)}"
+            "{\"keycode\": \(keycode), \"option\": \(option), \"leftOption\": \(leftOption), \"rightOption\": \(rightOption), \"command\": \(command), \"control\": \(control), \"shift\": \(shift), \"fn\": \(fn), \"keyDown\": \(keyDown), \"isRepeat\": \(isRepeat)}"
         outputQueue.async { print(keyMsg); fflush(stdout) }
 
         if swallow { return nil }
@@ -193,14 +206,42 @@ func callback(
     if type == .flagsChanged {
         let keycode = event.getIntegerValueField(.keyboardEventKeycode)
 
-        // Modifier keys: emit on both press and release. `keyDown` = that modifier bit is on after this event.
         let modKeyDown: Bool?
+        var eventLeftOption = leftOptionDown
+        var eventRightOption = rightOptionDown
         switch keycode {
-        case 58, 61: modKeyDown = option
-        case 56, 60: modKeyDown = shift
-        case 55, 54: modKeyDown = command
-        case 59, 62: modKeyDown = control
-        case 63, 179: modKeyDown = fn
+        case 58:
+            if !option {
+                modKeyDown = false
+            } else if !leftOptionDown {
+                modKeyDown = true
+            } else if rightOptionDown {
+                modKeyDown = false
+            } else {
+                modKeyDown = true
+            }
+            eventLeftOption = modKeyDown ?? false
+            leftOptionDown = eventLeftOption
+        case 61:
+            if !option {
+                modKeyDown = false
+            } else if !rightOptionDown {
+                modKeyDown = true
+            } else if leftOptionDown {
+                modKeyDown = false
+            } else {
+                modKeyDown = true
+            }
+            eventRightOption = modKeyDown ?? false
+            rightOptionDown = eventRightOption
+        case 56, 60:
+            modKeyDown = shift
+        case 55, 54:
+            modKeyDown = command
+        case 59, 62:
+            modKeyDown = control
+        case 63, 179:
+            modKeyDown = fn
         default:
             modKeyDown = nil
         }
@@ -210,11 +251,12 @@ func callback(
         }
 
         let swallow = shouldSwallow(
-            keycode: keycode, option: option, command: command,
+            keycode: keycode, option: option, leftOption: eventLeftOption, rightOption: eventRightOption,
+            command: command,
             control: control, shift: shift, fn: fn)
 
         let keyMsg =
-            "{\"keycode\": \(keycode), \"option\": \(option), \"command\": \(command), \"control\": \(control), \"shift\": \(shift), \"fn\": \(fn), \"keyDown\": \(kd), \"isRepeat\": false}"
+            "{\"keycode\": \(keycode), \"option\": \(option), \"leftOption\": \(eventLeftOption), \"rightOption\": \(eventRightOption), \"command\": \(command), \"control\": \(control), \"shift\": \(shift), \"fn\": \(fn), \"keyDown\": \(kd), \"isRepeat\": false}"
         outputQueue.async { print(keyMsg); fflush(stdout) }
 
         if swallow { return nil }

@@ -193,8 +193,8 @@ export function ProductOnboardingScreen({
   );
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none px-6 py-10">
-      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/3 transition-colors duration-200" />
+    <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none px-6 py-10 overflow-hidden">
+      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/10 transition-colors duration-200" />
       <div className="w-full max-w-[440px] flex flex-col items-center">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
