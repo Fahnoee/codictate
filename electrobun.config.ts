@@ -38,6 +38,8 @@ export default {
       "vendors/whisper/whisper-cli": "native-helpers/whisper-cli",
       "vendors/parakeet/CodictateParakeetHelper":
         "native-helpers/CodictateParakeetHelper",
+      "vendors/formatter/CodictateFormatterHelper":
+        "native-helpers/CodictateFormatterHelper",
       "vendors/whisper/ggml-large-v3-turbo-q5_0.bin":
         "native-helpers/ggml-large-v3-turbo-q5_0.bin",
       // -- Sounds (src/assets/sounds → app/sounds)

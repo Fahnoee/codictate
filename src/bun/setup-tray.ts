@@ -16,6 +16,10 @@ import {
 } from '../shared/whisper-models'
 import { speechModelLocksTranscriptionLanguage } from '../shared/speech-models'
 import { shortcutTrayCompact } from '../shared/shortcut-options'
+import {
+  FORMATTING_MODES,
+  type FormattingModeId,
+} from '../shared/formatting-modes'
 
 export type TrayHandlers = {
   setTrayIdle: () => void
@@ -33,6 +37,7 @@ export type TrayHandlers = {
   resetUpdateState: () => void
   syncTranslateState: () => void
   syncStreamModeState: () => void
+  syncFormattingModeState: () => void
 }
 
 // Resolves to app/images/MacTrayIcon.png in the bundle.
@@ -53,7 +58,9 @@ export const setupTray = (
   /** After tray toggles translate to English — sync webview. */
   onTranslateToggled?: () => void,
   /** After tray toggles stream mode — sync webview. */
-  onStreamModeToggled?: () => void
+  onStreamModeToggled?: () => void,
+  /** After tray changes formatting mode — sync webview. */
+  onFormattingModeChanged?: () => void
 ): TrayHandlers => {
   const tray = new Tray({
     image: trayIconPath,
@@ -166,6 +173,16 @@ export const setupTray = (
     }
   }
 
+  const buildFormattingMenuItems = (cfg: AppConfig) => {
+    const current = cfg.getFormattingModeId()
+    return FORMATTING_MODES.map((m) => ({
+      type: 'normal' as const,
+      label: m.label,
+      action: `set-formatting-${m.id}`,
+      checked: current === m.id,
+    }))
+  }
+
   const buildMenu = (selectedDevice: number) => [
     { type: 'normal' as const, label: 'Open Codictate', action: 'open' },
     { type: 'normal' as const, label: 'Settings', action: 'open-settings' },
@@ -197,6 +214,11 @@ export const setupTray = (
         },
     buildTranslateMenuItem(appConfig),
     buildStreamModeMenuItem(appConfig),
+    {
+      type: 'normal' as const,
+      label: 'Format output',
+      submenu: buildFormattingMenuItems(appConfig),
+    },
     { type: 'divider' as const },
     {
       type: 'normal' as const,
@@ -245,6 +267,16 @@ export const setupTray = (
         } else if (next) {
           onOpenSettings?.()
         }
+      })()
+    }
+    if (event.data.action.startsWith('set-formatting-')) {
+      const modeId = event.data.action.replace('set-formatting-', '')
+      void (async () => {
+        const ok = await appConfig.setFormattingModeId(
+          modeId as FormattingModeId
+        )
+        tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+        if (ok) onFormattingModeChanged?.()
       })()
     }
     if (event.data.action === 'toggle-translate') {
@@ -334,6 +366,9 @@ export const setupTray = (
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
     syncStreamModeState: () => {
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+    },
+    syncFormattingModeState: () => {
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
   }

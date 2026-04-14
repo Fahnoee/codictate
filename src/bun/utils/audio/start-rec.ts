@@ -90,7 +90,8 @@ export const startRecording = async (
           await speech2text(
             appConfig.getRuntimeTranscriptionWhisperCode(),
             appConfig.getWhisperModelId(),
-            appConfig.getTranslateToEnglish()
+            appConfig.getTranslateToEnglish(),
+            appConfig.getFormattingModeId()
           )
         }
         onDone()

@@ -165,6 +165,10 @@ const helperEntitlementsByBasename: Record<string, string> = {
   KeyListener: join(entitlementsRoot, "KeyListener.entitlements"),
   MicRecorder: join(entitlementsRoot, "MicRecorder.entitlements"),
   "whisper-cli": join(entitlementsRoot, "whisper-cli.entitlements"),
+  CodictateFormatterHelper: join(
+    entitlementsRoot,
+    "CodictateFormatterHelper.entitlements",
+  ),
   CodictateParakeetHelper: join(
     entitlementsRoot,
     "CodictateParakeetHelper.entitlements",
@@ -211,31 +215,46 @@ function listCodesignableNativeHelpers(dir: string): string[] {
   return paths;
 }
 
-const parakeetHelperPath = join(nativeHelpersDir, "CodictateParakeetHelper");
+function verifyRequiredHelperExecutable(
+  basename: string,
+  remediation: string,
+): void {
+  const helperPath = join(nativeHelpersDir, basename);
 
-if (!existsSync(parakeetHelperPath)) {
-  console.error(
-    "[post-build] CodictateParakeetHelper missing from native-helpers — run pre-build",
-  );
-  process.exit(1);
+  if (!existsSync(helperPath)) {
+    console.error(
+      `[post-build] ${basename} missing from native-helpers — ${remediation}`,
+    );
+    process.exit(1);
+  }
+
+  const fileType = Bun.spawnSync(["file", "-b", helperPath], {
+    stdout: "pipe",
+  });
+  const kind = fileType.stdout.toString();
+  if (
+    !kind.includes("Mach-O") ||
+    !kind.includes("executable") ||
+    kind.includes("dSYM")
+  ) {
+    console.error(
+      `[post-build] ${basename} is not a Mach-O executable (often a copied dSYM stub). ${remediation}`,
+    );
+    console.error(`[post-build] file(1) said: ${kind.trim()}`);
+    process.exit(1);
+  }
+
+  console.log(`[post-build] Verified ${basename} is a Mach-O executable`);
 }
 
-const parakeetFileType = Bun.spawnSync(["file", "-b", parakeetHelperPath], {
-  stdout: "pipe",
-});
-const parakeetKind = parakeetFileType.stdout.toString();
-if (
-  !parakeetKind.includes("Mach-O") ||
-  !parakeetKind.includes("executable") ||
-  parakeetKind.includes("dSYM")
-) {
-  console.error(
-    "[post-build] CodictateParakeetHelper is not a Mach-O executable (often a copied dSYM stub). Re-run: bun run scripts/pre-build.ts",
-  );
-  console.error(`[post-build] file(1) said: ${parakeetKind.trim()}`);
-  process.exit(1);
-}
-console.log("[post-build] Verified CodictateParakeetHelper is a Mach-O executable");
+verifyRequiredHelperExecutable(
+  "CodictateParakeetHelper",
+  "Re-run: bun run scripts/pre-build.ts",
+);
+verifyRequiredHelperExecutable(
+  "CodictateFormatterHelper",
+  "Re-run: bun run scripts/pre-build.ts",
+);
 
 const machoNativeHelpers = listCodesignableNativeHelpers(nativeHelpersDir);
 

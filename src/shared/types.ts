@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { RPCSchema } from 'electrobun'
+import type { FormattingModeId } from './formatting-modes'
+
+export type { FormattingModeId }
 
 export type AppStatus = 'ready' | 'recording' | 'transcribing' | 'streaming'
 export type UpdateCheckState =
@@ -70,6 +73,13 @@ export interface AppSettings {
   streamMode: boolean
   /** Stream transcription behavior: VAD utterance commits or low-latency live chunks. */
   streamTranscriptionMode: StreamTranscriptionMode
+  /** Post-processing format to apply after batch transcription (FoundationModels, macOS 26+). */
+  formattingModeId: FormattingModeId
+  /**
+   * Read-only: true when FoundationModels is available on this device (macOS 26+ with Apple
+   * Intelligence). Not persisted — computed at runtime and included in getSettings() responses.
+   */
+  formattingAvailable: boolean
 }
 
 export interface PermissionState {
@@ -123,6 +133,10 @@ export type WebviewRPCType = {
       setStreamMode: { params: { enabled: boolean }; response: boolean }
       setStreamTranscriptionMode: {
         params: { mode: StreamTranscriptionMode }
+        response: boolean
+      }
+      setFormattingMode: {
+        params: { modeId: FormattingModeId }
         response: boolean
       }
       /** Ephemeral: show the floating indicator during onboarding to preview the chosen mode. */

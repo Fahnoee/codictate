@@ -20,6 +20,10 @@ const WHISPER_BINARY = join(WHISPER_DIR, "whisper-cli");
 const PARAKEET_PKG = join(import.meta.dir, "..", "native", "CodictateParakeetHelper");
 const PARAKEET_DIR = join(VENDORS_DIR, "parakeet");
 const PARAKEET_BINARY = join(PARAKEET_DIR, "CodictateParakeetHelper");
+
+const FORMATTER_PKG = join(import.meta.dir, "..", "native", "CodictateFormatterHelper");
+const FORMATTER_DIR = join(VENDORS_DIR, "formatter");
+const FORMATTER_BINARY = join(FORMATTER_DIR, "CodictateFormatterHelper");
 const TEXT_PROCESSING_RS_DIR = join(import.meta.dir, "..", "vendors", "text-processing-rs");
 const NEMO_STATIC_LIB = join(
   PARAKEET_PKG,
@@ -273,6 +277,76 @@ async function vendorParakeetHelper() {
   console.log("[pre-build] CodictateParakeetHelper vendored successfully");
 }
 
+function formatterBinaryIsRealBuild(path: string): boolean {
+  // Distinguish the real Swift binary from the tiny C stub by size.
+  // The C stub is ~33 KB; the real Swift binary is ~63 KB+.
+  // Threshold set at 50 KB to safely separate the two.
+  if (!parakeetVendoredBinaryLooksExecutable(path)) return false;
+  try {
+    const { size } = Bun.spawnSync(["stat", "-f%z", path], { stdout: "pipe" });
+    const bytes = parseInt(size.toString().trim(), 10);
+    return bytes > 50_000;
+  } catch {
+    return false;
+  }
+}
+
+async function vendorFormatterHelper() {
+  if (existsSync(FORMATTER_BINARY) && formatterBinaryIsRealBuild(FORMATTER_BINARY)) {
+    console.log("[pre-build] CodictateFormatterHelper already vendored, skipping");
+    return;
+  }
+
+  mkdirSync(FORMATTER_DIR, { recursive: true });
+
+  if (!existsSync(join(FORMATTER_PKG, "Package.swift"))) {
+    throw new Error(
+      `[pre-build] Missing ${FORMATTER_PKG}/Package.swift — cannot build formatter helper`,
+    );
+  }
+
+  console.log("[pre-build] Building CodictateFormatterHelper (Swift + FoundationModels)…");
+  const build = Bun.spawnSync(["swift", "build", "-c", "release"], {
+    cwd: FORMATTER_PKG,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+
+  if (build.exitCode === 0) {
+    const binPathRes = Bun.spawnSync(
+      ["swift", "build", "-c", "release", "--show-bin-path"],
+      { cwd: FORMATTER_PKG, stdout: "pipe" },
+    );
+    const releaseDir = binPathRes.stdout.toString().trim();
+    const built = join(releaseDir, "CodictateFormatterHelper");
+
+    if (existsSync(built)) {
+      Bun.spawnSync(["cp", built, FORMATTER_BINARY]);
+      chmodSync(FORMATTER_BINARY, 0o755);
+      console.log("[pre-build] CodictateFormatterHelper vendored successfully");
+      return;
+    }
+  }
+
+  // Build failed — compile a minimal C stub that exits 1 so the binary always exists
+  // for electrobun's copy step. The TypeScript bridge falls back to raw text silently.
+  console.warn(
+    "[pre-build] CodictateFormatterHelper Swift build failed (requires macOS 26 SDK) — compiling stub; formatting will be disabled",
+  );
+  const stubSrc = `#include <stdio.h>\nint main(int argc, char **argv){fputs("[formatter] FoundationModels not available (requires macOS 26 SDK)\\n", stderr);return 1;}\n`;
+  const stubPath = join(FORMATTER_DIR, "stub.c");
+  await Bun.write(stubPath, stubSrc);
+  const stubBuild = Bun.spawnSync(
+    ["cc", "-o", FORMATTER_BINARY, stubPath],
+    { stdio: ["ignore", "inherit", "inherit"] },
+  );
+  Bun.spawnSync(["rm", "-f", stubPath]);
+  if (stubBuild.exitCode !== 0) {
+    throw new Error("[pre-build] Failed to compile CodictateFormatterHelper stub");
+  }
+  chmodSync(FORMATTER_BINARY, 0o755);
+  console.log("[pre-build] CodictateFormatterHelper stub compiled (formatting disabled)");
+}
+
 const MODEL_NAME = "ggml-large-v3-turbo-q5_0.bin";
 const MODEL_PATH = join(WHISPER_DIR, MODEL_NAME);
 
@@ -317,6 +391,7 @@ if (process.argv.includes("--parakeet-only")) {
 
 await vendorWhisperBinaries();
 await vendorParakeetHelper();
+await vendorFormatterHelper();
 await vendorWhisperModel();
 
 console.log("[pre-build] All dependencies ready");

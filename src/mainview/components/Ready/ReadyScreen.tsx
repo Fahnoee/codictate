@@ -16,8 +16,11 @@ import {
   setTranslateDefaultLanguage,
   setTranslateToEnglish,
   setStreamMode,
+  setFormattingMode,
   fetchSettings,
 } from "../../rpc";
+import type { FormattingModeId } from "../../../shared/types";
+import { FORMATTING_MODES } from "../../../shared/formatting-modes";
 import {
   WHISPER_MODELS,
   getTranslateReadiness,
@@ -251,6 +254,27 @@ export function ReadyScreen({
       if (newValue) onOpenSettings();
     }
   }, [isStreamMode, queryClient, settings, onOpenSettings]);
+
+  const formattingModeId: FormattingModeId =
+    settings?.formattingModeId ?? "none";
+  const formattingAvailable = settings?.formattingAvailable ?? false;
+  const isFormattingActive = formattingModeId !== "none";
+
+  const handleFormattingToggle = useCallback(async () => {
+    if (!settings || !formattingAvailable) return;
+    // Cycle through modes: none → email → none
+    const modes = FORMATTING_MODES.map((m) => m.id);
+    const currentIndex = modes.indexOf(formattingModeId);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    const nextMode = modes[nextIndex];
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, formattingModeId: nextMode } : old,
+    );
+    const ok = await setFormattingMode(nextMode);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+    }
+  }, [settings, formattingAvailable, formattingModeId, queryClient]);
 
   const micName = deviceInfo
     ? (deviceInfo.devices[String(deviceInfo.selectedDevice)] ?? "Default")
@@ -530,6 +554,46 @@ export function ReadyScreen({
                   <path d="M14 8v7" />
                   <path d="M18 5v13" />
                   <path d="M22 10v3" />
+                </svg>
+              </button>
+            </InstantTooltip>
+          )}
+          {settings !== undefined && formattingAvailable && (
+            <InstantTooltip
+              text={
+                isFormattingActive
+                  ? `Format: ${FORMATTING_MODES.find((m) => m.id === formattingModeId)?.label ?? formattingModeId} — click to disable`
+                  : "Format output — reshape transcription with Apple Intelligence"
+              }
+              side="top"
+              floatInViewport
+            >
+              <button
+                onClick={handleFormattingToggle}
+                disabled={isRecording || isTranscribing || isStreaming}
+                className={`inline-flex aspect-square w-10 shrink-0 self-stretch items-center justify-center rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[border-color,background-color,box-shadow] duration-200 disabled:opacity-50 disabled:pointer-events-none cursor-pointer ${
+                  isFormattingActive
+                    ? "border-purple-400/30 bg-purple-500/15 hover:bg-purple-500/25 text-purple-400/80"
+                    : "border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/48 hover:text-white/70"
+                }`}
+                aria-label={
+                  isFormattingActive
+                    ? `Format mode: ${formattingModeId} — click to disable`
+                    : "Format output with Apple Intelligence"
+                }
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+                  <path d="m15 5 4 4" />
                 </svg>
               </button>
             </InstantTooltip>

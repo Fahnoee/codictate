@@ -8,6 +8,7 @@ import type {
   SettingsPane,
   StreamTranscriptionMode,
   UpdateCheckState,
+  FormattingModeId,
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
@@ -58,6 +59,8 @@ interface WindowDeps {
   onOnboardingIndicatorPreviewChanged?: () => void
   /** Refresh tray and webview after stream mode toggled (from tray or webview). */
   onStreamModeChanged?: () => void
+  /** Refresh tray after formatting mode changed from webview. */
+  onFormattingModeChanged?: () => void
 }
 
 export interface WindowHandle {
@@ -244,6 +247,15 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           rpc.send.updateSettings(deps.appConfig.getSettings())
           deps.onStreamModeChanged?.()
           return true
+        },
+        setFormattingMode: async ({ modeId }: { modeId: FormattingModeId }) => {
+          log('config', 'rpc setFormattingMode request', { modeId })
+          const ok = await deps.appConfig.setFormattingModeId(modeId)
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+            deps.onFormattingModeChanged?.()
+          }
+          return ok
         },
         setOnboardingIndicatorPreview: async ({ active, mode }) => {
           deps.appConfig.setRecordingIndicatorOnboardingPreview(active, mode)

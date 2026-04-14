@@ -11,6 +11,7 @@ import type {
   UpdateCheckState,
   RecordingIndicatorMode,
   AppStatus,
+  FormattingModeId,
 } from '../shared/types'
 import { appEvents } from './app-events'
 import { SPEECH_MODELS } from '../shared/speech-models'
@@ -185,6 +186,12 @@ export async function setStreamTranscriptionMode(
   mode: StreamTranscriptionMode
 ): Promise<boolean> {
   return rpc.request.setStreamTranscriptionMode({ mode })
+}
+
+export async function setFormattingMode(
+  modeId: FormattingModeId
+): Promise<boolean> {
+  return rpc.request.setFormattingMode({ modeId })
 }
 
 export function downloadWhisperModel(modelId: string): void {

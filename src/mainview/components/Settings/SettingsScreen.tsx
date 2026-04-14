@@ -16,7 +16,9 @@ import type {
   ShortcutId,
   StreamTranscriptionMode,
   UpdateCheckState,
+  FormattingModeId,
 } from "../../../shared/types";
+import { FORMATTING_MODES } from "../../../shared/formatting-modes";
 import {
   dictationShortcutBehaviorHint,
   dictationHoldOnlyShortcutHint,
@@ -59,6 +61,7 @@ import {
   setTranslateDefaultLanguage,
   setStreamMode,
   setStreamTranscriptionMode,
+  setFormattingMode,
   downloadWhisperModel,
   cancelModelDownload,
   deleteWhisperModel,
@@ -93,6 +96,7 @@ const devPreviewSelectClass =
 type SettingsCategory =
   | "transcription"
   | "modes"
+  | "formatting"
   | "shortcuts"
   | "audio"
   | "general";
@@ -140,6 +144,25 @@ const CATEGORIES: {
         <rect width="7" height="7" x="14" y="3" rx="1" />
         <rect width="7" height="7" x="14" y="14" rx="1" />
         <rect width="7" height="7" x="3" y="14" rx="1" />
+      </svg>
+    ),
+  },
+  {
+    id: "formatting",
+    label: "Formatting",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+        <path d="m15 5 4 4" />
       </svg>
     ),
   },
@@ -830,6 +853,16 @@ export function SettingsScreen({
     [queryClient],
   );
 
+  const handleFormattingModeChange = useCallback(
+    async (modeId: FormattingModeId) => {
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old ? { ...old, formattingModeId: modeId } : old,
+      );
+      await setFormattingMode(modeId);
+    },
+    [queryClient],
+  );
+
   const durationLabel = formatRecordingDurationLabel(
     settings.maxRecordingDuration,
   );
@@ -1192,6 +1225,73 @@ export function SettingsScreen({
                         })}
                       </div>
                     </div>
+                  </div>
+                </>
+              )}
+
+              {activeCategory === "formatting" && (
+                <>
+                  {!settings.formattingAvailable && (
+                    <div className="mb-6 rounded-xl border border-white/10 bg-white/4 px-4 py-3.5">
+                      <p className="text-[18px] text-white/44 leading-relaxed font-sans">
+                        Be aware: output formatting only works on{" "}
+                        <span className="text-white/62 font-medium">
+                          macOS 26 or later
+                        </span>{" "}
+                        with Apple Intelligence enabled in System Settings.
+                      </p>
+                    </div>
+                  )}
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Format Mode
+                    </h2>
+                    <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden divide-y divide-white/8">
+                      {FORMATTING_MODES.map((mode) => {
+                        return (
+                          <button
+                            key={mode.id}
+                            onClick={() => handleFormattingModeChange(mode.id)}
+                            className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors duration-150 cursor-pointer ${
+                            settings.formattingModeId === mode.id
+                              ? "bg-purple-500/10"
+                              : "hover:bg-white/4"
+                            }`}
+                          >
+                            <div
+                              className={`shrink-0 w-4 h-4 rounded-full border flex items-center justify-center ${
+                                settings.formattingModeId === mode.id
+                                  ? "border-purple-400/60 bg-purple-500/30"
+                                  : "border-white/20"
+                              }`}
+                            >
+                              {settings.formattingModeId === mode.id && (
+                                <div className="w-2 h-2 rounded-full bg-purple-400/80" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span
+                                className={`block text-[21px] font-medium ${
+                                  settings.formattingModeId === mode.id
+                                    ? "text-white/86"
+                                    : "text-white/60"
+                                }`}
+                              >
+                                {mode.label}
+                              </span>
+                              <span className="block text-[17px] text-white/40 mt-0.5">
+                                {mode.description}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className={settingsHelperClass}>
+                      When a format is selected, your transcribed speech will be
+                      reshaped using Apple Intelligence before being pasted.
+                      Works in standard recording mode only — not stream mode.
+                    </p>
                   </div>
                 </>
               )}

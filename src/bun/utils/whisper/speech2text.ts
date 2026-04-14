@@ -3,8 +3,10 @@ import { getSpeechModel } from '../../../shared/speech-models'
 import { resolveTranslateModelId } from '../../../shared/whisper-models'
 import { modelManager } from './model-manager'
 import { pasteTranscript } from '../keyboard/keyboard-events'
+import { applyFormatting } from '../formatting/apply-formatting'
 import { join } from 'node:path'
 import { log } from '../logger'
+import type { FormattingModeId } from '../../../shared/formatting-modes'
 
 export const RECORDING_PATH = '/tmp/codictate-recording.wav'
 
@@ -226,12 +228,16 @@ async function transcribeParakeet(modelId: string): Promise<string> {
 export const speech2text = async (
   whisperLanguageCode: string | null | undefined,
   modelId: string,
-  translateToEnglish: boolean
+  translateToEnglish: boolean,
+  formattingModeId: FormattingModeId = 'none'
 ) => {
-  const transcript = await transcribe(
+  let transcript = await transcribe(
     whisperLanguageCode,
     modelId,
     translateToEnglish
   )
+  if (formattingModeId !== 'none') {
+    transcript = await applyFormatting(transcript, formattingModeId)
+  }
   await pasteTranscript(transcript)
 }

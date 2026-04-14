@@ -222,6 +222,9 @@ const win = setupWindow({
     }
     trayHandlers.syncStreamModeState()
   },
+  onFormattingModeChanged: () => {
+    trayHandlers.syncFormattingModeState()
+  },
   onTriggerPermissionPrompt: (pane: SettingsPane) => {
     if (pane === 'inputMonitoring') {
       if (keyboard.isAlive) {
@@ -333,6 +336,7 @@ trayHandlers = setupTray(
   onOpenSettings,
   onApplyUpdate,
   () => checkForUpdates(),
+  pushSettingsToWebview,
   pushSettingsToWebview,
   pushSettingsToWebview,
   pushSettingsToWebview

@@ -22,7 +22,12 @@ import {
   getStreamModeReadiness,
   isValidWhisperModelId,
 } from '../../shared/whisper-models'
+import {
+  type FormattingModeId,
+  isValidFormattingModeId,
+} from '../../shared/formatting-modes'
 import { modelManager } from '../utils/whisper/model-manager'
+import { detectFormattingAvailable } from '../utils/formatting/formatting-availability'
 import { disableDebug, enableDebug, log } from '../utils/logger'
 
 const CONFIG_DIR = join(
@@ -78,6 +83,9 @@ export class AppConfig {
   private recordingIndicatorPosition: { x: number; y: number } | null
   private streamMode: boolean
   private streamTranscriptionMode: StreamTranscriptionMode
+  private formattingModeId: FormattingModeId
+  /** True when formatting can be offered on this OS; runtime helper still handles failures safely. */
+  private formattingAvailable: boolean
   /**
    * In-memory only: while set, the indicator window uses this mode during
    * onboarding preview (not persisted).
@@ -101,6 +109,8 @@ export class AppConfig {
     this.recordingIndicatorPosition = null
     this.streamMode = false
     this.streamTranscriptionMode = 'vad'
+    this.formattingModeId = 'none'
+    this.formattingAvailable = detectFormattingAvailable()
   }
 
   // --- Persistence ---
@@ -200,6 +210,9 @@ export class AppConfig {
       ) {
         this.streamTranscriptionMode = raw.streamTranscriptionMode
       }
+      if (isValidFormattingModeId(raw.formattingModeId)) {
+        this.formattingModeId = raw.formattingModeId
+      }
       log('config', 'loaded app config', {
         shortcutId: this.shortcutId,
         shortcutHoldOnlyId: this.shortcutHoldOnlyId ?? undefined,
@@ -241,6 +254,7 @@ export class AppConfig {
       recordingIndicatorPosition: this.recordingIndicatorPosition,
       streamMode: this.streamMode,
       streamTranscriptionMode: this.streamTranscriptionMode,
+      formattingModeId: this.formattingModeId,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -435,7 +449,24 @@ export class AppConfig {
       recordingIndicatorPosition: this.recordingIndicatorPosition,
       streamMode: this.streamMode,
       streamTranscriptionMode: this.streamTranscriptionMode,
+      formattingModeId: this.formattingModeId,
+      formattingAvailable: this.formattingAvailable,
     }
+  }
+
+  public getFormattingModeId(): FormattingModeId {
+    return this.formattingModeId
+  }
+
+  public async setFormattingModeId(modeId: FormattingModeId): Promise<boolean> {
+    if (!isValidFormattingModeId(modeId)) return false
+    this.formattingModeId = modeId
+    await this.save()
+    return true
+  }
+
+  public getFormattingAvailable(): boolean {
+    return this.formattingAvailable
   }
 
   public getStreamMode(): boolean {
