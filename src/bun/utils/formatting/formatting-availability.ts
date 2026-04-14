@@ -4,7 +4,10 @@ const CANDIDATE_PATHS = [
   // Bundled app runtime: Resources/app/bun -> Resources/app/native-helpers
   join(import.meta.dir, '../native-helpers/CodictateFormatterHelper'),
   // Local repo source tree fallback
-  join(import.meta.dir, '../../../../vendors/formatter/CodictateFormatterHelper'),
+  join(
+    import.meta.dir,
+    '../../../../vendors/formatter/CodictateFormatterHelper'
+  ),
   // Local dev helper beside the source package/build output
   join(import.meta.dir, 'CodictateFormatterHelper'),
 ]

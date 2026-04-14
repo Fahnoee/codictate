@@ -1,6 +1,6 @@
-import type { FormattingModeId } from '../../../shared/formatting-modes'
 import { log } from '../logger'
 import { findFormatterHelperPath } from './formatting-availability'
+import type { FormatterRequest } from './resolve-formatting-request'
 
 /**
  * Calls CodictateFormatterHelper to reformat `text` using Apple FoundationModels.
@@ -8,17 +8,23 @@ import { findFormatterHelperPath } from './formatting-availability'
  * (missing binary, macOS < 26, Apple Intelligence unavailable, etc.).
  */
 export async function applyFormatting(
-  text: string,
-  modeId: FormattingModeId
+  request: FormatterRequest
 ): Promise<string> {
-  if (modeId === 'none' || !text.trim()) return text
+  if (request.modeId === 'none' || !request.transcript.trim()) {
+    return request.transcript
+  }
 
   try {
     const helper = await findFormatterHelperPath()
+    const payload = JSON.stringify(request)
 
-    log('formatter', 'spawning CodictateFormatterHelper', { modeId, helper })
+    log('formatter', 'spawning CodictateFormatterHelper', {
+      modeId: request.modeId,
+      helper,
+      focusedApp: request.focusedApp?.appName,
+    })
 
-    const proc = Bun.spawn([helper, modeId, text], {
+    const proc = Bun.spawn([helper, '--request', payload], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -42,17 +48,17 @@ export async function applyFormatting(
           exitCode: proc.exitCode,
         }
       )
-      return text
+      return request.transcript
     }
 
     const formatted = new TextDecoder('utf-8').decode(stdoutBytes).trim()
     if (!formatted) {
       log('formatter', 'empty output from helper — using raw transcript')
-      return text
+      return request.transcript
     }
 
     log('formatter', 'formatting complete', {
-      originalLength: text.length,
+      originalLength: request.transcript.length,
       formattedLength: formatted.length,
     })
     return formatted
@@ -60,7 +66,7 @@ export async function applyFormatting(
     log('formatter', 'failed to spawn helper — using raw transcript', {
       error: String(err),
     })
-    return text
+    return request.transcript
   }
 }
 

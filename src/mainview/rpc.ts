@@ -12,6 +12,8 @@ import type {
   RecordingIndicatorMode,
   AppStatus,
   FormattingModeId,
+  FormattingEmailGreetingStyle,
+  FormattingEmailClosingStyle,
 } from '../shared/types'
 import { appEvents } from './app-events'
 import { SPEECH_MODELS } from '../shared/speech-models'
@@ -192,6 +194,36 @@ export async function setFormattingMode(
   modeId: FormattingModeId
 ): Promise<boolean> {
   return rpc.request.setFormattingMode({ modeId })
+}
+
+export async function setUserDisplayName(
+  userDisplayName: string
+): Promise<boolean> {
+  return rpc.request.setUserDisplayName({ userDisplayName })
+}
+
+export async function setFormattingAutoSelectEnabled(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setFormattingAutoSelectEnabled({ enabled })
+}
+
+export async function setFormattingEmailIncludeSenderName(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setFormattingEmailIncludeSenderName({ enabled })
+}
+
+export async function setFormattingEmailGreetingStyle(
+  style: FormattingEmailGreetingStyle
+): Promise<boolean> {
+  return rpc.request.setFormattingEmailGreetingStyle({ style })
+}
+
+export async function setFormattingEmailClosingStyle(
+  style: FormattingEmailClosingStyle
+): Promise<boolean> {
+  return rpc.request.setFormattingEmailClosingStyle({ style })
 }
 
 export function downloadWhisperModel(modelId: string): void {

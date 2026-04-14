@@ -3,6 +3,27 @@ import { RPCSchema } from 'electrobun'
 import type { FormattingModeId } from './formatting-modes'
 
 export type { FormattingModeId }
+export type FormattingEmailGreetingStyle = 'auto' | 'hi' | 'hello'
+export type FormattingEmailClosingStyle =
+  | 'auto'
+  | 'best-regards'
+  | 'thanks'
+  | 'kind-regards'
+
+export interface FocusedAppContext {
+  appName: string
+  bundleIdentifier: string | null
+  windowTitle: string | null
+}
+
+export interface FormattingRuntimeSettings {
+  formattingModeId: FormattingModeId
+  formattingAutoSelectEnabled: boolean
+  userDisplayName: string
+  formattingEmailIncludeSenderName: boolean
+  formattingEmailGreetingStyle: FormattingEmailGreetingStyle
+  formattingEmailClosingStyle: FormattingEmailClosingStyle
+}
 
 export type AppStatus = 'ready' | 'recording' | 'transcribing' | 'streaming'
 export type UpdateCheckState =
@@ -73,8 +94,18 @@ export interface AppSettings {
   streamMode: boolean
   /** Stream transcription behavior: VAD utterance commits or low-latency live chunks. */
   streamTranscriptionMode: StreamTranscriptionMode
+  /** General user profile name, available to formatting and future personalized behaviors. */
+  userDisplayName: string
   /** Post-processing format to apply after batch transcription (FoundationModels, macOS 26+). */
   formattingModeId: FormattingModeId
+  /** When true, Codictate may override the manual formatting mode based on the focused app. */
+  formattingAutoSelectEnabled: boolean
+  /** When true, email formatting may append the user's stored display name in the sign-off. */
+  formattingEmailIncludeSenderName: boolean
+  /** Preferred greeting tone for email formatting. */
+  formattingEmailGreetingStyle: FormattingEmailGreetingStyle
+  /** Preferred closing tone for email formatting. */
+  formattingEmailClosingStyle: FormattingEmailClosingStyle
   /**
    * Read-only: true when FoundationModels is available on this device (macOS 26+ with Apple
    * Intelligence). Not persisted — computed at runtime and included in getSettings() responses.
@@ -137,6 +168,26 @@ export type WebviewRPCType = {
       }
       setFormattingMode: {
         params: { modeId: FormattingModeId }
+        response: boolean
+      }
+      setUserDisplayName: {
+        params: { userDisplayName: string }
+        response: boolean
+      }
+      setFormattingAutoSelectEnabled: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setFormattingEmailIncludeSenderName: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setFormattingEmailGreetingStyle: {
+        params: { style: FormattingEmailGreetingStyle }
+        response: boolean
+      }
+      setFormattingEmailClosingStyle: {
+        params: { style: FormattingEmailClosingStyle }
         response: boolean
       }
       /** Ephemeral: show the floating indicator during onboarding to preview the chosen mode. */

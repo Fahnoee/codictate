@@ -13,6 +13,9 @@ import {
 } from '../../shared/transcription-languages'
 import type {
   AppSettings,
+  FormattingEmailClosingStyle,
+  FormattingEmailGreetingStyle,
+  FormattingRuntimeSettings,
   RecordingIndicatorMode,
   ShortcutId,
   StreamTranscriptionMode,
@@ -61,6 +64,37 @@ function isValidRecordingIndicatorMode(
   )
 }
 
+const FORMATTING_EMAIL_GREETING_STYLES = new Set<FormattingEmailGreetingStyle>([
+  'auto',
+  'hi',
+  'hello',
+])
+
+function isValidFormattingEmailGreetingStyle(
+  value: unknown
+): value is FormattingEmailGreetingStyle {
+  return (
+    typeof value === 'string' &&
+    FORMATTING_EMAIL_GREETING_STYLES.has(value as FormattingEmailGreetingStyle)
+  )
+}
+
+const FORMATTING_EMAIL_CLOSING_STYLES = new Set<FormattingEmailClosingStyle>([
+  'auto',
+  'best-regards',
+  'thanks',
+  'kind-regards',
+])
+
+function isValidFormattingEmailClosingStyle(
+  value: unknown
+): value is FormattingEmailClosingStyle {
+  return (
+    typeof value === 'string' &&
+    FORMATTING_EMAIL_CLOSING_STYLES.has(value as FormattingEmailClosingStyle)
+  )
+}
+
 export class AppConfig {
   // Name is the primary key — stable across device list reorders.
   // Index is stored as a fallback for configs that predate name storage.
@@ -83,7 +117,12 @@ export class AppConfig {
   private recordingIndicatorPosition: { x: number; y: number } | null
   private streamMode: boolean
   private streamTranscriptionMode: StreamTranscriptionMode
+  private userDisplayName: string
   private formattingModeId: FormattingModeId
+  private formattingAutoSelectEnabled: boolean
+  private formattingEmailIncludeSenderName: boolean
+  private formattingEmailGreetingStyle: FormattingEmailGreetingStyle
+  private formattingEmailClosingStyle: FormattingEmailClosingStyle
   /** True when formatting can be offered on this OS; runtime helper still handles failures safely. */
   private formattingAvailable: boolean
   /**
@@ -109,7 +148,12 @@ export class AppConfig {
     this.recordingIndicatorPosition = null
     this.streamMode = false
     this.streamTranscriptionMode = 'vad'
+    this.userDisplayName = ''
     this.formattingModeId = 'none'
+    this.formattingAutoSelectEnabled = false
+    this.formattingEmailIncludeSenderName = false
+    this.formattingEmailGreetingStyle = 'auto'
+    this.formattingEmailClosingStyle = 'auto'
     this.formattingAvailable = detectFormattingAvailable()
   }
 
@@ -213,6 +257,24 @@ export class AppConfig {
       if (isValidFormattingModeId(raw.formattingModeId)) {
         this.formattingModeId = raw.formattingModeId
       }
+      if (typeof raw.userDisplayName === 'string') {
+        this.userDisplayName = raw.userDisplayName.trim()
+      }
+      if (typeof raw.formattingAutoSelectEnabled === 'boolean') {
+        this.formattingAutoSelectEnabled = raw.formattingAutoSelectEnabled
+      }
+      if (typeof raw.formattingEmailIncludeSenderName === 'boolean') {
+        this.formattingEmailIncludeSenderName =
+          raw.formattingEmailIncludeSenderName
+      }
+      if (
+        isValidFormattingEmailGreetingStyle(raw.formattingEmailGreetingStyle)
+      ) {
+        this.formattingEmailGreetingStyle = raw.formattingEmailGreetingStyle
+      }
+      if (isValidFormattingEmailClosingStyle(raw.formattingEmailClosingStyle)) {
+        this.formattingEmailClosingStyle = raw.formattingEmailClosingStyle
+      }
       log('config', 'loaded app config', {
         shortcutId: this.shortcutId,
         shortcutHoldOnlyId: this.shortcutHoldOnlyId ?? undefined,
@@ -254,7 +316,12 @@ export class AppConfig {
       recordingIndicatorPosition: this.recordingIndicatorPosition,
       streamMode: this.streamMode,
       streamTranscriptionMode: this.streamTranscriptionMode,
+      userDisplayName: this.userDisplayName,
       formattingModeId: this.formattingModeId,
+      formattingAutoSelectEnabled: this.formattingAutoSelectEnabled,
+      formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
+      formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
+      formattingEmailClosingStyle: this.formattingEmailClosingStyle,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -449,9 +516,39 @@ export class AppConfig {
       recordingIndicatorPosition: this.recordingIndicatorPosition,
       streamMode: this.streamMode,
       streamTranscriptionMode: this.streamTranscriptionMode,
+      userDisplayName: this.userDisplayName,
       formattingModeId: this.formattingModeId,
+      formattingAutoSelectEnabled: this.formattingAutoSelectEnabled,
+      formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
+      formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
+      formattingEmailClosingStyle: this.formattingEmailClosingStyle,
       formattingAvailable: this.formattingAvailable,
     }
+  }
+
+  public getFormattingRuntimeSettings(): FormattingRuntimeSettings {
+    return {
+      formattingModeId: this.formattingModeId,
+      formattingAutoSelectEnabled: this.formattingAutoSelectEnabled,
+      userDisplayName: this.userDisplayName,
+      formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
+      formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
+      formattingEmailClosingStyle: this.formattingEmailClosingStyle,
+    }
+  }
+
+  public getUserDisplayName(): string {
+    return this.userDisplayName
+  }
+
+  public async setUserDisplayName(userDisplayName: string): Promise<boolean> {
+    const normalized = userDisplayName.trim()
+    this.userDisplayName = normalized
+    if (normalized) {
+      this.formattingEmailIncludeSenderName = true
+    }
+    await this.save()
+    return true
   }
 
   public getFormattingModeId(): FormattingModeId {
@@ -461,6 +558,56 @@ export class AppConfig {
   public async setFormattingModeId(modeId: FormattingModeId): Promise<boolean> {
     if (!isValidFormattingModeId(modeId)) return false
     this.formattingModeId = modeId
+    await this.save()
+    return true
+  }
+
+  public getFormattingAutoSelectEnabled(): boolean {
+    return this.formattingAutoSelectEnabled
+  }
+
+  public async setFormattingAutoSelectEnabled(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.formattingAutoSelectEnabled = enabled
+    await this.save()
+    return true
+  }
+
+  public getFormattingEmailIncludeSenderName(): boolean {
+    return this.formattingEmailIncludeSenderName
+  }
+
+  public async setFormattingEmailIncludeSenderName(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.formattingEmailIncludeSenderName = enabled
+    await this.save()
+    return true
+  }
+
+  public getFormattingEmailGreetingStyle(): FormattingEmailGreetingStyle {
+    return this.formattingEmailGreetingStyle
+  }
+
+  public async setFormattingEmailGreetingStyle(
+    style: FormattingEmailGreetingStyle
+  ): Promise<boolean> {
+    if (!FORMATTING_EMAIL_GREETING_STYLES.has(style)) return false
+    this.formattingEmailGreetingStyle = style
+    await this.save()
+    return true
+  }
+
+  public getFormattingEmailClosingStyle(): FormattingEmailClosingStyle {
+    return this.formattingEmailClosingStyle
+  }
+
+  public async setFormattingEmailClosingStyle(
+    style: FormattingEmailClosingStyle
+  ): Promise<boolean> {
+    if (!FORMATTING_EMAIL_CLOSING_STYLES.has(style)) return false
+    this.formattingEmailClosingStyle = style
     await this.save()
     return true
   }

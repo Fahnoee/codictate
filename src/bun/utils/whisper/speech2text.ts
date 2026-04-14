@@ -4,9 +4,10 @@ import { resolveTranslateModelId } from '../../../shared/whisper-models'
 import { modelManager } from './model-manager'
 import { pasteTranscript } from '../keyboard/keyboard-events'
 import { applyFormatting } from '../formatting/apply-formatting'
+import { buildFormatterRequest } from '../formatting/resolve-formatting-request'
 import { join } from 'node:path'
 import { log } from '../logger'
-import type { FormattingModeId } from '../../../shared/formatting-modes'
+import type { FormattingRuntimeSettings } from '../../../shared/types'
 
 export const RECORDING_PATH = '/tmp/codictate-recording.wav'
 
@@ -229,15 +230,19 @@ export const speech2text = async (
   whisperLanguageCode: string | null | undefined,
   modelId: string,
   translateToEnglish: boolean,
-  formattingModeId: FormattingModeId = 'none'
+  formattingSettings: FormattingRuntimeSettings
 ) => {
   let transcript = await transcribe(
     whisperLanguageCode,
     modelId,
     translateToEnglish
   )
-  if (formattingModeId !== 'none') {
-    transcript = await applyFormatting(transcript, formattingModeId)
+  const formatterRequest = await buildFormatterRequest(
+    transcript,
+    formattingSettings
+  )
+  if (formatterRequest !== null) {
+    transcript = await applyFormatting(formatterRequest)
   }
   await pasteTranscript(transcript)
 }

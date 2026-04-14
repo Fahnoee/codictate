@@ -4,6 +4,8 @@ import type {
   AppSettings,
   AppStatus,
   DeviceInfo,
+  FormattingEmailClosingStyle,
+  FormattingEmailGreetingStyle,
   PermissionState,
   SettingsPane,
   StreamTranscriptionMode,
@@ -255,6 +257,41 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
             rpc.send.updateSettings(deps.appConfig.getSettings())
             deps.onFormattingModeChanged?.()
           }
+          return ok
+        },
+        setUserDisplayName: async ({ userDisplayName }) => {
+          const ok = await deps.appConfig.setUserDisplayName(userDisplayName)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingAutoSelectEnabled: async ({ enabled }) => {
+          const ok =
+            await deps.appConfig.setFormattingAutoSelectEnabled(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingEmailIncludeSenderName: async ({ enabled }) => {
+          const ok =
+            await deps.appConfig.setFormattingEmailIncludeSenderName(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingEmailGreetingStyle: async ({
+          style,
+        }: {
+          style: FormattingEmailGreetingStyle
+        }) => {
+          const ok = await deps.appConfig.setFormattingEmailGreetingStyle(style)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingEmailClosingStyle: async ({
+          style,
+        }: {
+          style: FormattingEmailClosingStyle
+        }) => {
+          const ok = await deps.appConfig.setFormattingEmailClosingStyle(style)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
         setOnboardingIndicatorPreview: async ({ active, mode }) => {

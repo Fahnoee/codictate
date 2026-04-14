@@ -91,7 +91,7 @@ export const startRecording = async (
             appConfig.getRuntimeTranscriptionWhisperCode(),
             appConfig.getWhisperModelId(),
             appConfig.getTranslateToEnglish(),
-            appConfig.getFormattingModeId()
+            appConfig.getFormattingRuntimeSettings()
           )
         }
         onDone()

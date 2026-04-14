@@ -12,6 +12,8 @@ import { motion, AnimatePresence } from "motion/react";
 import type {
   AppSettings,
   DevAppPreviewRoute,
+  FormattingEmailClosingStyle,
+  FormattingEmailGreetingStyle,
   RecordingIndicatorMode,
   ShortcutId,
   StreamTranscriptionMode,
@@ -62,6 +64,11 @@ import {
   setStreamMode,
   setStreamTranscriptionMode,
   setFormattingMode,
+  setUserDisplayName,
+  setFormattingAutoSelectEnabled,
+  setFormattingEmailIncludeSenderName,
+  setFormattingEmailGreetingStyle,
+  setFormattingEmailClosingStyle,
   downloadWhisperModel,
   cancelModelDownload,
   deleteWhisperModel,
@@ -92,6 +99,25 @@ const devPreviewSelectClass =
   "focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0 " +
   "cursor-pointer transition-[border-color,background-color,box-shadow] duration-200 " +
   "[color-scheme:dark] pl-4 pr-11 py-3.5 text-[21px] leading-snug";
+
+const FORMATTING_GREETING_STYLE_OPTIONS: {
+  value: FormattingEmailGreetingStyle;
+  label: string;
+}[] = [
+  { value: "auto", label: "Auto" },
+  { value: "hi", label: "Hi" },
+  { value: "hello", label: "Hello" },
+];
+
+const FORMATTING_CLOSING_STYLE_OPTIONS: {
+  value: FormattingEmailClosingStyle;
+  label: string;
+}[] = [
+  { value: "auto", label: "Auto" },
+  { value: "best-regards", label: "Best regards" },
+  { value: "thanks", label: "Thanks" },
+  { value: "kind-regards", label: "Kind regards" },
+];
 
 type SettingsCategory =
   | "transcription"
@@ -438,6 +464,7 @@ export function SettingsScreen({
   const [downloadProgress, setDownloadProgress] = useState<
     Record<string, number>
   >({});
+  const [userDisplayNameDraft, setUserDisplayNameDraft] = useState("");
   /** Model id being downloaded to satisfy a translate toggle, if any. */
   const translatePendingRef = useRef<string | null>(null);
   const [translateDownloadModelId, setTranslateDownloadModelId] = useState<
@@ -863,6 +890,72 @@ export function SettingsScreen({
     [queryClient],
   );
 
+  useEffect(() => {
+    setUserDisplayNameDraft(settings.userDisplayName);
+  }, [settings.userDisplayName]);
+
+  const handleUserDisplayNameCommit = useCallback(async () => {
+    const normalized = userDisplayNameDraft.trim();
+    if (normalized === settings.userDisplayName) return;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, userDisplayName: normalized } : old,
+    );
+    const ok = await setUserDisplayName(normalized);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+    }
+  }, [queryClient, settings.userDisplayName, userDisplayNameDraft]);
+
+  const handleFormattingAutoSelectToggle = useCallback(async () => {
+    const newValue = !settings.formattingAutoSelectEnabled;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, formattingAutoSelectEnabled: newValue } : old,
+    );
+    const ok = await setFormattingAutoSelectEnabled(newValue);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+    }
+  }, [queryClient, settings.formattingAutoSelectEnabled]);
+
+  const handleFormattingEmailIncludeSenderNameToggle = useCallback(async () => {
+    const newValue = !settings.formattingEmailIncludeSenderName;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, formattingEmailIncludeSenderName: newValue } : old,
+    );
+    const ok = await setFormattingEmailIncludeSenderName(newValue);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+    }
+  }, [queryClient, settings.formattingEmailIncludeSenderName]);
+
+  const handleFormattingEmailGreetingStyleChange = useCallback(
+    async (event: ChangeEvent<HTMLSelectElement>) => {
+      const style = event.target.value as FormattingEmailGreetingStyle;
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old ? { ...old, formattingEmailGreetingStyle: style } : old,
+      );
+      const ok = await setFormattingEmailGreetingStyle(style);
+      if (!ok) {
+        queryClient.setQueryData(["settings"], await fetchSettings());
+      }
+    },
+    [queryClient],
+  );
+
+  const handleFormattingEmailClosingStyleChange = useCallback(
+    async (event: ChangeEvent<HTMLSelectElement>) => {
+      const style = event.target.value as FormattingEmailClosingStyle;
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old ? { ...old, formattingEmailClosingStyle: style } : old,
+      );
+      const ok = await setFormattingEmailClosingStyle(style);
+      if (!ok) {
+        queryClient.setQueryData(["settings"], await fetchSettings());
+      }
+    },
+    [queryClient],
+  );
+
   const durationLabel = formatRecordingDurationLabel(
     settings.maxRecordingDuration,
   );
@@ -1253,9 +1346,9 @@ export function SettingsScreen({
                             key={mode.id}
                             onClick={() => handleFormattingModeChange(mode.id)}
                             className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors duration-150 cursor-pointer ${
-                            settings.formattingModeId === mode.id
-                              ? "bg-purple-500/10"
-                              : "hover:bg-white/4"
+                              settings.formattingModeId === mode.id
+                                ? "bg-purple-500/10"
+                                : "hover:bg-white/4"
                             }`}
                           >
                             <div
@@ -1291,6 +1384,118 @@ export function SettingsScreen({
                       When a format is selected, your transcribed speech will be
                       reshaped using Apple Intelligence before being pasted.
                       Works in standard recording mode only — not stream mode.
+                    </p>
+                  </div>
+
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Email behavior
+                    </h2>
+                    <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+                      <div className="flex items-center gap-3 px-4 py-3.5">
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-[21px] font-medium ${settings.formattingAutoSelectEnabled ? "text-white/78" : "text-white/58"}`}
+                          >
+                            Auto-select in mail apps
+                          </span>
+                          <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
+                            Automatically use email formatting when the focused
+                            app looks like an email client.
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleFormattingAutoSelectToggle}
+                          className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                            settings.formattingAutoSelectEnabled
+                              ? "bg-purple-500/30 border-purple-400/30"
+                              : "bg-white/7 border-white/14"
+                          }`}
+                          aria-label="Toggle automatic email formatting"
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                              settings.formattingAutoSelectEnabled
+                                ? "left-4 bg-purple-400/90"
+                                : "left-0.5 bg-white/40"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <div className="border-t border-white/8 px-4 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <span
+                              className={`block text-[21px] font-medium ${settings.formattingEmailIncludeSenderName ? "text-white/78" : "text-white/58"}`}
+                            >
+                              Add my name to email sign-off
+                            </span>
+                            <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
+                              Uses your stored name when the email needs a
+                              sign-off and you did not dictate one clearly.
+                            </span>
+                          </div>
+                          <button
+                            onClick={
+                              handleFormattingEmailIncludeSenderNameToggle
+                            }
+                            className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                              settings.formattingEmailIncludeSenderName
+                                ? "bg-purple-500/30 border-purple-400/30"
+                                : "bg-white/7 border-white/14"
+                            }`}
+                            aria-label="Toggle sender name in email sign-off"
+                          >
+                            <span
+                              className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                                settings.formattingEmailIncludeSenderName
+                                  ? "left-4 bg-purple-400/90"
+                                  : "left-0.5 bg-white/40"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <label className="block">
+                        <span className="mb-2 block text-[17px] text-white/44 font-sans">
+                          Greeting style
+                        </span>
+                        <select
+                          value={settings.formattingEmailGreetingStyle}
+                          onChange={handleFormattingEmailGreetingStyleChange}
+                          className={devPreviewSelectClass}
+                          aria-label="Preferred email greeting style"
+                        >
+                          {FORMATTING_GREETING_STYLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-2 block text-[17px] text-white/44 font-sans">
+                          Closing style
+                        </span>
+                        <select
+                          value={settings.formattingEmailClosingStyle}
+                          onChange={handleFormattingEmailClosingStyleChange}
+                          className={devPreviewSelectClass}
+                          aria-label="Preferred email closing style"
+                        >
+                          {FORMATTING_CLOSING_STYLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <p className={settingsHelperClass}>
+                      The formatter keeps the input language and only fills in
+                      missing pieces like greeting, sign-off, and spacing.
                     </p>
                   </div>
                 </>
@@ -1401,6 +1606,39 @@ export function SettingsScreen({
 
               {activeCategory === "general" && (
                 <>
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Profile
+                    </h2>
+                    <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden px-4 py-3.5">
+                      <label className="block">
+                        <span className="mb-2 block text-[17px] text-white/44 font-sans">
+                          Your name
+                        </span>
+                        <input
+                          type="text"
+                          value={userDisplayNameDraft}
+                          onChange={(event) =>
+                            setUserDisplayNameDraft(event.target.value)
+                          }
+                          onBlur={() => void handleUserDisplayNameCommit()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.currentTarget.blur();
+                            }
+                          }}
+                          placeholder="Your name"
+                          className="w-full rounded-lg border border-white/12 bg-white/5 px-4 py-3.5 text-[21px] font-medium text-white/78 outline-none transition-[border-color,background-color,box-shadow] duration-200 placeholder:text-white/24 hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0"
+                        />
+                      </label>
+                    </div>
+                    <p className={settingsHelperClass}>
+                      Stored as a general profile value. Formatting can use it
+                      for email sign-offs, and future features can reuse it
+                      elsewhere.
+                    </p>
+                  </div>
+
                   <div className="mb-8">
                     <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
                       Updates
