@@ -17,7 +17,9 @@ import {
 import { speechModelLocksTranscriptionLanguage } from '../shared/speech-models'
 import { shortcutTrayCompact } from '../shared/shortcut-options'
 import {
-  FORMATTING_MODES,
+  FORMATTING_MODE_ORDER,
+  formattingModeLabel,
+  isValidFormattingModeId,
   type FormattingModeId,
 } from '../shared/formatting-modes'
 
@@ -174,13 +176,31 @@ export const setupTray = (
   }
 
   const buildFormattingMenuItems = (cfg: AppConfig) => {
-    const current = cfg.getFormattingModeId()
-    return FORMATTING_MODES.map((m) => ({
-      type: 'normal' as const,
-      label: m.label,
-      action: `set-formatting-${m.id}`,
-      checked: current === m.id,
-    }))
+    const forced = cfg.getFormattingForceModeId()
+    const masterOn = cfg.getFormattingEnabled()
+    return [
+      {
+        type: 'normal' as const,
+        label: masterOn
+          ? 'Auto (detect from focused app)'
+          : 'Auto — Formatting is off',
+        action: 'set-formatting-force-auto',
+        checked: forced === null,
+      },
+      { type: 'divider' as const },
+      ...FORMATTING_MODE_ORDER.map((id) => ({
+        type: 'normal' as const,
+        label: `Force: ${formattingModeLabel(id)}`,
+        action: `set-formatting-force-${id}`,
+        checked: forced === id,
+      })),
+    ]
+  }
+
+  const formattingMenuLabel = (cfg: AppConfig) => {
+    const forced = cfg.getFormattingForceModeId()
+    if (forced === null) return 'Format output: Auto'
+    return `Format output: Force ${formattingModeLabel(forced)}`
   }
 
   const buildMenu = (selectedDevice: number) => [
@@ -216,7 +236,7 @@ export const setupTray = (
     buildStreamModeMenuItem(appConfig),
     {
       type: 'normal' as const,
-      label: 'Format output',
+      label: formattingMenuLabel(appConfig),
       submenu: buildFormattingMenuItems(appConfig),
     },
     { type: 'divider' as const },
@@ -269,12 +289,32 @@ export const setupTray = (
         }
       })()
     }
-    if (event.data.action.startsWith('set-formatting-')) {
-      const modeId = event.data.action.replace('set-formatting-', '')
+    if (event.data.action.startsWith('set-formatting-force-')) {
+      const suffix = event.data.action.replace('set-formatting-force-', '')
       void (async () => {
-        const ok = await appConfig.setFormattingModeId(
-          modeId as FormattingModeId
-        )
+        if (suffix === 'auto') {
+          const forcedBefore = appConfig.getFormattingForceModeId()
+          if (forcedBefore !== null) {
+            const ok = await appConfig.setFormattingForceModeId(null)
+            tray.setMenu(
+              buildMenu(appConfig.resolveAudioDevice(currentDevices))
+            )
+            if (ok) onFormattingModeChanged?.()
+          } else {
+            const ok = await appConfig.setFormattingEnabled(
+              !appConfig.getFormattingEnabled()
+            )
+            tray.setMenu(
+              buildMenu(appConfig.resolveAudioDevice(currentDevices))
+            )
+            if (ok) onFormattingModeChanged?.()
+          }
+          return
+        }
+        const next: FormattingModeId | null = isValidFormattingModeId(suffix)
+          ? suffix
+          : null
+        const ok = await appConfig.setFormattingForceModeId(next)
         tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
         if (ok) onFormattingModeChanged?.()
       })()

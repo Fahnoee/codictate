@@ -23,6 +23,12 @@ export type StreamSession = {
 export type ParakeetStreamStartOptions = {
   /** Log correlation: forwarded to helper as `CODICTATE_STREAM_DEBUG_ID` (stderr prefix `[sN]`). */
   streamDebugId?: number
+  /** When false, helper skips muting built-in output (default true). */
+  outputDuckBuiltIn?: boolean
+  /** When true, helper also ducks headphone / Bluetooth / USB output. */
+  outputDuckHeadphones?: boolean
+  /** Headphone duck target: 0 = fully mute, 100 = no change. */
+  outputDuckLevel?: number
 }
 
 const PARAKEET_MODEL_ID = 'parakeet-tdt-0.6b-v3'
@@ -57,6 +63,12 @@ export async function startParakeetStream(
   const args = [binary, 'stream', modeArg, modelDir]
   const streamDebugId = options?.streamDebugId
   const outputDuckDelayMs = duckDelayAfterStartChimeMs()
+  const outputDuckBuiltIn = options?.outputDuckBuiltIn !== false
+  const outputDuckHeadphones = options?.outputDuckHeadphones === true
+  const outputDuckLevel = Math.max(
+    0,
+    Math.min(100, Math.round(options?.outputDuckLevel ?? 0))
+  )
 
   log(
     'stream',
@@ -68,6 +80,9 @@ export async function startParakeetStream(
       modelDir,
       streamDebugId,
       outputDuckDelayMs,
+      outputDuckBuiltIn,
+      outputDuckHeadphones,
+      outputDuckLevel,
     }
   )
 
@@ -80,6 +95,9 @@ export async function startParakeetStream(
       LC_ALL: 'en_US.UTF-8',
       LANG: 'en_US.UTF-8',
       CODICTATE_OUTPUT_DUCK_DELAY_MS: String(outputDuckDelayMs),
+      CODICTATE_OUTPUT_DUCK_LEVEL: String(outputDuckLevel),
+      CODICTATE_OUTPUT_DUCK_HEADPHONES: outputDuckHeadphones ? '1' : '0',
+      ...(!outputDuckBuiltIn ? { CODICTATE_OUTPUT_DUCK_BUILT_IN: '0' } : {}),
       ...(streamDebugId != null
         ? { CODICTATE_STREAM_DEBUG_ID: String(streamDebugId) }
         : {}),

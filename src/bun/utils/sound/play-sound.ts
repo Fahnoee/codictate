@@ -5,11 +5,18 @@ const soundPath = (filename: string) =>
   join(import.meta.dir, `../sounds/${filename}`)
 
 const DICTATION_START_WAV = soundPath('dictation-start.wav')
+const FUN_MODE_START_MP3 = soundPath('funmode-dictation-start.mp3')
+const DICTATION_STOP_WAV = soundPath('dictation-stop.wav')
+const FUN_MODE_STOP_MP3 = soundPath('funmode-dication-end.mp3')
 /** Extra ms after measured WAV length before MicRecorder lowers system volume. */
 const DUCK_AFTER_CHIME_PAD_MS = 28
 const FALLBACK_CHIME_MS = 220
+const FUN_MODE_START_CHIME_MS = 432
 
-let cachedDuckDelayMs: number | null = null
+const cachedDuckDelayMs: { normal: number | null; fun: number | null } = {
+  normal: null,
+  fun: null,
+}
 
 function parseWavDurationMs(buf: Buffer): number | null {
   if (buf.length < 44) return null
@@ -49,10 +56,13 @@ function parseWavDurationMs(buf: Buffer): number | null {
  * Delay before MicRecorder ducks system output: matches `dictation-start.wav` length + pad.
  * Cached after first read so spawn stays cheap. Does not block recording startup.
  */
-export function duckDelayAfterStartChimeMs(): number {
-  if (cachedDuckDelayMs !== null) return cachedDuckDelayMs
+export function duckDelayAfterStartChimeMs(funModeEnabled = false): number {
+  const cacheKey = funModeEnabled ? 'fun' : 'normal'
+  if (cachedDuckDelayMs[cacheKey] !== null) return cachedDuckDelayMs[cacheKey]
   let baseMs = FALLBACK_CHIME_MS
-  if (existsSync(DICTATION_START_WAV)) {
+  if (funModeEnabled) {
+    baseMs = FUN_MODE_START_CHIME_MS
+  } else if (existsSync(DICTATION_START_WAV)) {
     try {
       const ms = parseWavDurationMs(readFileSync(DICTATION_START_WAV))
       if (ms != null && ms > 0 && ms < 30_000) baseMs = Math.ceil(ms)
@@ -60,19 +70,25 @@ export function duckDelayAfterStartChimeMs(): number {
       // keep fallback
     }
   }
-  cachedDuckDelayMs = Math.min(10_000, baseMs + DUCK_AFTER_CHIME_PAD_MS)
-  return cachedDuckDelayMs
+  cachedDuckDelayMs[cacheKey] = Math.min(
+    10_000,
+    baseMs + DUCK_AFTER_CHIME_PAD_MS
+  )
+  return cachedDuckDelayMs[cacheKey]!
 }
 
 // Fire-and-forget — does not block the caller
-export const playStartSound = () => {
-  // TODO: ADD fun mode
-  // Bun.spawn(['afplay', soundPath('start.mp3')])
-  Bun.spawn(['afplay', DICTATION_START_WAV])
+export const playStartSound = (funModeEnabled = false) => {
+  Bun.spawn([
+    'afplay',
+    funModeEnabled ? FUN_MODE_START_MP3 : DICTATION_START_WAV,
+  ])
 }
 
-export const playEndSound = () => {
-  // TODO: ADD fun mode
-  // Bun.spawn(['afplay', soundPath('end.mp3')])
-  Bun.spawn(['afplay', soundPath('dictation-stop.wav')])
+export const playEndSound = (funModeEnabled = false) => {
+  Bun.spawn(['afplay', funModeEnabled ? FUN_MODE_STOP_MP3 : DICTATION_STOP_WAV])
+}
+
+export const playCancelSound = () => {
+  Bun.spawn(['afplay', soundPath('dictation-cancel.wav')])
 }

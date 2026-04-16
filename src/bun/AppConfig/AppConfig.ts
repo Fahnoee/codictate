@@ -15,6 +15,11 @@ import type {
   AppSettings,
   FormattingEmailClosingStyle,
   FormattingEmailGreetingStyle,
+  FormattingEnabledModes,
+  FormattingImessageTone,
+  FormattingSlackTone,
+  FormattingDocumentTone,
+  FormattingDocumentStructure,
   FormattingRuntimeSettings,
   RecordingIndicatorMode,
   ShortcutId,
@@ -26,8 +31,15 @@ import {
   isValidWhisperModelId,
 } from '../../shared/whisper-models'
 import {
-  type FormattingModeId,
+  FORMATTING_MODE_ORDER,
+  isValidDocumentStructure,
+  isValidDocumentTone,
+  isValidEmailClosingStyle,
+  isValidEmailGreetingStyle,
   isValidFormattingModeId,
+  isValidImessageTone,
+  isValidSlackTone,
+  type FormattingModeId,
 } from '../../shared/formatting-modes'
 import { modelManager } from '../utils/whisper/model-manager'
 import { detectFormattingAvailable } from '../utils/formatting/formatting-availability'
@@ -64,37 +76,13 @@ function isValidRecordingIndicatorMode(
   )
 }
 
-const FORMATTING_EMAIL_GREETING_STYLES = new Set<FormattingEmailGreetingStyle>([
-  'auto',
-  'hi',
-  'hello',
-  'custom',
-])
-
-function isValidFormattingEmailGreetingStyle(
-  value: unknown
-): value is FormattingEmailGreetingStyle {
-  return (
-    typeof value === 'string' &&
-    FORMATTING_EMAIL_GREETING_STYLES.has(value as FormattingEmailGreetingStyle)
-  )
-}
-
-const FORMATTING_EMAIL_CLOSING_STYLES = new Set<FormattingEmailClosingStyle>([
-  'auto',
-  'best-regards',
-  'thanks',
-  'kind-regards',
-  'custom',
-])
-
-function isValidFormattingEmailClosingStyle(
-  value: unknown
-): value is FormattingEmailClosingStyle {
-  return (
-    typeof value === 'string' &&
-    FORMATTING_EMAIL_CLOSING_STYLES.has(value as FormattingEmailClosingStyle)
-  )
+function defaultEnabledModes(): FormattingEnabledModes {
+  return {
+    email: false,
+    imessage: false,
+    slack: false,
+    document: false,
+  }
 }
 
 export class AppConfig {
@@ -107,6 +95,7 @@ export class AppConfig {
   // debugMode is never persisted as true — always written as false on disk
   // so logging never silently resumes after a restart.
   private debugMode: boolean
+  private funModeEnabled: boolean
   private transcriptionLanguageId: string
   private maxRecordingDuration: RecordingDurationPresetSeconds
   private whisperModelId: string
@@ -120,15 +109,27 @@ export class AppConfig {
   private streamMode: boolean
   private streamTranscriptionMode: StreamTranscriptionMode
   private userDisplayName: string
-  private formattingModeId: FormattingModeId
-  private formattingAutoSelectEnabled: boolean
+  private formattingEnabled: boolean
+  private formattingEnabledModes: FormattingEnabledModes
+  private formattingForceModeId: FormattingModeId | null
   private formattingEmailIncludeSenderName: boolean
   private formattingEmailGreetingStyle: FormattingEmailGreetingStyle
   private formattingEmailClosingStyle: FormattingEmailClosingStyle
   private formattingEmailCustomGreeting: string
   private formattingEmailCustomClosing: string
+  private formattingImessageTone: FormattingImessageTone
+  private formattingImessageAllowEmoji: boolean
+  private formattingImessageLightweight: boolean
+  private formattingSlackTone: FormattingSlackTone
+  private formattingSlackAllowEmoji: boolean
+  private formattingSlackUseMarkdown: boolean
+  private formattingSlackLightweight: boolean
+  private formattingDocumentTone: FormattingDocumentTone
+  private formattingDocumentStructure: FormattingDocumentStructure
+  private formattingDocumentLightweight: boolean
   private audioDuckingLevel: number
   private audioDuckingIncludeHeadphones: boolean
+  private audioDuckingIncludeBuiltInSpeakers: boolean
   /** True when formatting can be offered on this OS; runtime helper still handles failures safely. */
   private formattingAvailable: boolean
   /**
@@ -144,6 +145,7 @@ export class AppConfig {
     this.shortcutId = 'option-space'
     this.shortcutHoldOnlyId = null
     this.debugMode = false
+    this.funModeEnabled = false
     this.transcriptionLanguageId = 'auto'
     this.maxRecordingDuration = DEFAULT_MAX_RECORDING_DURATION_SECONDS
     this.whisperModelId = DEFAULT_MODEL_ID
@@ -155,15 +157,28 @@ export class AppConfig {
     this.streamMode = false
     this.streamTranscriptionMode = 'vad'
     this.userDisplayName = ''
-    this.formattingModeId = 'none'
-    this.formattingAutoSelectEnabled = false
+    this.formattingEnabled = false
+    this.formattingEnabledModes = defaultEnabledModes()
+    this.formattingForceModeId = null
     this.formattingEmailIncludeSenderName = false
     this.formattingEmailGreetingStyle = 'auto'
     this.formattingEmailClosingStyle = 'auto'
     this.formattingEmailCustomGreeting = ''
     this.formattingEmailCustomClosing = ''
+    this.formattingImessageTone = 'neutral'
+    this.formattingImessageAllowEmoji = false
+    this.formattingImessageLightweight = true
+    this.formattingSlackTone = 'professional'
+    this.formattingSlackAllowEmoji = false
+    this.formattingSlackUseMarkdown = true
+    this.formattingSlackLightweight = true
+    this.formattingDocumentTone = 'neutral'
+    this.formattingDocumentStructure = 'prose'
+    this.formattingDocumentLightweight = true
+    // Default: fully mute headphones too, so dictation never competes with playback.
     this.audioDuckingLevel = 0
-    this.audioDuckingIncludeHeadphones = false
+    this.audioDuckingIncludeHeadphones = true
+    this.audioDuckingIncludeBuiltInSpeakers = true
     this.formattingAvailable = detectFormattingAvailable()
   }
 
@@ -193,6 +208,9 @@ export class AppConfig {
         isValidTranscriptionLanguageId(raw.transcriptionLanguageId)
       ) {
         this.transcriptionLanguageId = raw.transcriptionLanguageId
+      }
+      if (typeof raw.funModeEnabled === 'boolean') {
+        this.funModeEnabled = raw.funModeEnabled
       }
       if (
         raw.maxRecordingDuration !== undefined &&
@@ -264,25 +282,45 @@ export class AppConfig {
       ) {
         this.streamTranscriptionMode = raw.streamTranscriptionMode
       }
-      if (isValidFormattingModeId(raw.formattingModeId)) {
-        this.formattingModeId = raw.formattingModeId
-      }
       if (typeof raw.userDisplayName === 'string') {
         this.userDisplayName = raw.userDisplayName.trim()
       }
-      if (typeof raw.formattingAutoSelectEnabled === 'boolean') {
-        this.formattingAutoSelectEnabled = raw.formattingAutoSelectEnabled
+
+      // --- Formatting (new multi-enable model, with legacy migration) ---
+      if (typeof raw.formattingEnabled === 'boolean') {
+        this.formattingEnabled = raw.formattingEnabled
+      } else if (typeof raw.formattingModeId === 'string') {
+        // Legacy: any non-'none' mode implied formatting was active.
+        this.formattingEnabled = raw.formattingModeId !== 'none'
+      }
+      if (
+        raw.formattingEnabledModes !== undefined &&
+        raw.formattingEnabledModes !== null &&
+        typeof raw.formattingEnabledModes === 'object'
+      ) {
+        const next = defaultEnabledModes()
+        for (const id of FORMATTING_MODE_ORDER) {
+          const v = (raw.formattingEnabledModes as Record<string, unknown>)[id]
+          if (typeof v === 'boolean') next[id] = v
+        }
+        this.formattingEnabledModes = next
+      } else if (raw.formattingModeId === 'email') {
+        // Legacy single-mode: flip email on so old users retain their behaviour.
+        this.formattingEnabledModes = { ...defaultEnabledModes(), email: true }
+      }
+      if (raw.formattingForceModeId === null) {
+        this.formattingForceModeId = null
+      } else if (isValidFormattingModeId(raw.formattingForceModeId)) {
+        this.formattingForceModeId = raw.formattingForceModeId
       }
       if (typeof raw.formattingEmailIncludeSenderName === 'boolean') {
         this.formattingEmailIncludeSenderName =
           raw.formattingEmailIncludeSenderName
       }
-      if (
-        isValidFormattingEmailGreetingStyle(raw.formattingEmailGreetingStyle)
-      ) {
+      if (isValidEmailGreetingStyle(raw.formattingEmailGreetingStyle)) {
         this.formattingEmailGreetingStyle = raw.formattingEmailGreetingStyle
       }
-      if (isValidFormattingEmailClosingStyle(raw.formattingEmailClosingStyle)) {
+      if (isValidEmailClosingStyle(raw.formattingEmailClosingStyle)) {
         this.formattingEmailClosingStyle = raw.formattingEmailClosingStyle
       }
       if (typeof raw.formattingEmailCustomGreeting === 'string') {
@@ -290,6 +328,36 @@ export class AppConfig {
       }
       if (typeof raw.formattingEmailCustomClosing === 'string') {
         this.formattingEmailCustomClosing = raw.formattingEmailCustomClosing
+      }
+      if (isValidImessageTone(raw.formattingImessageTone)) {
+        this.formattingImessageTone = raw.formattingImessageTone
+      }
+      if (typeof raw.formattingImessageAllowEmoji === 'boolean') {
+        this.formattingImessageAllowEmoji = raw.formattingImessageAllowEmoji
+      }
+      if (typeof raw.formattingImessageLightweight === 'boolean') {
+        this.formattingImessageLightweight = raw.formattingImessageLightweight
+      }
+      if (isValidSlackTone(raw.formattingSlackTone)) {
+        this.formattingSlackTone = raw.formattingSlackTone
+      }
+      if (typeof raw.formattingSlackAllowEmoji === 'boolean') {
+        this.formattingSlackAllowEmoji = raw.formattingSlackAllowEmoji
+      }
+      if (typeof raw.formattingSlackUseMarkdown === 'boolean') {
+        this.formattingSlackUseMarkdown = raw.formattingSlackUseMarkdown
+      }
+      if (typeof raw.formattingSlackLightweight === 'boolean') {
+        this.formattingSlackLightweight = raw.formattingSlackLightweight
+      }
+      if (isValidDocumentTone(raw.formattingDocumentTone)) {
+        this.formattingDocumentTone = raw.formattingDocumentTone
+      }
+      if (isValidDocumentStructure(raw.formattingDocumentStructure)) {
+        this.formattingDocumentStructure = raw.formattingDocumentStructure
+      }
+      if (typeof raw.formattingDocumentLightweight === 'boolean') {
+        this.formattingDocumentLightweight = raw.formattingDocumentLightweight
       }
       if (
         typeof raw.audioDuckingLevel === 'number' &&
@@ -302,6 +370,10 @@ export class AppConfig {
       if (typeof raw.audioDuckingIncludeHeadphones === 'boolean') {
         this.audioDuckingIncludeHeadphones = raw.audioDuckingIncludeHeadphones
       }
+      if (typeof raw.audioDuckingIncludeBuiltInSpeakers === 'boolean') {
+        this.audioDuckingIncludeBuiltInSpeakers =
+          raw.audioDuckingIncludeBuiltInSpeakers
+      }
       log('config', 'loaded app config', {
         shortcutId: this.shortcutId,
         shortcutHoldOnlyId: this.shortcutHoldOnlyId ?? undefined,
@@ -309,6 +381,8 @@ export class AppConfig {
         streamTranscriptionMode: this.streamTranscriptionMode,
         translateToEnglish: this.translateToEnglish,
         transcriptionLanguageId: this.transcriptionLanguageId,
+        formattingEnabled: this.formattingEnabled,
+        formattingForceModeId: this.formattingForceModeId,
       })
     } catch {
       // No config file yet, defaults will be used
@@ -333,6 +407,7 @@ export class AppConfig {
       audioDevice: this.audioDevice,
       shortcutId: this.shortcutId,
       shortcutHoldOnlyId: this.shortcutHoldOnlyId,
+      funModeEnabled: this.funModeEnabled,
       transcriptionLanguageId: this.transcriptionLanguageId,
       maxRecordingDuration: this.maxRecordingDuration,
       whisperModelId: this.whisperModelId,
@@ -344,15 +419,28 @@ export class AppConfig {
       streamMode: this.streamMode,
       streamTranscriptionMode: this.streamTranscriptionMode,
       userDisplayName: this.userDisplayName,
-      formattingModeId: this.formattingModeId,
-      formattingAutoSelectEnabled: this.formattingAutoSelectEnabled,
+      formattingEnabled: this.formattingEnabled,
+      formattingEnabledModes: this.formattingEnabledModes,
+      formattingForceModeId: this.formattingForceModeId,
       formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
       formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
       formattingEmailClosingStyle: this.formattingEmailClosingStyle,
       formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
       formattingEmailCustomClosing: this.formattingEmailCustomClosing,
+      formattingImessageTone: this.formattingImessageTone,
+      formattingImessageAllowEmoji: this.formattingImessageAllowEmoji,
+      formattingImessageLightweight: this.formattingImessageLightweight,
+      formattingSlackTone: this.formattingSlackTone,
+      formattingSlackAllowEmoji: this.formattingSlackAllowEmoji,
+      formattingSlackUseMarkdown: this.formattingSlackUseMarkdown,
+      formattingSlackLightweight: this.formattingSlackLightweight,
+      formattingDocumentTone: this.formattingDocumentTone,
+      formattingDocumentStructure: this.formattingDocumentStructure,
+      formattingDocumentLightweight: this.formattingDocumentLightweight,
       audioDuckingLevel: this.audioDuckingLevel,
       audioDuckingIncludeHeadphones: this.audioDuckingIncludeHeadphones,
+      audioDuckingIncludeBuiltInSpeakers:
+        this.audioDuckingIncludeBuiltInSpeakers,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -464,6 +552,16 @@ export class AppConfig {
     return this.debugMode
   }
 
+  public getFunModeEnabled(): boolean {
+    return this.funModeEnabled
+  }
+
+  public async setFunModeEnabled(enabled: boolean): Promise<boolean> {
+    this.funModeEnabled = enabled
+    await this.save()
+    return true
+  }
+
   public getMaxRecordingDurationSeconds(): number {
     return this.maxRecordingDuration
   }
@@ -538,6 +636,7 @@ export class AppConfig {
       shortcutHoldOnlyId: this.shortcutHoldOnlyId,
       maxRecordingDuration: this.maxRecordingDuration,
       debugMode: this.debugMode,
+      funModeEnabled: this.funModeEnabled,
       transcriptionLanguageId: this.transcriptionLanguageId,
       whisperModelId: this.whisperModelId,
       translateToEnglish: this.translateToEnglish,
@@ -548,29 +647,53 @@ export class AppConfig {
       streamMode: this.streamMode,
       streamTranscriptionMode: this.streamTranscriptionMode,
       userDisplayName: this.userDisplayName,
-      formattingModeId: this.formattingModeId,
-      formattingAutoSelectEnabled: this.formattingAutoSelectEnabled,
+      formattingEnabled: this.formattingEnabled,
+      formattingEnabledModes: { ...this.formattingEnabledModes },
+      formattingForceModeId: this.formattingForceModeId,
       formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
       formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
       formattingEmailClosingStyle: this.formattingEmailClosingStyle,
       formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
       formattingEmailCustomClosing: this.formattingEmailCustomClosing,
+      formattingImessageTone: this.formattingImessageTone,
+      formattingImessageAllowEmoji: this.formattingImessageAllowEmoji,
+      formattingImessageLightweight: this.formattingImessageLightweight,
+      formattingSlackTone: this.formattingSlackTone,
+      formattingSlackAllowEmoji: this.formattingSlackAllowEmoji,
+      formattingSlackUseMarkdown: this.formattingSlackUseMarkdown,
+      formattingSlackLightweight: this.formattingSlackLightweight,
+      formattingDocumentTone: this.formattingDocumentTone,
+      formattingDocumentStructure: this.formattingDocumentStructure,
+      formattingDocumentLightweight: this.formattingDocumentLightweight,
       audioDuckingLevel: this.audioDuckingLevel,
       audioDuckingIncludeHeadphones: this.audioDuckingIncludeHeadphones,
+      audioDuckingIncludeBuiltInSpeakers:
+        this.audioDuckingIncludeBuiltInSpeakers,
       formattingAvailable: this.formattingAvailable,
     }
   }
 
   public getFormattingRuntimeSettings(): FormattingRuntimeSettings {
     return {
-      formattingModeId: this.formattingModeId,
-      formattingAutoSelectEnabled: this.formattingAutoSelectEnabled,
+      formattingEnabled: this.formattingEnabled,
+      formattingEnabledModes: { ...this.formattingEnabledModes },
+      formattingForceModeId: this.formattingForceModeId,
       userDisplayName: this.userDisplayName,
       formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
       formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
       formattingEmailClosingStyle: this.formattingEmailClosingStyle,
       formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
       formattingEmailCustomClosing: this.formattingEmailCustomClosing,
+      formattingImessageTone: this.formattingImessageTone,
+      formattingImessageAllowEmoji: this.formattingImessageAllowEmoji,
+      formattingImessageLightweight: this.formattingImessageLightweight,
+      formattingSlackTone: this.formattingSlackTone,
+      formattingSlackAllowEmoji: this.formattingSlackAllowEmoji,
+      formattingSlackUseMarkdown: this.formattingSlackUseMarkdown,
+      formattingSlackLightweight: this.formattingSlackLightweight,
+      formattingDocumentTone: this.formattingDocumentTone,
+      formattingDocumentStructure: this.formattingDocumentStructure,
+      formattingDocumentLightweight: this.formattingDocumentLightweight,
     }
   }
 
@@ -588,25 +711,42 @@ export class AppConfig {
     return true
   }
 
-  public getFormattingModeId(): FormattingModeId {
-    return this.formattingModeId
+  public getFormattingEnabled(): boolean {
+    return this.formattingEnabled
   }
 
-  public async setFormattingModeId(modeId: FormattingModeId): Promise<boolean> {
-    if (!isValidFormattingModeId(modeId)) return false
-    this.formattingModeId = modeId
+  public async setFormattingEnabled(enabled: boolean): Promise<boolean> {
+    this.formattingEnabled = enabled
     await this.save()
     return true
   }
 
-  public getFormattingAutoSelectEnabled(): boolean {
-    return this.formattingAutoSelectEnabled
+  public getFormattingEnabledModes(): FormattingEnabledModes {
+    return { ...this.formattingEnabledModes }
   }
 
-  public async setFormattingAutoSelectEnabled(
+  public async setFormattingModeEnabled(
+    modeId: FormattingModeId,
     enabled: boolean
   ): Promise<boolean> {
-    this.formattingAutoSelectEnabled = enabled
+    if (!isValidFormattingModeId(modeId)) return false
+    this.formattingEnabledModes = {
+      ...this.formattingEnabledModes,
+      [modeId]: enabled,
+    }
+    await this.save()
+    return true
+  }
+
+  public getFormattingForceModeId(): FormattingModeId | null {
+    return this.formattingForceModeId
+  }
+
+  public async setFormattingForceModeId(
+    modeId: FormattingModeId | null
+  ): Promise<boolean> {
+    if (modeId !== null && !isValidFormattingModeId(modeId)) return false
+    this.formattingForceModeId = modeId
     await this.save()
     return true
   }
@@ -630,7 +770,7 @@ export class AppConfig {
   public async setFormattingEmailGreetingStyle(
     style: FormattingEmailGreetingStyle
   ): Promise<boolean> {
-    if (!FORMATTING_EMAIL_GREETING_STYLES.has(style)) return false
+    if (!isValidEmailGreetingStyle(style)) return false
     this.formattingEmailGreetingStyle = style
     await this.save()
     return true
@@ -643,7 +783,7 @@ export class AppConfig {
   public async setFormattingEmailClosingStyle(
     style: FormattingEmailClosingStyle
   ): Promise<boolean> {
-    if (!FORMATTING_EMAIL_CLOSING_STYLES.has(style)) return false
+    if (!isValidEmailClosingStyle(style)) return false
     this.formattingEmailClosingStyle = style
     await this.save()
     return true
@@ -653,7 +793,9 @@ export class AppConfig {
     return this.formattingEmailCustomGreeting
   }
 
-  public async setFormattingEmailCustomGreeting(text: string): Promise<boolean> {
+  public async setFormattingEmailCustomGreeting(
+    text: string
+  ): Promise<boolean> {
     this.formattingEmailCustomGreeting = text
     await this.save()
     return true
@@ -665,6 +807,90 @@ export class AppConfig {
 
   public async setFormattingEmailCustomClosing(text: string): Promise<boolean> {
     this.formattingEmailCustomClosing = text
+    await this.save()
+    return true
+  }
+
+  public async setFormattingImessageTone(
+    tone: FormattingImessageTone
+  ): Promise<boolean> {
+    if (!isValidImessageTone(tone)) return false
+    this.formattingImessageTone = tone
+    await this.save()
+    return true
+  }
+
+  public async setFormattingImessageAllowEmoji(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.formattingImessageAllowEmoji = enabled
+    await this.save()
+    return true
+  }
+
+  public async setFormattingImessageLightweight(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.formattingImessageLightweight = enabled
+    await this.save()
+    return true
+  }
+
+  public async setFormattingSlackTone(
+    tone: FormattingSlackTone
+  ): Promise<boolean> {
+    if (!isValidSlackTone(tone)) return false
+    this.formattingSlackTone = tone
+    await this.save()
+    return true
+  }
+
+  public async setFormattingSlackAllowEmoji(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.formattingSlackAllowEmoji = enabled
+    await this.save()
+    return true
+  }
+
+  public async setFormattingSlackUseMarkdown(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.formattingSlackUseMarkdown = enabled
+    await this.save()
+    return true
+  }
+
+  public async setFormattingSlackLightweight(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.formattingSlackLightweight = enabled
+    await this.save()
+    return true
+  }
+
+  public async setFormattingDocumentTone(
+    tone: FormattingDocumentTone
+  ): Promise<boolean> {
+    if (!isValidDocumentTone(tone)) return false
+    this.formattingDocumentTone = tone
+    await this.save()
+    return true
+  }
+
+  public async setFormattingDocumentStructure(
+    structure: FormattingDocumentStructure
+  ): Promise<boolean> {
+    if (!isValidDocumentStructure(structure)) return false
+    this.formattingDocumentStructure = structure
+    await this.save()
+    return true
+  }
+
+  public async setFormattingDocumentLightweight(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.formattingDocumentLightweight = enabled
     await this.save()
     return true
   }
@@ -684,8 +910,22 @@ export class AppConfig {
     return this.audioDuckingIncludeHeadphones
   }
 
-  public async setAudioDuckingIncludeHeadphones(enabled: boolean): Promise<boolean> {
+  public async setAudioDuckingIncludeHeadphones(
+    enabled: boolean
+  ): Promise<boolean> {
     this.audioDuckingIncludeHeadphones = enabled
+    await this.save()
+    return true
+  }
+
+  public getAudioDuckingIncludeBuiltInSpeakers(): boolean {
+    return this.audioDuckingIncludeBuiltInSpeakers
+  }
+
+  public async setAudioDuckingIncludeBuiltInSpeakers(
+    enabled: boolean
+  ): Promise<boolean> {
+    this.audioDuckingIncludeBuiltInSpeakers = enabled
     await this.save()
     return true
   }

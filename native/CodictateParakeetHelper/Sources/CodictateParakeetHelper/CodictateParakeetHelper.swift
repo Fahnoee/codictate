@@ -187,24 +187,29 @@ private func outputDeviceName(_ id: AudioDeviceID) -> String {
   return "Device \(id)"
 }
 
-/// Matches MicRecorder ducking: built-in speakers only, never headphones / AirPods / USB / BT / virtual routes.
-private func shouldLowerOutputForDevice(_ id: AudioDeviceID) -> Bool {
-  guard id != 0 else { return false }
+private enum OutputDeviceKind {
+  case builtIn
+  case headphone
+  case other
+}
+
+private func classifyOutputDevice(_ id: AudioDeviceID) -> OutputDeviceKind {
+  guard id != 0 else { return .other }
   let transport = getDeviceTransportType(id)
   if transport == kAudioDeviceTransportTypeAggregate || transport == kAudioDeviceTransportTypeVirtual {
-    return false
-  }
-  if transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeUSB {
-    return false
+    return .other
   }
   let name = outputDeviceName(id)
-  if name.localizedCaseInsensitiveContains("headphone")
+  if transport == kAudioDeviceTransportTypeBluetooth
+    || transport == kAudioDeviceTransportTypeUSB
+    || name.localizedCaseInsensitiveContains("headphone")
     || name.localizedCaseInsensitiveContains("headset")
     || name.localizedCaseInsensitiveContains("airpods")
   {
-    return false
+    return .headphone
   }
-  return transport == kAudioDeviceTransportTypeBuiltIn
+  if transport == kAudioDeviceTransportTypeBuiltIn { return .builtIn }
+  return .other
 }
 
 private struct SavedOutputVolume {
@@ -219,9 +224,16 @@ private func outputVolumeScalarAddress() -> AudioObjectPropertyAddress {
     mElement: kAudioObjectPropertyElementMain)
 }
 
-private func tryApplyOutputDuck() -> SavedOutputVolume? {
+private func tryApplyOutputDuck(
+  builtInEnabled: Bool,
+  headphonesEnabled: Bool,
+  headphoneLevel: Int
+) -> SavedOutputVolume? {
   let device = getDefaultOutputDevice()
-  guard shouldLowerOutputForDevice(device) else { return nil }
+  let kind = classifyOutputDevice(device)
+  guard
+    (kind == .builtIn && builtInEnabled) || (kind == .headphone && headphonesEnabled)
+  else { return nil }
   var addr = outputVolumeScalarAddress()
   guard AudioObjectHasProperty(device, &addr) else { return nil }
   var settable: DarwinBoolean = false
@@ -233,7 +245,7 @@ private func tryApplyOutputDuck() -> SavedOutputVolume? {
   guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &current) == noErr else {
     return nil
   }
-  let ducked: Float32 = 0
+  let ducked: Float32 = kind == .builtIn ? 0 : Float32(max(0, min(100, headphoneLevel))) / 100.0
   guard ducked + 0.02 < current else { return nil }
   var toWrite = ducked
   guard AudioObjectSetPropertyData(device, &addr, 0, nil, size, &toWrite) == noErr else {
@@ -262,13 +274,21 @@ private final class StreamOutputDuckCoordinator: @unchecked Sendable {
   private var savedOutputVolume: SavedOutputVolume?
   private var stopped = false
 
-  func begin(delaySeconds: TimeInterval) {
+  func begin(
+    delaySeconds: TimeInterval,
+    builtInEnabled: Bool,
+    headphonesEnabled: Bool,
+    headphoneLevel: Int
+  ) {
     lock.lock()
     stopped = false
     lock.unlock()
 
-    let apply: () -> Void = { [weak self] in
-      self?.applyIfNeeded()
+    let apply: @Sendable () -> Void = { [weak self] in
+      self?.applyIfNeeded(
+        builtInEnabled: builtInEnabled,
+        headphonesEnabled: headphonesEnabled,
+        headphoneLevel: headphoneLevel)
     }
     if delaySeconds <= 0 {
       DispatchQueue.global().async {
@@ -281,12 +301,21 @@ private final class StreamOutputDuckCoordinator: @unchecked Sendable {
     }
   }
 
-  private func applyIfNeeded() {
+  private func applyIfNeeded(
+    builtInEnabled: Bool,
+    headphonesEnabled: Bool,
+    headphoneLevel: Int
+  ) {
     lock.lock()
     let alreadyStopped = stopped || savedOutputVolume != nil
     lock.unlock()
     if alreadyStopped { return }
-    guard let applied = tryApplyOutputDuck() else { return }
+    guard
+      let applied = tryApplyOutputDuck(
+        builtInEnabled: builtInEnabled,
+        headphonesEnabled: headphonesEnabled,
+        headphoneLevel: headphoneLevel)
+    else { return }
     lock.lock()
     defer { lock.unlock() }
     if stopped {
@@ -317,6 +346,22 @@ private func outputDuckDelaySecondsFromEnv() -> TimeInterval {
   let raw = ProcessInfo.processInfo.environment["CODICTATE_OUTPUT_DUCK_DELAY_MS"] ?? ""
   guard let ms = Int(raw), ms >= 0, ms <= 10_000 else { return 0.248 }
   return Double(ms) / 1000.0
+}
+
+private func outputDuckBuiltInEnabledFromEnv() -> Bool {
+  let raw = ProcessInfo.processInfo.environment["CODICTATE_OUTPUT_DUCK_BUILT_IN"] ?? "1"
+  return raw != "0"
+}
+
+private func outputDuckHeadphonesEnabledFromEnv() -> Bool {
+  let raw = ProcessInfo.processInfo.environment["CODICTATE_OUTPUT_DUCK_HEADPHONES"] ?? "0"
+  return raw != "0"
+}
+
+private func outputDuckLevelFromEnv() -> Int {
+  let raw = ProcessInfo.processInfo.environment["CODICTATE_OUTPUT_DUCK_LEVEL"] ?? "0"
+  guard let value = Int(raw) else { return 0 }
+  return max(0, min(100, value))
 }
 
 private func installStreamSignalHandlersForCleanup() {
@@ -415,8 +460,21 @@ struct CodictateParakeetHelperMain {
     let models = try await loadAsrModels(parakeetDir: modelDir)
     logPhase("stream [\(mode)]: models ready")
     installStreamSignalHandlersForCleanup()
-    StreamOutputDuckCoordinator.shared.begin(delaySeconds: outputDuckDelaySecondsFromEnv())
-    defer { StreamOutputDuckCoordinator.shared.end() }
+    let duckBuiltInOutput = outputDuckBuiltInEnabledFromEnv()
+    let duckHeadphoneOutput = outputDuckHeadphonesEnabledFromEnv()
+    let duckLevel = outputDuckLevelFromEnv()
+    if duckBuiltInOutput || duckHeadphoneOutput {
+      StreamOutputDuckCoordinator.shared.begin(
+        delaySeconds: outputDuckDelaySecondsFromEnv(),
+        builtInEnabled: duckBuiltInOutput,
+        headphonesEnabled: duckHeadphoneOutput,
+        headphoneLevel: duckLevel)
+    }
+    defer {
+      if duckBuiltInOutput || duckHeadphoneOutput {
+        StreamOutputDuckCoordinator.shared.end()
+      }
+    }
 
     if mode == "vad" {
       try await runVadMode(models: models)

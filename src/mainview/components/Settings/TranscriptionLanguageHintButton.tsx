@@ -1,5 +1,3 @@
-"use client";
-
 import { InstantTooltip } from "../Common/InstantTooltip";
 import { TRANSCRIPTION_LANGUAGE_HINT } from "../../../shared/transcription-languages";
 

@@ -14,6 +14,10 @@ import type {
   FormattingModeId,
   FormattingEmailGreetingStyle,
   FormattingEmailClosingStyle,
+  FormattingImessageTone,
+  FormattingSlackTone,
+  FormattingDocumentTone,
+  FormattingDocumentStructure,
 } from '../shared/types'
 import { appEvents } from './app-events'
 import { SPEECH_MODELS } from '../shared/speech-models'
@@ -131,6 +135,10 @@ export async function setDebugMode(enabled: boolean): Promise<boolean> {
   return rpc.request.setDebugMode({ enabled })
 }
 
+export async function setFunModeEnabled(enabled: boolean): Promise<boolean> {
+  return rpc.request.setFunModeEnabled({ enabled })
+}
+
 export async function setTranscriptionLanguage(
   transcriptionLanguageId: string
 ): Promise<boolean> {
@@ -190,22 +198,27 @@ export async function setStreamTranscriptionMode(
   return rpc.request.setStreamTranscriptionMode({ mode })
 }
 
-export async function setFormattingMode(
-  modeId: FormattingModeId
+export async function setFormattingEnabled(enabled: boolean): Promise<boolean> {
+  return rpc.request.setFormattingEnabled({ enabled })
+}
+
+export async function setFormattingModeEnabled(
+  modeId: FormattingModeId,
+  enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingMode({ modeId })
+  return rpc.request.setFormattingModeEnabled({ modeId, enabled })
+}
+
+export async function setFormattingForceModeId(
+  modeId: FormattingModeId | null
+): Promise<boolean> {
+  return rpc.request.setFormattingForceModeId({ modeId })
 }
 
 export async function setUserDisplayName(
   userDisplayName: string
 ): Promise<boolean> {
   return rpc.request.setUserDisplayName({ userDisplayName })
-}
-
-export async function setFormattingAutoSelectEnabled(
-  enabled: boolean
-): Promise<boolean> {
-  return rpc.request.setFormattingAutoSelectEnabled({ enabled })
 }
 
 export async function setFormattingEmailIncludeSenderName(
@@ -238,6 +251,66 @@ export async function setFormattingEmailCustomClosing(
   return rpc.request.setFormattingEmailCustomClosing({ text })
 }
 
+export async function setFormattingImessageTone(
+  tone: FormattingImessageTone
+): Promise<boolean> {
+  return rpc.request.setFormattingImessageTone({ tone })
+}
+
+export async function setFormattingImessageAllowEmoji(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setFormattingImessageAllowEmoji({ enabled })
+}
+
+export async function setFormattingImessageLightweight(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setFormattingImessageLightweight({ enabled })
+}
+
+export async function setFormattingSlackTone(
+  tone: FormattingSlackTone
+): Promise<boolean> {
+  return rpc.request.setFormattingSlackTone({ tone })
+}
+
+export async function setFormattingSlackAllowEmoji(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setFormattingSlackAllowEmoji({ enabled })
+}
+
+export async function setFormattingSlackUseMarkdown(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setFormattingSlackUseMarkdown({ enabled })
+}
+
+export async function setFormattingSlackLightweight(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setFormattingSlackLightweight({ enabled })
+}
+
+export async function setFormattingDocumentTone(
+  tone: FormattingDocumentTone
+): Promise<boolean> {
+  return rpc.request.setFormattingDocumentTone({ tone })
+}
+
+export async function setFormattingDocumentStructure(
+  structure: FormattingDocumentStructure
+): Promise<boolean> {
+  return rpc.request.setFormattingDocumentStructure({ structure })
+}
+
+export async function setFormattingDocumentLightweight(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setFormattingDocumentLightweight({ enabled })
+}
+
 export async function setAudioDuckingLevel(level: number): Promise<boolean> {
   return rpc.request.setAudioDuckingLevel({ level })
 }
@@ -246,6 +319,12 @@ export async function setAudioDuckingIncludeHeadphones(
   enabled: boolean
 ): Promise<boolean> {
   return rpc.request.setAudioDuckingIncludeHeadphones({ enabled })
+}
+
+export async function setAudioDuckingIncludeBuiltInSpeakers(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setAudioDuckingIncludeBuiltInSpeakers({ enabled })
 }
 
 export function downloadWhisperModel(modelId: string): void {

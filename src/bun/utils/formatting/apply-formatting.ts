@@ -2,6 +2,43 @@ import { log } from '../logger'
 import { findFormatterHelperPath } from './formatting-availability'
 import type { FormatterRequest } from './resolve-formatting-request'
 
+function normaliseLightweightChatText(text: string): string {
+  return text
+    .trim()
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+}
+
+function applyDeterministicChatStyle(
+  text: string,
+  request: FormatterRequest
+): string {
+  const trimmed = text.trim()
+  if (!trimmed) return trimmed
+
+  if (request.modeId === 'imessage' && request.imessageTone === 'casual') {
+    return trimmed.toLocaleLowerCase()
+  }
+
+  if (request.modeId === 'slack' && request.slackTone === 'casual') {
+    return trimmed.toLocaleLowerCase()
+  }
+
+  if (request.modeId === 'document' && request.documentTone === 'casual') {
+    return trimmed.toLocaleLowerCase()
+  }
+
+  return trimmed
+}
+
+function shouldBypassAiFormatting(request: FormatterRequest): boolean {
+  return (
+    (request.modeId === 'imessage' && request.imessageLightweight) ||
+    (request.modeId === 'slack' && request.slackLightweight) ||
+    (request.modeId === 'document' && request.documentLightweight)
+  )
+}
+
 /**
  * Calls CodictateFormatterHelper to reformat `text` using Apple FoundationModels.
  * Returns the formatted text on success, or the original `text` on any failure
@@ -10,8 +47,22 @@ import type { FormatterRequest } from './resolve-formatting-request'
 export async function applyFormatting(
   request: FormatterRequest
 ): Promise<string> {
-  if (request.modeId === 'none' || !request.transcript.trim()) {
+  if (!request.transcript.trim()) {
     return request.transcript
+  }
+
+  if (shouldBypassAiFormatting(request)) {
+    const lightweight = applyDeterministicChatStyle(
+      normaliseLightweightChatText(request.transcript),
+      request
+    )
+    log('formatter', 'using lightweight deterministic formatting', {
+      modeId: request.modeId,
+      imessageLightweight: request.imessageLightweight,
+      slackLightweight: request.slackLightweight,
+      documentLightweight: request.documentLightweight,
+    })
+    return lightweight || request.transcript
   }
 
   try {
@@ -51,7 +102,10 @@ export async function applyFormatting(
       return request.transcript
     }
 
-    const formatted = new TextDecoder('utf-8').decode(stdoutBytes).trim()
+    const formatted = applyDeterministicChatStyle(
+      new TextDecoder('utf-8').decode(stdoutBytes),
+      request
+    )
     if (!formatted) {
       log('formatter', 'empty output from helper — using raw transcript')
       return request.transcript

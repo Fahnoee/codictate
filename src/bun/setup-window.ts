@@ -6,11 +6,15 @@ import type {
   DeviceInfo,
   FormattingEmailClosingStyle,
   FormattingEmailGreetingStyle,
+  FormattingImessageTone,
+  FormattingSlackTone,
+  FormattingDocumentTone,
+  FormattingDocumentStructure,
+  FormattingModeId,
   PermissionState,
   SettingsPane,
   StreamTranscriptionMode,
   UpdateCheckState,
-  FormattingModeId,
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
@@ -141,6 +145,11 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           await deps.onSetDebugMode?.(enabled)
           return true
         },
+        setFunModeEnabled: async ({ enabled }) => {
+          const ok = await deps.appConfig.setFunModeEnabled(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
         setTranscriptionLanguage: async ({ transcriptionLanguageId }) => {
           const ok = await deps.appConfig.setTranscriptionLanguageId(
             transcriptionLanguageId
@@ -250,9 +259,43 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           deps.onStreamModeChanged?.()
           return true
         },
-        setFormattingMode: async ({ modeId }: { modeId: FormattingModeId }) => {
-          log('config', 'rpc setFormattingMode request', { modeId })
-          const ok = await deps.appConfig.setFormattingModeId(modeId)
+        setFormattingEnabled: async ({ enabled }: { enabled: boolean }) => {
+          log('config', 'rpc setFormattingEnabled request', { enabled })
+          const ok = await deps.appConfig.setFormattingEnabled(enabled)
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+            deps.onFormattingModeChanged?.()
+          }
+          return ok
+        },
+        setFormattingModeEnabled: async ({
+          modeId,
+          enabled,
+        }: {
+          modeId: FormattingModeId
+          enabled: boolean
+        }) => {
+          log('config', 'rpc setFormattingModeEnabled request', {
+            modeId,
+            enabled,
+          })
+          const ok = await deps.appConfig.setFormattingModeEnabled(
+            modeId,
+            enabled
+          )
+          if (ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+            deps.onFormattingModeChanged?.()
+          }
+          return ok
+        },
+        setFormattingForceModeId: async ({
+          modeId,
+        }: {
+          modeId: FormattingModeId | null
+        }) => {
+          log('config', 'rpc setFormattingForceModeId request', { modeId })
+          const ok = await deps.appConfig.setFormattingForceModeId(modeId)
           if (ok) {
             rpc.send.updateSettings(deps.appConfig.getSettings())
             deps.onFormattingModeChanged?.()
@@ -261,12 +304,6 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         },
         setUserDisplayName: async ({ userDisplayName }) => {
           const ok = await deps.appConfig.setUserDisplayName(userDisplayName)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingAutoSelectEnabled: async ({ enabled }) => {
-          const ok =
-            await deps.appConfig.setFormattingAutoSelectEnabled(enabled)
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
@@ -294,7 +331,11 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
-        setFormattingEmailCustomGreeting: async ({ text }: { text: string }) => {
+        setFormattingEmailCustomGreeting: async ({
+          text,
+        }: {
+          text: string
+        }) => {
           const ok = await deps.appConfig.setFormattingEmailCustomGreeting(text)
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
@@ -304,13 +345,122 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
+        setFormattingImessageTone: async ({
+          tone,
+        }: {
+          tone: FormattingImessageTone
+        }) => {
+          const ok = await deps.appConfig.setFormattingImessageTone(tone)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingImessageAllowEmoji: async ({
+          enabled,
+        }: {
+          enabled: boolean
+        }) => {
+          const ok =
+            await deps.appConfig.setFormattingImessageAllowEmoji(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingImessageLightweight: async ({
+          enabled,
+        }: {
+          enabled: boolean
+        }) => {
+          const ok =
+            await deps.appConfig.setFormattingImessageLightweight(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingSlackTone: async ({
+          tone,
+        }: {
+          tone: FormattingSlackTone
+        }) => {
+          const ok = await deps.appConfig.setFormattingSlackTone(tone)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingSlackAllowEmoji: async ({
+          enabled,
+        }: {
+          enabled: boolean
+        }) => {
+          const ok = await deps.appConfig.setFormattingSlackAllowEmoji(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingSlackUseMarkdown: async ({
+          enabled,
+        }: {
+          enabled: boolean
+        }) => {
+          const ok = await deps.appConfig.setFormattingSlackUseMarkdown(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingSlackLightweight: async ({
+          enabled,
+        }: {
+          enabled: boolean
+        }) => {
+          const ok = await deps.appConfig.setFormattingSlackLightweight(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingDocumentTone: async ({
+          tone,
+        }: {
+          tone: FormattingDocumentTone
+        }) => {
+          const ok = await deps.appConfig.setFormattingDocumentTone(tone)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingDocumentStructure: async ({
+          structure,
+        }: {
+          structure: FormattingDocumentStructure
+        }) => {
+          const ok =
+            await deps.appConfig.setFormattingDocumentStructure(structure)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingDocumentLightweight: async ({
+          enabled,
+        }: {
+          enabled: boolean
+        }) => {
+          const ok =
+            await deps.appConfig.setFormattingDocumentLightweight(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
         setAudioDuckingLevel: async ({ level }: { level: number }) => {
           const ok = await deps.appConfig.setAudioDuckingLevel(level)
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
-        setAudioDuckingIncludeHeadphones: async ({ enabled }: { enabled: boolean }) => {
-          const ok = await deps.appConfig.setAudioDuckingIncludeHeadphones(enabled)
+        setAudioDuckingIncludeHeadphones: async ({
+          enabled,
+        }: {
+          enabled: boolean
+        }) => {
+          const ok =
+            await deps.appConfig.setAudioDuckingIncludeHeadphones(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setAudioDuckingIncludeBuiltInSpeakers: async ({
+          enabled,
+        }: {
+          enabled: boolean
+        }) => {
+          const ok =
+            await deps.appConfig.setAudioDuckingIncludeBuiltInSpeakers(enabled)
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },

@@ -53,9 +53,12 @@ export const startRecording = async (
   })
 
   const maxRecordSeconds = appConfig.getMaxRecordingDurationSeconds()
-  const outputDuckDelayMs = duckDelayAfterStartChimeMs()
+  const outputDuckDelayMs = duckDelayAfterStartChimeMs(
+    appConfig.getFunModeEnabled()
+  )
   const duckLevel = appConfig.getAudioDuckingLevel()
   const duckIncludeHeadphones = appConfig.getAudioDuckingIncludeHeadphones()
+  const duckIncludeBuiltIn = appConfig.getAudioDuckingIncludeBuiltInSpeakers()
 
   const proc = Bun.spawn(
     [
@@ -67,6 +70,7 @@ export const startRecording = async (
       String(outputDuckDelayMs),
       String(duckLevel),
       duckIncludeHeadphones ? '1' : '0',
+      duckIncludeBuiltIn ? '1' : '0',
     ],
     {
       stderr: 'pipe',
@@ -90,7 +94,7 @@ export const startRecording = async (
 
         if (!skipPipeline) {
           onComplete()
-          playEndSound()
+          playEndSound(appConfig.getFunModeEnabled())
           await speech2text(
             appConfig.getRuntimeTranscriptionWhisperCode(),
             appConfig.getWhisperModelId(),

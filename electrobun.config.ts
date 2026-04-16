@@ -45,8 +45,11 @@ export default {
       // -- Sounds (src/assets/sounds → app/sounds)
       "src/assets/sounds/dictation-start.wav": "sounds/dictation-start.wav",
       "src/assets/sounds/dictation-stop.wav": "sounds/dictation-stop.wav",
-      "src/assets/sounds/start.mp3": "sounds/start.mp3",
-      "src/assets/sounds/end.mp3": "sounds/end.mp3",
+      "src/assets/sounds/dictation-cancel.wav": "sounds/dictation-cancel.wav",
+      "src/assets/sounds/funmode-dictation-start.mp3":
+        "sounds/funmode-dictation-start.mp3",
+      "src/assets/sounds/funmode-dication-end.mp3":
+        "sounds/funmode-dication-end.mp3",
       // -- Images (src/assets/images → app/images)
       "src/assets/images/MacTrayIcon.svg": "images/MacTrayIcon.svg",
       "src/assets/images/MacDocIcon.png": "images/MacDocIcon.png",

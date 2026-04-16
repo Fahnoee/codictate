@@ -283,8 +283,8 @@ function formatterBinaryIsRealBuild(path: string): boolean {
   // Threshold set at 50 KB to safely separate the two.
   if (!parakeetVendoredBinaryLooksExecutable(path)) return false;
   try {
-    const { size } = Bun.spawnSync(["stat", "-f%z", path], { stdout: "pipe" });
-    const bytes = parseInt(size.toString().trim(), 10);
+    const stat = Bun.spawnSync(["stat", "-f%z", path], { stdout: "pipe" });
+    const bytes = parseInt(stat.stdout.toString().trim(), 10);
     return bytes > 50_000;
   } catch {
     return false;

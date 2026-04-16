@@ -71,13 +71,17 @@ private func outputVolumeScalarAddress() -> AudioObjectPropertyAddress {
 }
 
 /// Lowers default output volume; returns the previous scalar for restore, or nil if unchanged / unsupported.
-/// Built-in speakers are always fully muted (scalar 0). Headphone ducking is opt-in:
+/// Built-in speakers: fully muted (scalar 0) when `builtInEnabled`. Headphone ducking is opt-in:
 /// - `headphonesEnabled`: apply ducking to headphone/BT/USB output.
 /// - `headphoneLevel`: 0 = fully mute, 100 = no change, values in between are proportional.
-private func tryApplyOutputDuck(headphonesEnabled: Bool, headphoneLevel: Int) -> SavedOutputVolume? {
+private func tryApplyOutputDuck(
+    builtInEnabled: Bool,
+    headphonesEnabled: Bool,
+    headphoneLevel: Int
+) -> SavedOutputVolume? {
     let device = getDefaultOutputDevice()
     let kind = classifyOutputDevice(device)
-    guard kind == .builtIn || (kind == .headphone && headphonesEnabled) else { return nil }
+    guard (kind == .builtIn && builtInEnabled) || (kind == .headphone && headphonesEnabled) else { return nil }
 
     var addr = outputVolumeScalarAddress()
     guard AudioObjectHasProperty(device, &addr) else { return nil }
@@ -111,11 +115,12 @@ private func restoreOutputDuck(_ saved: SavedOutputVolume) {
 }
 
 // CLI: MicRecorder --list-devices  → one line JSON {"0":"Mic Name",...}
-//      MicRecorder record <path> <index> <maxSeconds> [duckDelayMs] [duckLevel] [duckHeadphones]
+//      MicRecorder record <path> <index> <maxSeconds> [duckDelayMs] [duckLevel] [duckHeadphones] [duckBuiltIn]
 // duckDelayMs:    optional 0…10000, ms to wait after record() before lowering output (default 248).
 // duckLevel:      optional 0…100 (default 0). Headphone duck target: 0 = fully mute, 100 = no change.
-//                 Built-in speakers are always fully muted regardless of this value.
+//                 Built-in output uses full mute when duckBuiltIn is 1.
 // duckHeadphones: optional 0 or 1 (default 0). Set to 1 to also duck headphone/BT/USB output.
+// duckBuiltIn:    optional 0 or 1 (default 1). Set to 0 to skip muting built-in speaker output.
 // Stop early: SIGINT (graceful WAV finalize) or SIGTERM.
 
 private func deviceHasInput(_ id: AudioDeviceID) -> Bool {
@@ -212,13 +217,18 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
     let lock = NSLock()
     var duckLevel: Int = 0
     var duckIncludeHeadphones: Bool = false
+    var duckIncludeBuiltIn: Bool = true
 
     private func applyOutputDuckFromScheduledCallback() {
         lock.lock()
         let stopped = shouldStop
         lock.unlock()
         if stopped { return }
-        guard let applied = tryApplyOutputDuck(headphonesEnabled: duckIncludeHeadphones, headphoneLevel: duckLevel) else { return }
+        guard let applied = tryApplyOutputDuck(
+            builtInEnabled: duckIncludeBuiltIn,
+            headphonesEnabled: duckIncludeHeadphones,
+            headphoneLevel: duckLevel
+        ) else { return }
         lock.lock()
         defer { lock.unlock() }
         if shouldStop {
@@ -369,7 +379,7 @@ if args.count >= 2, args[1] == "--list-devices" {
 
 guard args.count >= 5, args[1] == "record" else {
     fputs(
-        "usage: MicRecorder --mic-authorization\n       MicRecorder --list-devices\n       MicRecorder record <wavPath> <deviceIndex> <maxSeconds> [duckDelayMs]\n",
+        "usage: MicRecorder --mic-authorization\n       MicRecorder --list-devices\n       MicRecorder record <wavPath> <deviceIndex> <maxSeconds> [duckDelayMs] [duckLevel] [duckHeadphones] [duckBuiltIn]\n",
         stderr
     )
     exit(2)
@@ -409,9 +419,19 @@ if args.count >= 8 {
     duckIncludeHeadphones = args[7] == "1"
 }
 
+var duckIncludeBuiltIn = true
+if args.count >= 9 {
+    guard args[8] == "0" || args[8] == "1" else {
+        fputs("MicRecorder: duckBuiltIn must be 0 or 1\n", stderr)
+        exit(2)
+    }
+    duckIncludeBuiltIn = args[8] == "1"
+}
+
 let session = RecordSession()
 session.duckLevel = duckLevel
 session.duckIncludeHeadphones = duckIncludeHeadphones
+session.duckIncludeBuiltIn = duckIncludeBuiltIn
 exit(
     session.run(
         path: outPath,

@@ -1,5 +1,3 @@
-"use client";
-
 import { useLayoutEffect, useMemo } from "react";
 import {
   PARAKEET_TRANSCRIPTION_LANGUAGE_LOCK_TOOLTIP,

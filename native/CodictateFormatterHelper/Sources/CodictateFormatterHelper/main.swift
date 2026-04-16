@@ -13,11 +13,22 @@ struct FormatterRequest: Decodable {
     let modeId: String
     let transcript: String
     let userDisplayName: String
+    // Email
     let emailIncludeSenderName: Bool
     let emailGreetingStyle: String
     let emailClosingStyle: String
     let emailCustomGreeting: String?
     let emailCustomClosing: String?
+    // iMessage (all optional for backward compatibility with older callers)
+    let imessageTone: String?
+    let imessageAllowEmoji: Bool?
+    // Slack
+    let slackTone: String?
+    let slackAllowEmoji: Bool?
+    let slackUseMarkdown: Bool?
+    // Document
+    let documentTone: String?
+    let documentStructure: String?
     let focusedApp: FocusedAppContext?
 }
 
@@ -40,6 +51,27 @@ struct FormattedEmail {
 
     @Guide(description: "Sender name, or empty string if none")
     var senderName: String
+}
+
+@Generable
+struct FormattedIMessage {
+    @Guide(description: "The rewritten Messages text. Single message, no greeting or sign-off.")
+    var message: String
+}
+
+@Generable
+struct FormattedSlack {
+    @Guide(description: "The rewritten Slack message body. No greeting or sign-off.")
+    var message: String
+}
+
+@Generable
+struct FormattedDocument {
+    @Guide(description: "Optional short title. Empty string if no title is warranted.")
+    var title: String
+
+    @Guide(description: "The polished document body. Plain text. Paragraphs separated by blank lines.")
+    var body: String
 }
 
 // MARK: - CLI entry point
@@ -105,6 +137,13 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--request" {
         emailClosingStyle: "auto",
         emailCustomGreeting: nil,
         emailCustomClosing: nil,
+        imessageTone: nil,
+        imessageAllowEmoji: nil,
+        slackTone: nil,
+        slackAllowEmoji: nil,
+        slackUseMarkdown: nil,
+        documentTone: nil,
+        documentStructure: nil,
         focusedApp: nil
     )
 }
@@ -125,6 +164,12 @@ Task {
     switch mode {
     case "email":
         await formatEmail(request: request, inputText: inputText)
+    case "imessage":
+        await formatIMessage(request: request, inputText: inputText)
+    case "slack":
+        await formatSlack(request: request, inputText: inputText)
+    case "document":
+        await formatDocument(request: request, inputText: inputText)
     default:
         fputs("[formatter] unknown mode: \(mode)\n", stderr)
         exit(1)
@@ -169,6 +214,8 @@ func senderGuidance(name: String, include: Bool) -> String {
         return """
         Sender name:
         - The user's name is "\(name)".
+        - This name refers to the sender only, NEVER the recipient.
+        - NEVER use the user's name in greeting unless the speech itself explicitly opened with that exact name.
         - If the dictation already ends with a name or signature, keep that name in senderName.
         - Otherwise set senderName to "\(name)".
         """
@@ -176,6 +223,8 @@ func senderGuidance(name: String, include: Bool) -> String {
         return """
         Sender name:
         - The user's name is "\(name)" — do NOT append it automatically.
+        - This name refers to the sender only, NEVER the recipient.
+        - NEVER use the user's name in greeting unless the speech itself explicitly opened with that exact name.
         - Set senderName to an empty string unless the dictation itself clearly ends with a name.
         """
     } else {
@@ -183,11 +232,81 @@ func senderGuidance(name: String, include: Bool) -> String {
     }
 }
 
+func normaliseForComparison(_ text: String) -> String {
+    let folded = text.folding(
+        options: [.caseInsensitive, .diacriticInsensitive],
+        locale: .current
+    )
+    let scalars = folded.unicodeScalars.map { scalar -> Character in
+        CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : " "
+    }
+    return String(scalars)
+        .split(whereSeparator: \.isWhitespace)
+        .joined(separator: " ")
+}
+
+func transcriptExplicitlyOpensWithName(_ transcript: String, senderName: String) -> Bool {
+    let name = normaliseForComparison(senderName)
+    guard !name.isEmpty else { return false }
+
+    let prefix = String(transcript.prefix(120))
+    let normalisedPrefix = normaliseForComparison(prefix)
+    guard normalisedPrefix.contains(name) else { return false }
+
+    let salutationHints = [
+        "hi ", "hello ", "hey ", "dear ", "hej ", "hejsa ", "hola ", "bonjour ",
+    ]
+    return salutationHints.contains { hint in
+        normalisedPrefix.contains(hint + name)
+    }
+}
+
+func sanitiseGreeting(_ greeting: String, senderName: String, transcript: String) -> String {
+    let trimmedGreeting = greeting.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedSenderName = senderName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedGreeting.isEmpty, !trimmedSenderName.isEmpty else {
+        return trimmedGreeting
+    }
+    guard !transcriptExplicitlyOpensWithName(transcript, senderName: trimmedSenderName) else {
+        return trimmedGreeting
+    }
+
+    let normalisedGreeting = normaliseForComparison(trimmedGreeting)
+    let normalisedSenderName = normaliseForComparison(trimmedSenderName)
+    guard normalisedGreeting.contains(normalisedSenderName) else {
+        return trimmedGreeting
+    }
+
+    var cleaned = trimmedGreeting.replacingOccurrences(
+        of: trimmedSenderName,
+        with: "",
+        options: [.caseInsensitive, .diacriticInsensitive],
+        range: nil
+    )
+    while cleaned.contains("  ") {
+        cleaned = cleaned.replacingOccurrences(of: "  ", with: " ")
+    }
+    cleaned = cleaned.replacingOccurrences(of: " ,", with: ",")
+    cleaned = cleaned.replacingOccurrences(of: " .", with: ".")
+    cleaned = cleaned.replacingOccurrences(of: " !", with: "!")
+    cleaned = cleaned.replacingOccurrences(of: " ?", with: "?")
+    return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 /// Assembles the four structured fields into the final plain-text email body.
 /// `forcedSenderName` is appended when the model outputs an empty senderName but
 /// the user has explicitly requested their name in the sign-off.
-func assembleEmail(_ email: FormattedEmail, forcedSenderName: String = "") -> String {
-    let greeting = email.greeting.trimmingCharacters(in: .whitespacesAndNewlines)
+func assembleEmail(
+    _ email: FormattedEmail,
+    forcedSenderName: String = "",
+    userDisplayName: String = "",
+    originalTranscript: String = ""
+) -> String {
+    let greeting = sanitiseGreeting(
+        email.greeting,
+        senderName: userDisplayName,
+        transcript: originalTranscript
+    )
     let body     = email.body.trimmingCharacters(in: .whitespacesAndNewlines)
     let modelSender = email.senderName.trimmingCharacters(in: .whitespacesAndNewlines)
     let senderName  = modelSender.isEmpty ? forcedSenderName : modelSender
@@ -240,6 +359,7 @@ func formatEmail(request: FormatterRequest, inputText: String) async {
     - NEVER add content that was not in the speech.
     - Fix grammar, punctuation, and capitalisation. Preserve meaning and names.
     - The greeting and closing MUST be in the same language as the body.
+    - The user's stored display name is sender context only. NEVER treat it as the recipient name.
 
     greeting: Extract the opening words if they are a salutation \
     (hi, hello, hey, dear, hej, hola, bonjour, etc.) optionally followed by a name. \
@@ -271,7 +391,184 @@ func formatEmail(request: FormatterRequest, inputText: String) async {
             options: options
         )
         let forcedSender = request.emailIncludeSenderName ? senderName : ""
-        print(assembleEmail(response.content, forcedSenderName: forcedSender))
+        print(assembleEmail(
+            response.content,
+            forcedSenderName: forcedSender,
+            userDisplayName: senderName,
+            originalTranscript: inputText
+        ))
+        exit(0)
+    } catch {
+        fputs("[formatter] FoundationModels error: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
+
+// MARK: - Messages formatting
+
+func imessageToneGuidance(_ tone: String) -> String {
+    switch tone {
+    case "formal":
+        return "Polish more: clear punctuation, proper capitalization, complete sentences. Keep wording faithful to what was said."
+    case "neutral":
+        return "Light polish only: fix obvious grammar and spacing. Keep phrasing very close to the transcript—avoid rephrasing or changing vibe."
+    default:
+        return "Minimal polish: only fix what is unclear or broken. Preserve casual fragments, fillers, and word choice unless the meaning suffers."
+    }
+}
+
+func slackToneGuidance(_ tone: String) -> String {
+    switch tone {
+    case "professional":
+        return "Stronger polish: crisp, professional team-chat tone with clear punctuation."
+    case "neutral":
+        return "Light polish only: fix obvious grammar and spacing. Stay very close to the transcript—avoid rephrasing."
+    default:
+        return "Minimal polish: only fix what is unclear. Preserve informal phrasing and fragments when they still read clearly."
+    }
+}
+
+func formatIMessage(request: FormatterRequest, inputText: String) async {
+    let tone = request.imessageTone ?? "neutral"
+    let allowEmoji = request.imessageAllowEmoji ?? true
+    let emojiRule = allowEmoji
+        ? "You MAY include at most ONE emoji, only if it clearly fits the mood. Never use more than one."
+        : "Do NOT include any emoji."
+
+    let instructions = """
+    You rewrite transcribed speech into a short Messages text.
+
+    Rules:
+    - Keep the input language. NEVER translate.
+    - NEVER add content that was not in the speech.
+    - Produce ONE message only. No greeting. No sign-off. No quoted replies.
+    - Fix grammar, punctuation, capitalisation. Preserve meaning and names.
+    - Keep it short and natural — contractions are fine ("I'm", "don't").
+    - \(imessageToneGuidance(tone))
+    - \(emojiRule)
+    """
+
+    let prompt = "Rewrite this speech as a single Messages text:\n\n\(inputText)"
+
+    do {
+        let options = GenerationOptions(temperature: 0.2)
+        let session = LanguageModelSession(instructions: instructions)
+        let response = try await session.respond(
+            to: prompt,
+            generating: FormattedIMessage.self,
+            options: options
+        )
+        let out = response.content.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        print(out.isEmpty ? inputText : out)
+        exit(0)
+    } catch {
+        fputs("[formatter] FoundationModels error: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
+
+// MARK: - Slack formatting
+
+func formatSlack(request: FormatterRequest, inputText: String) async {
+    let tone = request.slackTone ?? "professional"
+    let allowEmoji = request.slackAllowEmoji ?? true
+    let useMarkdown = request.slackUseMarkdown ?? true
+    let emojiLine = allowEmoji
+        ? "You may include 0 or 1 Slack-style `:shortcode:` emoji when it adds meaning. Never more than one."
+        : "Do NOT include any emoji."
+    let markdownLine = useMarkdown
+        ? "You may use Slack markdown: *bold*, _italic_, `code`, short bullet lists with `- `. Use sparingly."
+        : "Do NOT use any markdown. Plain text only."
+
+    let instructions = """
+    You rewrite transcribed speech into a polished Slack message.
+
+    Rules:
+    - Keep the input language. NEVER translate.
+    - NEVER add content that was not in the speech.
+    - Produce one message. No greeting, no sign-off.
+    - Fix grammar, punctuation, capitalisation. Preserve meaning and names.
+    - Tight paragraphs separated by a single blank line when there is more than one idea.
+    - \(slackToneGuidance(tone))
+    - \(markdownLine)
+    - \(emojiLine)
+    """
+
+    let prompt = "Rewrite this speech as a Slack message:\n\n\(inputText)"
+
+    do {
+        let options = GenerationOptions(temperature: 0.15)
+        let session = LanguageModelSession(instructions: instructions)
+        let response = try await session.respond(
+            to: prompt,
+            generating: FormattedSlack.self,
+            options: options
+        )
+        let out = response.content.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        print(out.isEmpty ? inputText : out)
+        exit(0)
+    } catch {
+        fputs("[formatter] FoundationModels error: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
+
+// MARK: - Document formatting
+
+func documentToneGuidance(_ tone: String) -> String {
+    switch tone {
+    case "formal":
+        return "Stronger polish: formal, precise prose with polished wording and full sentence punctuation."
+    case "casual":
+        return "Minimal polish: warm, relaxed tone—keep edits light and stay close to how it was spoken."
+    default:
+        return "Light polish only: clear notes or draft tone. Fix grammar and flow without rewriting the author's voice."
+    }
+}
+
+func formatDocument(request: FormatterRequest, inputText: String) async {
+    let tone = request.documentTone ?? "neutral"
+    let structure = request.documentStructure ?? "prose"
+    let structureLine = structure == "bulleted"
+        ? "Prefer a bulleted list using \"- \" when the content naturally lists items. Otherwise short paragraphs."
+        : "Prefer flowing prose with short paragraphs separated by a blank line. Only use bullets when the speech itself listed items."
+
+    let instructions = """
+    You rewrite transcribed speech into a polished plain-text document.
+
+    Rules:
+    - Keep the input language. NEVER translate.
+    - NEVER add content that was not in the speech.
+    - No greeting, no sign-off. No meta-commentary.
+    - Fix grammar, punctuation, capitalisation. Preserve meaning and names.
+    - Keep the speaker's voice. Do not rewrite the author's style.
+    - \(documentToneGuidance(tone))
+    - \(structureLine)
+    - title: empty string unless the speech itself suggests an obvious heading.
+    - body: the full rewritten content. Must not repeat the title.
+    """
+
+    let prompt = "Rewrite this dictation as a polished document body:\n\n\(inputText)"
+
+    do {
+        let options = GenerationOptions(temperature: 0.15)
+        let session = LanguageModelSession(instructions: instructions)
+        let response = try await session.respond(
+            to: prompt,
+            generating: FormattedDocument.self,
+            options: options
+        )
+        let title = response.content.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = response.content.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combined: String
+        if !title.isEmpty && !body.isEmpty {
+            combined = "\(title)\n\n\(body)"
+        } else if !body.isEmpty {
+            combined = body
+        } else {
+            combined = inputText
+        }
+        print(combined)
         exit(0)
     } catch {
         fputs("[formatter] FoundationModels error: \(error.localizedDescription)\n", stderr)

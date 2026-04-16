@@ -2,39 +2,92 @@ import type {
   FocusedAppContext,
   FormattingRuntimeSettings,
 } from '../../../shared/types'
-import type { FormattingModeId } from '../../../shared/formatting-modes'
+import {
+  FORMATTING_MODE_ORDER,
+  type FormattingModeId,
+} from '../../../shared/formatting-modes'
 import { log } from '../logger'
 
 export interface FormatterRequest {
+  /** Master switch: when false, `applyFormatting` must not change the transcript. */
+  formattingEnabled: boolean
   modeId: FormattingModeId
   transcript: string
   userDisplayName: string
+  // Email
   emailIncludeSenderName: boolean
   emailGreetingStyle: FormattingRuntimeSettings['formattingEmailGreetingStyle']
   emailClosingStyle: FormattingRuntimeSettings['formattingEmailClosingStyle']
   emailCustomGreeting: string
   emailCustomClosing: string
+  // iMessage
+  imessageTone: FormattingRuntimeSettings['formattingImessageTone']
+  imessageAllowEmoji: boolean
+  imessageLightweight: boolean
+  // Slack
+  slackTone: FormattingRuntimeSettings['formattingSlackTone']
+  slackAllowEmoji: boolean
+  slackUseMarkdown: boolean
+  slackLightweight: boolean
+  // Document
+  documentTone: FormattingRuntimeSettings['formattingDocumentTone']
+  documentStructure: FormattingRuntimeSettings['formattingDocumentStructure']
+  documentLightweight: boolean
   focusedApp: FocusedAppContext | null
 }
 
-const MAIL_APP_NAMES = new Set([
-  'mail',
-  'microsoft outlook',
-  'outlook',
-  'spark',
-  'spark desktop',
-  'superhuman',
-  'mimestream',
-])
+interface AppDetector {
+  names: Set<string>
+  bundlePrefixes: string[]
+}
 
-const MAIL_BUNDLE_ID_PREFIXES = [
-  'com.apple.mail',
-  'com.microsoft.outlook',
-  'com.readdle.spark',
-  'com.readdle.smartemail',
-  'com.superhuman.superhuman',
-  'com.mimestream.mimestream',
-]
+const APP_DETECTORS: Record<FormattingModeId, AppDetector> = {
+  email: {
+    names: new Set([
+      'mail',
+      'microsoft outlook',
+      'outlook',
+      'spark',
+      'spark desktop',
+      'superhuman',
+      'mimestream',
+    ]),
+    bundlePrefixes: [
+      'com.apple.mail',
+      'com.microsoft.outlook',
+      'com.readdle.spark',
+      'com.readdle.smartemail',
+      'com.superhuman.superhuman',
+      'com.mimestream.mimestream',
+    ],
+  },
+  imessage: {
+    names: new Set(['messages']),
+    bundlePrefixes: ['com.apple.mobilesms', 'com.apple.messages'],
+  },
+  slack: {
+    names: new Set(['slack']),
+    bundlePrefixes: ['com.tinyspeck.slackmacgap', 'com.slack'],
+  },
+  document: {
+    names: new Set([
+      'notes',
+      'pages',
+      'microsoft word',
+      'word',
+      'google docs',
+      'ulysses',
+      'bear',
+    ]),
+    bundlePrefixes: [
+      'com.apple.notes',
+      'com.apple.iwork.pages',
+      'com.microsoft.word',
+      'com.ulyssesapp.mac',
+      'net.shinyfrog.bear',
+    ],
+  },
+}
 
 async function runAppleScript(lines: string[]): Promise<string> {
   const args = lines.flatMap((line) => ['-e', line])
@@ -91,34 +144,30 @@ export async function getFocusedAppContext(): Promise<FocusedAppContext | null> 
   }
 }
 
-function looksLikeMailApp(focusedApp: FocusedAppContext | null): boolean {
+function appMatchesMode(
+  mode: FormattingModeId,
+  focusedApp: FocusedAppContext | null
+): boolean {
   if (!focusedApp) return false
+  const detector = APP_DETECTORS[mode]
   const appName = focusedApp.appName.trim().toLowerCase()
-  if (MAIL_APP_NAMES.has(appName)) return true
+  if (detector.names.has(appName)) return true
   const bundleIdentifier = focusedApp.bundleIdentifier?.trim().toLowerCase()
   if (!bundleIdentifier) return false
-  return MAIL_BUNDLE_ID_PREFIXES.some((prefix) =>
+  return detector.bundlePrefixes.some((prefix) =>
     bundleIdentifier.startsWith(prefix)
   )
 }
 
-export async function buildFormatterRequest(
+function buildRequest(
+  modeId: FormattingModeId,
   transcript: string,
-  settings: FormattingRuntimeSettings
-): Promise<FormatterRequest | null> {
-  const focusedApp = settings.formattingAutoSelectEnabled
-    ? await getFocusedAppContext()
-    : null
-
-  const effectiveModeId: FormattingModeId =
-    settings.formattingAutoSelectEnabled && looksLikeMailApp(focusedApp)
-      ? 'email'
-      : settings.formattingModeId
-
-  if (effectiveModeId === 'none') return null
-
+  settings: FormattingRuntimeSettings,
+  focusedApp: FocusedAppContext | null
+): FormatterRequest {
   return {
-    modeId: effectiveModeId,
+    formattingEnabled: settings.formattingEnabled,
+    modeId,
     transcript,
     userDisplayName: settings.userDisplayName.trim(),
     emailIncludeSenderName: settings.formattingEmailIncludeSenderName,
@@ -126,6 +175,44 @@ export async function buildFormatterRequest(
     emailClosingStyle: settings.formattingEmailClosingStyle,
     emailCustomGreeting: settings.formattingEmailCustomGreeting,
     emailCustomClosing: settings.formattingEmailCustomClosing,
+    imessageTone: settings.formattingImessageTone,
+    imessageAllowEmoji: settings.formattingImessageAllowEmoji,
+    imessageLightweight: settings.formattingImessageLightweight,
+    slackTone: settings.formattingSlackTone,
+    slackAllowEmoji: settings.formattingSlackAllowEmoji,
+    slackUseMarkdown: settings.formattingSlackUseMarkdown,
+    slackLightweight: settings.formattingSlackLightweight,
+    documentTone: settings.formattingDocumentTone,
+    documentStructure: settings.formattingDocumentStructure,
+    documentLightweight: settings.formattingDocumentLightweight,
     focusedApp,
   }
+}
+
+export async function buildFormatterRequest(
+  transcript: string,
+  settings: FormattingRuntimeSettings
+): Promise<FormatterRequest | null> {
+  if (!settings.formattingEnabled) return null
+
+  // Tray force-override: skip app detection, apply the chosen mode directly.
+  // Still requires that format's per-mode toggle (same as auto-detect).
+  if (settings.formattingForceModeId !== null) {
+    const forced = settings.formattingForceModeId
+    if (!(settings.formattingEnabledModes[forced] ?? false)) {
+      return null
+    }
+    const focusedApp = await getFocusedAppContext()
+    return buildRequest(forced, transcript, settings, focusedApp)
+  }
+
+  const focusedApp = await getFocusedAppContext()
+  for (const modeId of FORMATTING_MODE_ORDER) {
+    if (!settings.formattingEnabledModes[modeId]) continue
+    if (appMatchesMode(modeId, focusedApp)) {
+      return buildRequest(modeId, transcript, settings, focusedApp)
+    }
+  }
+
+  return null
 }

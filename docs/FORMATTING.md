@@ -61,6 +61,7 @@ The on-device model is intentionally small, which has implications for how promp
 - **`@Guide` descriptions are minimal labels** — a single short phrase describing what the field contains. Long descriptions or examples in `@Guide` cause the model to echo the description text as content. All formatting rules belong in the system instructions, not in field descriptions.
 - **System instructions are short and direct** — the model performs better with brief imperative sentences than with elaborately worded paragraphs.
 - **No language examples in style preferences** — specifying foreign-language examples alongside English ones caused the model to randomly pick a non-English variant even for English input. Style preferences describe only the tone (`"Use a formal, professional closing tone."`), and a single rule in the system prompt handles language matching (`"The greeting and closing MUST be in the same language as the body."`).
+- **Stored user name is sender-only context** — the helper tells the model the user's display name only for sign-off handling, explicitly forbids using it as the recipient greeting, and strips it back out of the greeting if it appears there without being dictated in the opening words.
 
 ### Context-aware mode selection
 

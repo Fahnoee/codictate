@@ -18,7 +18,7 @@ import {
   type KeyEvent,
   type PermissionStatus,
 } from './utils/keyboard/keyboard-events'
-import { playStartSound } from './utils/sound/play-sound'
+import { playCancelSound, playStartSound } from './utils/sound/play-sound'
 import { AppConfig } from './AppConfig/AppConfig'
 import type { TrayHandlers } from './setup-tray'
 import { DICTATION_HOLD_QUALIFY_MS } from '../shared/dictation-shortcut'
@@ -236,7 +236,7 @@ export const setupRecording = (
         shortcutMode,
         streamDebugId,
       })
-      playStartSound()
+      playStartSound(appConfig.getFunModeEnabled())
       setTrayStreaming()
       onStatusChange?.('streaming')
       streamSession = await startParakeetStream(
@@ -252,7 +252,12 @@ export const setupRecording = (
             onStatusChange?.('ready')
           },
         },
-        { streamDebugId }
+        {
+          streamDebugId,
+          outputDuckBuiltIn: appConfig.getAudioDuckingIncludeBuiltInSpeakers(),
+          outputDuckHeadphones: appConfig.getAudioDuckingIncludeHeadphones(),
+          outputDuckLevel: appConfig.getAudioDuckingLevel(),
+        }
       )
       if (pendingStreamHoldReleaseWhileStarting && streamSession !== null) {
         resetHoldGate()
@@ -329,7 +334,7 @@ export const setupRecording = (
         streamMode: appConfig.getStreamMode(),
       })
       console.log('START RECORD')
-      playStartSound()
+      playStartSound(appConfig.getFunModeEnabled())
       setTrayRecording()
       onStatusChange?.('recording')
       recordingSession = { discard: false }
@@ -401,6 +406,7 @@ export const setupRecording = (
     if (keyEvent.keycode === Key.escape && keyEvent.keyDown) {
       if (streamSession !== null) {
         log('shortcut', 'escape stopping active stream session')
+        playCancelSound()
         void tryStopStream()
         return
       }
@@ -412,6 +418,7 @@ export const setupRecording = (
         recorderProc = null
         setTrayIdle()
         onStatusChange?.('ready')
+        playCancelSound()
         console.log('Recording cancelled')
         return
       }

@@ -16,11 +16,9 @@ import {
   setTranslateDefaultLanguage,
   setTranslateToEnglish,
   setStreamMode,
-  setFormattingMode,
+  setFormattingEnabled,
   fetchSettings,
 } from "../../rpc";
-import type { FormattingModeId } from "../../../shared/types";
-import { FORMATTING_MODES } from "../../../shared/formatting-modes";
 import {
   WHISPER_MODELS,
   getTranslateReadiness,
@@ -255,26 +253,20 @@ export function ReadyScreen({
     }
   }, [isStreamMode, queryClient, settings, onOpenSettings]);
 
-  const formattingModeId: FormattingModeId =
-    settings?.formattingModeId ?? "none";
   const formattingAvailable = settings?.formattingAvailable ?? false;
-  const isFormattingActive = formattingModeId !== "none";
+  const isFormattingActive = settings?.formattingEnabled ?? false;
 
   const handleFormattingToggle = useCallback(async () => {
     if (!settings || !formattingAvailable) return;
-    // Cycle through modes: none → email → none
-    const modes = FORMATTING_MODES.map((m) => m.id);
-    const currentIndex = modes.indexOf(formattingModeId);
-    const nextIndex = (currentIndex + 1) % modes.length;
-    const nextMode = modes[nextIndex];
+    const nextEnabled = !settings.formattingEnabled;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingModeId: nextMode } : old,
+      old ? { ...old, formattingEnabled: nextEnabled } : old,
     );
-    const ok = await setFormattingMode(nextMode);
+    const ok = await setFormattingEnabled(nextEnabled);
     if (!ok) {
       queryClient.setQueryData(["settings"], await fetchSettings());
     }
-  }, [settings, formattingAvailable, formattingModeId, queryClient]);
+  }, [settings, formattingAvailable, queryClient]);
 
   const micName = deviceInfo
     ? (deviceInfo.devices[String(deviceInfo.selectedDevice)] ?? "Default")
@@ -562,7 +554,7 @@ export function ReadyScreen({
             <InstantTooltip
               text={
                 isFormattingActive
-                  ? `Format: ${FORMATTING_MODES.find((m) => m.id === formattingModeId)?.label ?? formattingModeId} — click to disable`
+                  ? "Formatting on — click to disable"
                   : "Format output — reshape transcription with Apple Intelligence"
               }
               side="top"
@@ -578,7 +570,7 @@ export function ReadyScreen({
                 }`}
                 aria-label={
                   isFormattingActive
-                    ? `Format mode: ${formattingModeId} — click to disable`
+                    ? "Formatting on — click to disable"
                     : "Format output with Apple Intelligence"
                 }
               >

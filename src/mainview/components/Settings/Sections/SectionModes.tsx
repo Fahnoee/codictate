@@ -1,0 +1,303 @@
+import { useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "motion/react";
+import type {
+  AppSettings,
+  StreamTranscriptionMode,
+} from "../../../../shared/types";
+import {
+  DEFAULT_STREAM_CAPABLE_MODEL_ID,
+  formatModelSize,
+  getWhisperModel,
+  parakeetSupportsTranscriptionLanguageId,
+} from "../../../../shared/whisper-models";
+import { PARAKEET_FIRST_RUN_STREAM_HELPER } from "../../../../shared/speech-models";
+import {
+  fetchSettings,
+  setStreamMode,
+  setStreamTranscriptionMode,
+  setTranslateDefaultLanguage,
+  downloadWhisperModel,
+} from "../../../rpc";
+import { LanguagePicker } from "../LanguagePicker";
+import { settingsHelperClass } from "../settings-shared";
+
+/** Select value when translate default is still `auto` on disk — not a real language id. */
+const TRANSLATE_DEFAULT_PLACEHOLDER = "__translate_pick__";
+
+type Props = {
+  settings: AppSettings;
+  modelAvailability: Record<string, boolean>;
+  downloadProgress: Record<string, number>;
+  translateDownloadModelId: string | null;
+  onTranslateToggle: () => Promise<void> | void;
+  onCancelDownload: (modelId: string) => void;
+};
+
+export function SectionModes({
+  settings,
+  modelAvailability,
+  downloadProgress,
+  translateDownloadModelId,
+  onTranslateToggle,
+  onCancelDownload,
+}: Props) {
+  const queryClient = useQueryClient();
+
+  const handleTranslateDefaultLanguageChange = useCallback(
+    async (languageId: string) => {
+      if (
+        languageId === TRANSLATE_DEFAULT_PLACEHOLDER ||
+        languageId === "auto"
+      ) {
+        return;
+      }
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old ? { ...old, translateDefaultLanguageId: languageId } : old,
+      );
+      await setTranslateDefaultLanguage(languageId);
+    },
+    [queryClient],
+  );
+
+  const handleStreamModeToggle = useCallback(async () => {
+    const newValue = !settings.streamMode;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, streamMode: newValue } : old,
+    );
+    const ok = await setStreamMode(newValue);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+    }
+  }, [settings.streamMode, queryClient]);
+
+  const handleStreamTranscriptionModeChange = useCallback(
+    async (mode: StreamTranscriptionMode) => {
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old ? { ...old, streamTranscriptionMode: mode } : old,
+      );
+      await setStreamTranscriptionMode(mode);
+    },
+    [queryClient],
+  );
+
+  return (
+    <>
+      <div className="mb-8">
+        <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+          Translate to English
+        </h2>
+        <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            <div className="flex-1 min-w-0">
+              <span
+                className={`block text-[21px] font-medium ${settings.translateToEnglish ? "text-white/78" : "text-white/58"}`}
+              >
+                {settings.translateToEnglish
+                  ? "Translation active"
+                  : "Translate to English"}
+              </span>
+            </div>
+            <button
+              onClick={() => void onTranslateToggle()}
+              disabled={translateDownloadModelId !== null}
+              className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                settings.translateToEnglish
+                  ? "bg-blue-500/30 border-blue-400/30"
+                  : "bg-white/7 border-white/14"
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              aria-label="Toggle translate to English"
+            >
+              <span
+                className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                  settings.translateToEnglish
+                    ? "left-4 bg-blue-400/90"
+                    : "left-0.5 bg-white/40"
+                }`}
+              />
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {translateDownloadModelId !== null && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="border-t border-white/10 px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <p className="text-[18px] text-white/55 font-sans leading-relaxed">
+                      Downloading the{" "}
+                      {getWhisperModel(translateDownloadModelId)?.label ??
+                        translateDownloadModelId}{" "}
+                      model (
+                      {formatModelSize(
+                        getWhisperModel(translateDownloadModelId)?.sizeMB ?? 0,
+                      )}
+                      )…
+                    </p>
+                    <div className="mt-2 h-1 rounded-full bg-white/10 overflow-hidden">
+                      <motion.div
+                        className="h-full rounded-full bg-blue-400/60"
+                        animate={{
+                          width: `${Math.round((downloadProgress[translateDownloadModelId] ?? 0) * 100)}%`,
+                        }}
+                        transition={{ duration: 0.2 }}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onCancelDownload(translateDownloadModelId)}
+                    className="shrink-0 px-2.5 py-1 rounded-lg text-[17px] font-medium border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/8 text-white/44 hover:text-white/64 transition-colors duration-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="mt-3">
+          <p className="text-[17px] text-white/44 font-sans mb-2">
+            Default source language
+          </p>
+          <LanguagePicker
+            value={
+              settings.translateDefaultLanguageId === "auto"
+                ? TRANSLATE_DEFAULT_PLACEHOLDER
+                : settings.translateDefaultLanguageId
+            }
+            onChange={handleTranslateDefaultLanguageChange}
+            leadingDisabledOption={{
+              value: TRANSLATE_DEFAULT_PLACEHOLDER,
+              label: "Choose source language (required for translate mode)…",
+            }}
+            excludeAuto
+            ariaLabel="Default source language for translation"
+          />
+        </div>
+
+        <p className={settingsHelperClass}>
+          Translate mode requires a fixed source language and a Small or Large
+          Whisper model (not Turbo). Download models under <b>Transcription</b>.
+        </p>
+      </div>
+
+      <div className="mb-8">
+        <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+          Stream mode
+        </h2>
+        <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden">
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            <div className="flex-1 min-w-0">
+              <span
+                className={`block text-[21px] font-medium ${settings.streamMode ? "text-white/78" : "text-white/58"}`}
+              >
+                {settings.streamMode ? "Stream mode active" : "Stream mode"}
+              </span>
+            </div>
+            <button
+              onClick={handleStreamModeToggle}
+              className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                settings.streamMode
+                  ? "bg-blue-500/30 border-blue-400/30"
+                  : "bg-white/7 border-white/14"
+              }`}
+              aria-label="Toggle stream mode"
+            >
+              <span
+                className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                  settings.streamMode
+                    ? "left-4 bg-blue-400/90"
+                    : "left-0.5 bg-white/40"
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+        <p className={settingsHelperClass}>
+          Press shortcut to start streaming, again (or Esc) to stop. Requires
+          Parakeet model.{" "}
+          <span className="text-amber-200/55">
+            {PARAKEET_FIRST_RUN_STREAM_HELPER}
+          </span>
+        </p>
+        {!modelAvailability[DEFAULT_STREAM_CAPABLE_MODEL_ID] && (
+          <div className="mt-4 rounded-xl border border-amber-400/25 bg-amber-500/8 px-4 py-3">
+            <p className="text-[17px] text-white/70 leading-snug">
+              Install{" "}
+              <strong className="text-white/85 font-medium">
+                Parakeet TDT v3
+              </strong>{" "}
+              to use stream mode. After install, the first transcription or
+              stream may take several minutes while Core ML prepares on your
+              Mac.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                downloadWhisperModel(DEFAULT_STREAM_CAPABLE_MODEL_ID)
+              }
+              className="mt-3 px-3 py-2 rounded-lg text-[17px] font-medium border border-amber-400/35 bg-amber-500/15 hover:bg-amber-500/25 text-amber-100/90 transition-colors cursor-pointer"
+            >
+              Download Parakeet
+            </button>
+          </div>
+        )}
+        {settings.streamMode &&
+          !parakeetSupportsTranscriptionLanguageId(
+            settings.transcriptionLanguageId,
+          ) && (
+            <p className={`${settingsHelperClass} text-amber-200/55`}>
+              Parakeet supports auto-detect or 25 European languages. Change
+              transcription language for stream mode.
+            </p>
+          )}
+        <div className="mt-4 rounded-xl border border-white/11 bg-black/10 p-2">
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                {
+                  id: "vad",
+                  title: "VAD / Stable",
+                  body: "Waits for a pause, then pastes completed sentences.",
+                },
+                {
+                  id: "live",
+                  title: "Live",
+                  body: "Pastes words as you speak them",
+                },
+              ] as const
+            ).map((mode) => {
+              const active = settings.streamTranscriptionMode === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() =>
+                    void handleStreamTranscriptionModeChange(mode.id)
+                  }
+                  className={`rounded-xl border px-3 py-3 text-left transition-colors duration-200 cursor-pointer ${
+                    active
+                      ? "border-blue-400/30 bg-blue-500/15 text-white/88"
+                      : "border-white/10 bg-white/4 text-white/62 hover:border-white/18 hover:bg-white/7"
+                  }`}
+                >
+                  <span className="block text-[18px] font-medium">
+                    {mode.title}
+                  </span>
+                  <span className="mt-1 block text-[15px] leading-snug text-white/48">
+                    {mode.body}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

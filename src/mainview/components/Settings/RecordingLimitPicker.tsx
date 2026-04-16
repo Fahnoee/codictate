@@ -1,5 +1,3 @@
-"use client";
-
 import { motion } from "motion/react";
 import {
   RECORDING_DURATION_PRESET_SECONDS,

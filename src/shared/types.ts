@@ -1,15 +1,24 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { RPCSchema } from 'electrobun'
-import type { FormattingModeId } from './formatting-modes'
+import type {
+  FormattingModeId,
+  FormattingEmailGreetingStyle,
+  FormattingEmailClosingStyle,
+  FormattingImessageTone,
+  FormattingSlackTone,
+  FormattingDocumentTone,
+  FormattingDocumentStructure,
+} from './formatting-modes'
 
-export type { FormattingModeId }
-export type FormattingEmailGreetingStyle = 'auto' | 'hi' | 'hello' | 'custom'
-export type FormattingEmailClosingStyle =
-  | 'auto'
-  | 'best-regards'
-  | 'thanks'
-  | 'kind-regards'
-  | 'custom'
+export type {
+  FormattingModeId,
+  FormattingEmailGreetingStyle,
+  FormattingEmailClosingStyle,
+  FormattingImessageTone,
+  FormattingSlackTone,
+  FormattingDocumentTone,
+  FormattingDocumentStructure,
+}
 
 export interface FocusedAppContext {
   appName: string
@@ -17,15 +26,32 @@ export interface FocusedAppContext {
   windowTitle: string | null
 }
 
+export type FormattingEnabledModes = Record<FormattingModeId, boolean>
+
 export interface FormattingRuntimeSettings {
-  formattingModeId: FormattingModeId
-  formattingAutoSelectEnabled: boolean
+  /** Master switch — when false, runtime never formats. */
+  formattingEnabled: boolean
+  /** Per-format on/off used by app-aware auto-detect. */
+  formattingEnabledModes: FormattingEnabledModes
+  /** Tray-level force override; when non-null, bypasses app detection. */
+  formattingForceModeId: FormattingModeId | null
   userDisplayName: string
   formattingEmailIncludeSenderName: boolean
   formattingEmailGreetingStyle: FormattingEmailGreetingStyle
   formattingEmailClosingStyle: FormattingEmailClosingStyle
   formattingEmailCustomGreeting: string
   formattingEmailCustomClosing: string
+  formattingImessageTone: FormattingImessageTone
+  formattingImessageAllowEmoji: boolean
+  formattingImessageLightweight: boolean
+  formattingSlackTone: FormattingSlackTone
+  formattingSlackAllowEmoji: boolean
+  formattingSlackUseMarkdown: boolean
+  formattingSlackLightweight: boolean
+  formattingDocumentTone: FormattingDocumentTone
+  formattingDocumentStructure: FormattingDocumentStructure
+  /** Skip Apple Intelligence for document apps and only apply lightweight cleanup. */
+  formattingDocumentLightweight: boolean
 }
 
 export type AppStatus = 'ready' | 'recording' | 'transcribing' | 'streaming'
@@ -68,6 +94,8 @@ export interface AppSettings {
   shortcutHoldOnlyId: ShortcutId | null
   maxRecordingDuration: number
   debugMode: boolean
+  /** Hidden easter-egg toggle that swaps dictation start/stop sounds. */
+  funModeEnabled: boolean
   /** `auto` = language detection; else a key from `TRANSCRIPTION_LANGUAGE_OPTIONS`. */
   transcriptionLanguageId: string
   /** ID of the Whisper model to use for transcription. Defaults to `large-v3-turbo-q5_0` (bundled). */
@@ -99,10 +127,16 @@ export interface AppSettings {
   streamTranscriptionMode: StreamTranscriptionMode
   /** General user profile name, available to formatting and future personalized behaviors. */
   userDisplayName: string
-  /** Post-processing format to apply after batch transcription (FoundationModels, macOS 26+). */
-  formattingModeId: FormattingModeId
-  /** When true, Codictate may override the manual formatting mode based on the focused app. */
-  formattingAutoSelectEnabled: boolean
+  /** Master switch for post-processing formatting (FoundationModels, macOS 26+). */
+  formattingEnabled: boolean
+  /** Per-format opt-in for app-aware auto-detect. */
+  formattingEnabledModes: FormattingEnabledModes
+  /**
+   * Tray-level force override. When non-null, this mode is applied to the next
+   * dictations regardless of which app is focused. Stays on until the user
+   * picks "Auto" again from the tray. Ignored when `formattingEnabled` is false.
+   */
+  formattingForceModeId: FormattingModeId | null
   /** When true, email formatting may append the user's stored display name in the sign-off. */
   formattingEmailIncludeSenderName: boolean
   /** Preferred greeting tone for email formatting. */
@@ -113,13 +147,39 @@ export interface AppSettings {
   formattingEmailCustomGreeting: string
   /** Custom closing text used when closing style is 'custom'. */
   formattingEmailCustomClosing: string
+  /** Messages tone. */
+  formattingImessageTone: FormattingImessageTone
+  /** Allow emoji in Messages output. */
+  formattingImessageAllowEmoji: boolean
+  /** Skip Apple Intelligence for Messages and only apply lightweight deterministic styling. */
+  formattingImessageLightweight: boolean
+  /** Slack tone. */
+  formattingSlackTone: FormattingSlackTone
+  /** Allow emoji in Slack output. */
+  formattingSlackAllowEmoji: boolean
+  /** Allow Slack-flavoured markdown (*bold*, _italic_, `code`, lists). */
+  formattingSlackUseMarkdown: boolean
+  /** Skip Apple Intelligence for Slack and only apply lightweight deterministic styling. */
+  formattingSlackLightweight: boolean
+  /** Document tone. */
+  formattingDocumentTone: FormattingDocumentTone
+  /** Document structure preference. */
+  formattingDocumentStructure: FormattingDocumentStructure
+  /** Skip Apple Intelligence for documents and only apply lightweight cleanup. */
+  formattingDocumentLightweight: boolean
   /**
    * Duck amount for headphones/Bluetooth/USB when audioDuckingIncludeHeadphones is true.
-   * 0 = fully mute, 100 = no change. Built-in speakers are always fully muted.
+   * 0 = fully mute, 100 = no change. Built-in output uses full mute when
+   * audioDuckingIncludeBuiltInSpeakers is true.
    */
   audioDuckingLevel: number
-  /** When true, ducking also applies with headphones/Bluetooth/USB (default: false). */
+  /** When true, ducking also applies with headphones/Bluetooth/USB (default: true). */
   audioDuckingIncludeHeadphones: boolean
+  /**
+   * When true, mute built-in Mac speaker output while dictating (MicRecorder and stream helper).
+   * Default true.
+   */
+  audioDuckingIncludeBuiltInSpeakers: boolean
   /**
    * Read-only: true when FoundationModels is available on this device (macOS 26+ with Apple
    * Intelligence). Not persisted — computed at runtime and included in getSettings() responses.
@@ -156,6 +216,7 @@ export type WebviewRPCType = {
       }
       setAudioDevice: { params: { index: number }; response: boolean }
       setDebugMode: { params: { enabled: boolean }; response: boolean }
+      setFunModeEnabled: { params: { enabled: boolean }; response: boolean }
       setTranscriptionLanguage: {
         params: { transcriptionLanguageId: string }
         response: boolean
@@ -180,16 +241,20 @@ export type WebviewRPCType = {
         params: { mode: StreamTranscriptionMode }
         response: boolean
       }
-      setFormattingMode: {
-        params: { modeId: FormattingModeId }
+      setFormattingEnabled: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setFormattingModeEnabled: {
+        params: { modeId: FormattingModeId; enabled: boolean }
+        response: boolean
+      }
+      setFormattingForceModeId: {
+        params: { modeId: FormattingModeId | null }
         response: boolean
       }
       setUserDisplayName: {
         params: { userDisplayName: string }
-        response: boolean
-      }
-      setFormattingAutoSelectEnabled: {
-        params: { enabled: boolean }
         response: boolean
       }
       setFormattingEmailIncludeSenderName: {
@@ -212,11 +277,55 @@ export type WebviewRPCType = {
         params: { text: string }
         response: boolean
       }
+      setFormattingImessageTone: {
+        params: { tone: FormattingImessageTone }
+        response: boolean
+      }
+      setFormattingImessageAllowEmoji: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setFormattingImessageLightweight: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setFormattingSlackTone: {
+        params: { tone: FormattingSlackTone }
+        response: boolean
+      }
+      setFormattingSlackAllowEmoji: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setFormattingSlackUseMarkdown: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setFormattingSlackLightweight: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setFormattingDocumentTone: {
+        params: { tone: FormattingDocumentTone }
+        response: boolean
+      }
+      setFormattingDocumentStructure: {
+        params: { structure: FormattingDocumentStructure }
+        response: boolean
+      }
+      setFormattingDocumentLightweight: {
+        params: { enabled: boolean }
+        response: boolean
+      }
       setAudioDuckingLevel: {
         params: { level: number }
         response: boolean
       }
       setAudioDuckingIncludeHeadphones: {
+        params: { enabled: boolean }
+        response: boolean
+      }
+      setAudioDuckingIncludeBuiltInSpeakers: {
         params: { enabled: boolean }
         response: boolean
       }
