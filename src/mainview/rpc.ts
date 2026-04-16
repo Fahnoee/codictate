@@ -226,6 +226,28 @@ export async function setFormattingEmailClosingStyle(
   return rpc.request.setFormattingEmailClosingStyle({ style })
 }
 
+export async function setFormattingEmailCustomGreeting(
+  text: string
+): Promise<boolean> {
+  return rpc.request.setFormattingEmailCustomGreeting({ text })
+}
+
+export async function setFormattingEmailCustomClosing(
+  text: string
+): Promise<boolean> {
+  return rpc.request.setFormattingEmailCustomClosing({ text })
+}
+
+export async function setAudioDuckingLevel(level: number): Promise<boolean> {
+  return rpc.request.setAudioDuckingLevel({ level })
+}
+
+export async function setAudioDuckingIncludeHeadphones(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setAudioDuckingIncludeHeadphones({ enabled })
+}
+
 export function downloadWhisperModel(modelId: string): void {
   rpc.send.downloadWhisperModel({ modelId })
 }

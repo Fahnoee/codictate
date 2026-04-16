@@ -3,12 +3,13 @@ import { RPCSchema } from 'electrobun'
 import type { FormattingModeId } from './formatting-modes'
 
 export type { FormattingModeId }
-export type FormattingEmailGreetingStyle = 'auto' | 'hi' | 'hello'
+export type FormattingEmailGreetingStyle = 'auto' | 'hi' | 'hello' | 'custom'
 export type FormattingEmailClosingStyle =
   | 'auto'
   | 'best-regards'
   | 'thanks'
   | 'kind-regards'
+  | 'custom'
 
 export interface FocusedAppContext {
   appName: string
@@ -23,6 +24,8 @@ export interface FormattingRuntimeSettings {
   formattingEmailIncludeSenderName: boolean
   formattingEmailGreetingStyle: FormattingEmailGreetingStyle
   formattingEmailClosingStyle: FormattingEmailClosingStyle
+  formattingEmailCustomGreeting: string
+  formattingEmailCustomClosing: string
 }
 
 export type AppStatus = 'ready' | 'recording' | 'transcribing' | 'streaming'
@@ -106,6 +109,17 @@ export interface AppSettings {
   formattingEmailGreetingStyle: FormattingEmailGreetingStyle
   /** Preferred closing tone for email formatting. */
   formattingEmailClosingStyle: FormattingEmailClosingStyle
+  /** Custom greeting text used when greeting style is 'custom'. */
+  formattingEmailCustomGreeting: string
+  /** Custom closing text used when closing style is 'custom'. */
+  formattingEmailCustomClosing: string
+  /**
+   * Duck amount for headphones/Bluetooth/USB when audioDuckingIncludeHeadphones is true.
+   * 0 = fully mute, 100 = no change. Built-in speakers are always fully muted.
+   */
+  audioDuckingLevel: number
+  /** When true, ducking also applies with headphones/Bluetooth/USB (default: false). */
+  audioDuckingIncludeHeadphones: boolean
   /**
    * Read-only: true when FoundationModels is available on this device (macOS 26+ with Apple
    * Intelligence). Not persisted — computed at runtime and included in getSettings() responses.
@@ -188,6 +202,22 @@ export type WebviewRPCType = {
       }
       setFormattingEmailClosingStyle: {
         params: { style: FormattingEmailClosingStyle }
+        response: boolean
+      }
+      setFormattingEmailCustomGreeting: {
+        params: { text: string }
+        response: boolean
+      }
+      setFormattingEmailCustomClosing: {
+        params: { text: string }
+        response: boolean
+      }
+      setAudioDuckingLevel: {
+        params: { level: number }
+        response: boolean
+      }
+      setAudioDuckingIncludeHeadphones: {
+        params: { enabled: boolean }
         response: boolean
       }
       /** Ephemeral: show the floating indicator during onboarding to preview the chosen mode. */

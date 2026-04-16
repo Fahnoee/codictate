@@ -16,6 +16,8 @@ struct FormatterRequest: Decodable {
     let emailIncludeSenderName: Bool
     let emailGreetingStyle: String
     let emailClosingStyle: String
+    let emailCustomGreeting: String?
+    let emailCustomClosing: String?
     let focusedApp: FocusedAppContext?
 }
 
@@ -101,6 +103,8 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--request" {
         emailIncludeSenderName: false,
         emailGreetingStyle: "auto",
         emailClosingStyle: "auto",
+        emailCustomGreeting: nil,
+        emailCustomClosing: nil,
         focusedApp: nil
     )
 }
@@ -131,20 +135,32 @@ RunLoop.main.run()
 
 // MARK: - Email formatting
 
-func greetingPreference(_ style: String) -> String {
+func greetingPreference(_ style: String, custom: String?) -> String {
     switch style {
-    case "hi":     return "Use \"Hi\" as the greeting word."
-    case "hello":  return "Use \"Hello\" as the greeting word."
-    default:       return "Choose the most natural greeting word for the language."
+    case "hi":     return "Use an informal greeting tone."
+    case "hello":  return "Use a formal greeting tone."
+    case "custom":
+        let text = custom?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !text.isEmpty {
+            return "Use \"\(text)\" as the greeting word or phrase exactly as written."
+        }
+        return "Choose the most natural greeting."
+    default:       return "Choose the most natural greeting."
     }
 }
 
-func closingPreference(_ style: String) -> String {
+func closingPreference(_ style: String, custom: String?) -> String {
     switch style {
-    case "best-regards":  return "Use \"Best regards\" as the closing phrase."
-    case "thanks":        return "Use \"Thanks\" as the closing phrase."
-    case "kind-regards":  return "Use \"Kind regards\" as the closing phrase."
-    default:              return "Choose the most natural closing phrase for the language."
+    case "best-regards":  return "Use a formal, professional closing tone."
+    case "thanks":        return "Use a grateful closing tone."
+    case "kind-regards":  return "Use a warm, friendly closing tone."
+    case "custom":
+        let text = custom?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !text.isEmpty {
+            return "Use \"\(text)\" as the closing phrase exactly as written."
+        }
+        return "Choose the most natural closing."
+    default:              return "Choose the most natural closing."
     }
 }
 
@@ -223,11 +239,12 @@ func formatEmail(request: FormatterRequest, inputText: String) async {
     - Keep the input language. NEVER translate.
     - NEVER add content that was not in the speech.
     - Fix grammar, punctuation, and capitalisation. Preserve meaning and names.
+    - The greeting and closing MUST be in the same language as the body.
 
     greeting: Extract the opening words if they are a salutation \
     (hi, hello, hey, dear, hej, hola, bonjour, etc.) optionally followed by a name. \
     End with a comma. If none was spoken, generate one. \
-    \(greetingPreference(request.emailGreetingStyle))
+    \(greetingPreference(request.emailGreetingStyle, custom: request.emailCustomGreeting))
 
     body: Everything between the greeting and the closing. \
     Fix run-on sentences. Capitalise the first word. Separate paragraphs with a blank line.
@@ -235,7 +252,7 @@ func formatEmail(request: FormatterRequest, inputText: String) async {
     closing: If the speech ends with a farewell phrase (such as best regards, \
     kind regards, thanks, cheers, mvh, or an equivalent in the input language), \
     extract it. Otherwise generate a closing. \
-    \(closingPreference(request.emailClosingStyle))
+    \(closingPreference(request.emailClosingStyle, custom: request.emailCustomClosing))
 
     \(senderGuidance(name: senderName, include: request.emailIncludeSenderName))
     """

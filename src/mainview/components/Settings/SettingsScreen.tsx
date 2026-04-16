@@ -69,6 +69,10 @@ import {
   setFormattingEmailIncludeSenderName,
   setFormattingEmailGreetingStyle,
   setFormattingEmailClosingStyle,
+  setFormattingEmailCustomGreeting,
+  setFormattingEmailCustomClosing,
+  setAudioDuckingLevel,
+  setAudioDuckingIncludeHeadphones,
   downloadWhisperModel,
   cancelModelDownload,
   deleteWhisperModel,
@@ -107,6 +111,7 @@ const FORMATTING_GREETING_STYLE_OPTIONS: {
   { value: "auto", label: "Auto" },
   { value: "hi", label: "Hi" },
   { value: "hello", label: "Hello" },
+  { value: "custom", label: "Custom…" },
 ];
 
 const FORMATTING_CLOSING_STYLE_OPTIONS: {
@@ -117,6 +122,7 @@ const FORMATTING_CLOSING_STYLE_OPTIONS: {
   { value: "best-regards", label: "Best regards" },
   { value: "thanks", label: "Thanks" },
   { value: "kind-regards", label: "Kind regards" },
+  { value: "custom", label: "Custom…" },
 ];
 
 type SettingsCategory =
@@ -125,6 +131,7 @@ type SettingsCategory =
   | "formatting"
   | "shortcuts"
   | "audio"
+  | "ui"
   | "general";
 
 const CATEGORIES: {
@@ -220,7 +227,7 @@ const CATEGORIES: {
   },
   {
     id: "audio",
-    label: "Audio & UI",
+    label: "Audio",
     icon: (
       <svg
         width="18"
@@ -235,6 +242,26 @@ const CATEGORIES: {
         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
         <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
         <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      </svg>
+    ),
+  },
+  {
+    id: "ui",
+    label: "UI",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect width="20" height="14" x="2" y="3" rx="2" />
+        <line x1="8" x2="16" y1="21" y2="21" />
+        <line x1="12" x2="12" y1="17" y2="21" />
       </svg>
     ),
   },
@@ -465,6 +492,8 @@ export function SettingsScreen({
     Record<string, number>
   >({});
   const [userDisplayNameDraft, setUserDisplayNameDraft] = useState("");
+  const [customGreetingDraft, setCustomGreetingDraft] = useState("");
+  const [customClosingDraft, setCustomClosingDraft] = useState("");
   /** Model id being downloaded to satisfy a translate toggle, if any. */
   const translatePendingRef = useRef<string | null>(null);
   const [translateDownloadModelId, setTranslateDownloadModelId] = useState<
@@ -894,6 +923,14 @@ export function SettingsScreen({
     setUserDisplayNameDraft(settings.userDisplayName);
   }, [settings.userDisplayName]);
 
+  useEffect(() => {
+    setCustomGreetingDraft(settings.formattingEmailCustomGreeting);
+  }, [settings.formattingEmailCustomGreeting]);
+
+  useEffect(() => {
+    setCustomClosingDraft(settings.formattingEmailCustomClosing);
+  }, [settings.formattingEmailCustomClosing]);
+
   const handleUserDisplayNameCommit = useCallback(async () => {
     const normalized = userDisplayNameDraft.trim();
     if (normalized === settings.userDisplayName) return;
@@ -912,6 +949,38 @@ export function SettingsScreen({
     }, 600);
     return () => clearTimeout(timer);
   }, [userDisplayNameDraft, handleUserDisplayNameCommit]);
+
+  const handleCustomGreetingCommit = useCallback(async () => {
+    const text = customGreetingDraft.trim();
+    if (text === settings.formattingEmailCustomGreeting) return;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, formattingEmailCustomGreeting: text } : old,
+    );
+    await setFormattingEmailCustomGreeting(text);
+  }, [queryClient, settings.formattingEmailCustomGreeting, customGreetingDraft]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void handleCustomGreetingCommit();
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [customGreetingDraft, handleCustomGreetingCommit]);
+
+  const handleCustomClosingCommit = useCallback(async () => {
+    const text = customClosingDraft.trim();
+    if (text === settings.formattingEmailCustomClosing) return;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, formattingEmailCustomClosing: text } : old,
+    );
+    await setFormattingEmailCustomClosing(text);
+  }, [queryClient, settings.formattingEmailCustomClosing, customClosingDraft]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void handleCustomClosingCommit();
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [customClosingDraft, handleCustomClosingCommit]);
 
   const handleFormattingAutoSelectToggle = useCallback(async () => {
     const newValue = !settings.formattingAutoSelectEnabled;
@@ -962,6 +1031,25 @@ export function SettingsScreen({
     },
     [queryClient],
   );
+
+  const handleAudioDuckingLevelChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const level = Number(event.target.value);
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old ? { ...old, audioDuckingLevel: level } : old,
+      );
+      await setAudioDuckingLevel(level);
+    },
+    [queryClient],
+  );
+
+  const handleAudioDuckingIncludeHeadphonesToggle = useCallback(async () => {
+    const newValue = !settings.audioDuckingIncludeHeadphones;
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, audioDuckingIncludeHeadphones: newValue } : old,
+    );
+    await setAudioDuckingIncludeHeadphones(newValue);
+  }, [queryClient, settings.audioDuckingIncludeHeadphones]);
 
   const durationLabel = formatRecordingDurationLabel(
     settings.maxRecordingDuration,
@@ -1465,40 +1553,88 @@ export function SettingsScreen({
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3">
-                      <label className="block">
+                      <div className="block">
                         <span className="mb-2 block text-[17px] text-white/44 font-sans">
                           Greeting style
                         </span>
-                        <select
-                          value={settings.formattingEmailGreetingStyle}
-                          onChange={handleFormattingEmailGreetingStyleChange}
-                          className={devPreviewSelectClass}
-                          aria-label="Preferred email greeting style"
-                        >
-                          {FORMATTING_GREETING_STYLE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
+                        <label className="block">
+                          <select
+                            value={settings.formattingEmailGreetingStyle}
+                            onChange={handleFormattingEmailGreetingStyleChange}
+                            className={devPreviewSelectClass}
+                            aria-label="Preferred email greeting style"
+                          >
+                            {FORMATTING_GREETING_STYLE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <AnimatePresence>
+                          {settings.formattingEmailGreetingStyle === "custom" && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.18 }}
+                              className="overflow-hidden"
+                            >
+                              <input
+                                type="text"
+                                value={customGreetingDraft}
+                                onChange={(e) =>
+                                  setCustomGreetingDraft(e.target.value)
+                                }
+                                onBlur={() => void handleCustomGreetingCommit()}
+                                placeholder="e.g. Dear"
+                                className="mt-2 w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2.5 text-[19px] font-medium text-white/78 outline-none transition-[border-color,background-color] duration-200 placeholder:text-white/24 hover:border-white/18 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0"
+                              />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                      <div className="block">
                         <span className="mb-2 block text-[17px] text-white/44 font-sans">
                           Closing style
                         </span>
-                        <select
-                          value={settings.formattingEmailClosingStyle}
-                          onChange={handleFormattingEmailClosingStyleChange}
-                          className={devPreviewSelectClass}
-                          aria-label="Preferred email closing style"
-                        >
-                          {FORMATTING_CLOSING_STYLE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                        <label className="block">
+                          <select
+                            value={settings.formattingEmailClosingStyle}
+                            onChange={handleFormattingEmailClosingStyleChange}
+                            className={devPreviewSelectClass}
+                            aria-label="Preferred email closing style"
+                          >
+                            {FORMATTING_CLOSING_STYLE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <AnimatePresence>
+                          {settings.formattingEmailClosingStyle === "custom" && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.18 }}
+                              className="overflow-hidden"
+                            >
+                              <input
+                                type="text"
+                                value={customClosingDraft}
+                                onChange={(e) =>
+                                  setCustomClosingDraft(e.target.value)
+                                }
+                                onBlur={() => void handleCustomClosingCommit()}
+                                placeholder="e.g. Cheers"
+                                className="mt-2 w-full rounded-lg border border-white/12 bg-white/5 px-3 py-2.5 text-[19px] font-medium text-white/78 outline-none transition-[border-color,background-color] duration-200 placeholder:text-white/24 hover:border-white/18 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12 focus-visible:ring-offset-0"
+                              />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </div>
                     <p className={settingsHelperClass}>
                       The formatter keeps the input language and only fills in
@@ -1556,6 +1692,102 @@ export function SettingsScreen({
                     </p>
                   </div>
 
+                  <div className="mb-8">
+                    <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
+                      Audio Ducking
+                    </h2>
+                    <div className="rounded-xl border border-white/11 bg-white/4 overflow-hidden divide-y divide-white/8">
+                      <div className="px-4 py-3.5">
+                        <span className="block text-[21px] font-medium text-white/62">
+                          Built-in speakers
+                        </span>
+                        <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
+                          Always fully muted while recording.
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 px-4 py-3.5">
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-[21px] font-medium ${settings.audioDuckingIncludeHeadphones ? "text-white/78" : "text-white/58"}`}
+                          >
+                            Headphones & Bluetooth
+                          </span>
+                          <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
+                            Also lower headphone volume while recording.
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleAudioDuckingIncludeHeadphonesToggle}
+                          className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
+                            settings.audioDuckingIncludeHeadphones
+                              ? "bg-blue-500/30 border-blue-400/30"
+                              : "bg-white/7 border-white/14"
+                          }`}
+                          aria-label="Toggle ducking for headphones"
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
+                              settings.audioDuckingIncludeHeadphones
+                                ? "left-4 bg-blue-400/90"
+                                : "left-0.5 bg-white/40"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <AnimatePresence>
+                        {settings.audioDuckingIncludeHeadphones && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="border-t border-white/8 px-4 py-3.5"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[17px] text-white/44 font-sans">
+                                Duck amount
+                              </span>
+                              <span className="text-[17px] text-white/55 font-medium tabular-nums">
+                                {settings.audioDuckingLevel === 0
+                                  ? "Fully mute"
+                                  : settings.audioDuckingLevel === 100
+                                    ? "No change"
+                                    : `${100 - settings.audioDuckingLevel}% quieter`}
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              step={5}
+                              value={settings.audioDuckingLevel}
+                              onChange={handleAudioDuckingLevelChange}
+                              className="w-full accent-blue-400 cursor-pointer"
+                              aria-label="Headphone duck amount"
+                            />
+                            <div className="flex justify-between mt-1">
+                              <span className="text-[14px] text-white/28">
+                                Fully mute
+                              </span>
+                              <span className="text-[14px] text-white/28">
+                                No change
+                              </span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    <p className={settingsHelperClass}>
+                      Speaker audio is always silenced during recording. Turn on
+                      headphone ducking to also lower music or other audio when
+                      you dictate with headphones on.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {activeCategory === "ui" && (
+                <>
                   <div className="mb-8">
                     <h2 className="text-[18px] text-white/48 font-medium uppercase tracking-wider mb-3">
                       Recording indicator

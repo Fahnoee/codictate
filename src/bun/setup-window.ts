@@ -294,6 +294,26 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
+        setFormattingEmailCustomGreeting: async ({ text }: { text: string }) => {
+          const ok = await deps.appConfig.setFormattingEmailCustomGreeting(text)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setFormattingEmailCustomClosing: async ({ text }: { text: string }) => {
+          const ok = await deps.appConfig.setFormattingEmailCustomClosing(text)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setAudioDuckingLevel: async ({ level }: { level: number }) => {
+          const ok = await deps.appConfig.setAudioDuckingLevel(level)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setAudioDuckingIncludeHeadphones: async ({ enabled }: { enabled: boolean }) => {
+          const ok = await deps.appConfig.setAudioDuckingIncludeHeadphones(enabled)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
         setOnboardingIndicatorPreview: async ({ active, mode }) => {
           deps.appConfig.setRecordingIndicatorOnboardingPreview(active, mode)
           deps.onOnboardingIndicatorPreviewChanged?.()

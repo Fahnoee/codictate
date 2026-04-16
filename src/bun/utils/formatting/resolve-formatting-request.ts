@@ -12,6 +12,8 @@ export interface FormatterRequest {
   emailIncludeSenderName: boolean
   emailGreetingStyle: FormattingRuntimeSettings['formattingEmailGreetingStyle']
   emailClosingStyle: FormattingRuntimeSettings['formattingEmailClosingStyle']
+  emailCustomGreeting: string
+  emailCustomClosing: string
   focusedApp: FocusedAppContext | null
 }
 
@@ -122,6 +124,8 @@ export async function buildFormatterRequest(
     emailIncludeSenderName: settings.formattingEmailIncludeSenderName,
     emailGreetingStyle: settings.formattingEmailGreetingStyle,
     emailClosingStyle: settings.formattingEmailClosingStyle,
+    emailCustomGreeting: settings.formattingEmailCustomGreeting,
+    emailCustomClosing: settings.formattingEmailCustomClosing,
     focusedApp,
   }
 }

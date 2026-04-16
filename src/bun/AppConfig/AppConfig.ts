@@ -68,6 +68,7 @@ const FORMATTING_EMAIL_GREETING_STYLES = new Set<FormattingEmailGreetingStyle>([
   'auto',
   'hi',
   'hello',
+  'custom',
 ])
 
 function isValidFormattingEmailGreetingStyle(
@@ -84,6 +85,7 @@ const FORMATTING_EMAIL_CLOSING_STYLES = new Set<FormattingEmailClosingStyle>([
   'best-regards',
   'thanks',
   'kind-regards',
+  'custom',
 ])
 
 function isValidFormattingEmailClosingStyle(
@@ -123,6 +125,10 @@ export class AppConfig {
   private formattingEmailIncludeSenderName: boolean
   private formattingEmailGreetingStyle: FormattingEmailGreetingStyle
   private formattingEmailClosingStyle: FormattingEmailClosingStyle
+  private formattingEmailCustomGreeting: string
+  private formattingEmailCustomClosing: string
+  private audioDuckingLevel: number
+  private audioDuckingIncludeHeadphones: boolean
   /** True when formatting can be offered on this OS; runtime helper still handles failures safely. */
   private formattingAvailable: boolean
   /**
@@ -154,6 +160,10 @@ export class AppConfig {
     this.formattingEmailIncludeSenderName = false
     this.formattingEmailGreetingStyle = 'auto'
     this.formattingEmailClosingStyle = 'auto'
+    this.formattingEmailCustomGreeting = ''
+    this.formattingEmailCustomClosing = ''
+    this.audioDuckingLevel = 0
+    this.audioDuckingIncludeHeadphones = false
     this.formattingAvailable = detectFormattingAvailable()
   }
 
@@ -275,6 +285,23 @@ export class AppConfig {
       if (isValidFormattingEmailClosingStyle(raw.formattingEmailClosingStyle)) {
         this.formattingEmailClosingStyle = raw.formattingEmailClosingStyle
       }
+      if (typeof raw.formattingEmailCustomGreeting === 'string') {
+        this.formattingEmailCustomGreeting = raw.formattingEmailCustomGreeting
+      }
+      if (typeof raw.formattingEmailCustomClosing === 'string') {
+        this.formattingEmailCustomClosing = raw.formattingEmailCustomClosing
+      }
+      if (
+        typeof raw.audioDuckingLevel === 'number' &&
+        Number.isFinite(raw.audioDuckingLevel) &&
+        raw.audioDuckingLevel >= 0 &&
+        raw.audioDuckingLevel <= 100
+      ) {
+        this.audioDuckingLevel = raw.audioDuckingLevel
+      }
+      if (typeof raw.audioDuckingIncludeHeadphones === 'boolean') {
+        this.audioDuckingIncludeHeadphones = raw.audioDuckingIncludeHeadphones
+      }
       log('config', 'loaded app config', {
         shortcutId: this.shortcutId,
         shortcutHoldOnlyId: this.shortcutHoldOnlyId ?? undefined,
@@ -322,6 +349,10 @@ export class AppConfig {
       formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
       formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
       formattingEmailClosingStyle: this.formattingEmailClosingStyle,
+      formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
+      formattingEmailCustomClosing: this.formattingEmailCustomClosing,
+      audioDuckingLevel: this.audioDuckingLevel,
+      audioDuckingIncludeHeadphones: this.audioDuckingIncludeHeadphones,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -522,6 +553,10 @@ export class AppConfig {
       formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
       formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
       formattingEmailClosingStyle: this.formattingEmailClosingStyle,
+      formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
+      formattingEmailCustomClosing: this.formattingEmailCustomClosing,
+      audioDuckingLevel: this.audioDuckingLevel,
+      audioDuckingIncludeHeadphones: this.audioDuckingIncludeHeadphones,
       formattingAvailable: this.formattingAvailable,
     }
   }
@@ -534,6 +569,8 @@ export class AppConfig {
       formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
       formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
       formattingEmailClosingStyle: this.formattingEmailClosingStyle,
+      formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
+      formattingEmailCustomClosing: this.formattingEmailCustomClosing,
     }
   }
 
@@ -608,6 +645,47 @@ export class AppConfig {
   ): Promise<boolean> {
     if (!FORMATTING_EMAIL_CLOSING_STYLES.has(style)) return false
     this.formattingEmailClosingStyle = style
+    await this.save()
+    return true
+  }
+
+  public getFormattingEmailCustomGreeting(): string {
+    return this.formattingEmailCustomGreeting
+  }
+
+  public async setFormattingEmailCustomGreeting(text: string): Promise<boolean> {
+    this.formattingEmailCustomGreeting = text
+    await this.save()
+    return true
+  }
+
+  public getFormattingEmailCustomClosing(): string {
+    return this.formattingEmailCustomClosing
+  }
+
+  public async setFormattingEmailCustomClosing(text: string): Promise<boolean> {
+    this.formattingEmailCustomClosing = text
+    await this.save()
+    return true
+  }
+
+  public getAudioDuckingLevel(): number {
+    return this.audioDuckingLevel
+  }
+
+  public async setAudioDuckingLevel(level: number): Promise<boolean> {
+    if (!Number.isFinite(level) || level < 0 || level > 100) return false
+    this.audioDuckingLevel = Math.round(level)
+    await this.save()
+    return true
+  }
+
+  public getAudioDuckingIncludeHeadphones(): boolean {
+    return this.audioDuckingIncludeHeadphones
+  }
+
+  public async setAudioDuckingIncludeHeadphones(enabled: boolean): Promise<boolean> {
+    this.audioDuckingIncludeHeadphones = enabled
     await this.save()
     return true
   }

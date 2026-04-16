@@ -54,6 +54,8 @@ export const startRecording = async (
 
   const maxRecordSeconds = appConfig.getMaxRecordingDurationSeconds()
   const outputDuckDelayMs = duckDelayAfterStartChimeMs()
+  const duckLevel = appConfig.getAudioDuckingLevel()
+  const duckIncludeHeadphones = appConfig.getAudioDuckingIncludeHeadphones()
 
   const proc = Bun.spawn(
     [
@@ -63,6 +65,8 @@ export const startRecording = async (
       String(device),
       String(maxRecordSeconds),
       String(outputDuckDelayMs),
+      String(duckLevel),
+      duckIncludeHeadphones ? '1' : '0',
     ],
     {
       stderr: 'pipe',
