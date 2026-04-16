@@ -906,6 +906,13 @@ export function SettingsScreen({
     }
   }, [queryClient, settings.userDisplayName, userDisplayNameDraft]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void handleUserDisplayNameCommit();
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [userDisplayNameDraft, handleUserDisplayNameCommit]);
+
   const handleFormattingAutoSelectToggle = useCallback(async () => {
     const newValue = !settings.formattingAutoSelectEnabled;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>

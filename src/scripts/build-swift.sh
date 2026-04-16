@@ -7,6 +7,17 @@ swiftc src/bun/utils/audio/MicRecorder.swift \
   -framework AVFoundation \
   -framework CoreAudio
 
+# Keep the vendored Formatter helper fresh during normal dev/start flows.
+FORMATTER_PKG="native/CodictateFormatterHelper"
+FORMATTER_VENDOR_DIR="vendors/formatter"
+FORMATTER_VENDOR_BIN="$FORMATTER_VENDOR_DIR/CodictateFormatterHelper"
+
+mkdir -p "$FORMATTER_VENDOR_DIR"
+swift build -c release --package-path "$FORMATTER_PKG"
+FORMATTER_BIN_DIR="$(swift build -c release --show-bin-path --package-path "$FORMATTER_PKG")"
+cp "$FORMATTER_BIN_DIR/CodictateFormatterHelper" "$FORMATTER_VENDOR_BIN"
+chmod +x "$FORMATTER_VENDOR_BIN"
+
 # Keep the vendored Parakeet helper fresh during normal dev/start flows.
 # `electrobun` copies from `vendors/parakeet/CodictateParakeetHelper`, so relying
 # only on `scripts/pre-build.ts` leaves a stale helper in the app bundle.
