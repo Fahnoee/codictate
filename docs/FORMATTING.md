@@ -1,6 +1,6 @@
 # Output Formatting with Apple Foundation Models
 
-Codictate can reshape transcribed speech into structured output before pasting it — for example, turning a raw dictation into a properly formatted email with a greeting, body, and sign-off. This is powered entirely on-device using Apple's **FoundationModels** framework, which ships as part of macOS 26 (Sequoia) and requires Apple Intelligence to be enabled.
+Codictate can reshape transcribed speech into structured output before pasting it — for example, turning a raw dictation into a properly formatted email with a greeting, body, and sign-off. This is powered entirely on-device using Apple's **FoundationModels** framework, which ships as part of macOS 26 (Tahoe) and requires Apple Intelligence to be enabled.
 
 ---
 
