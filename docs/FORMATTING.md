@@ -8,7 +8,7 @@ Codictate can reshape transcribed speech into structured output before pasting i
 
 | Requirement | Detail |
 |---|---|
-| macOS | 26 (Sequoia) or later |
+| macOS | 26 (Tahoe) or later |
 | Apple Intelligence | Must be enabled in **System Settings → Apple Intelligence & Siri** |
 | Chip | Apple Silicon (M-series) |
 
