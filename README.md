@@ -38,7 +38,7 @@ Visit **[codictate.app](https://codictate.app)** for the project site, then grab
 
 First time installing? See the **[step-by-step installation guide](docs/INSTALL.md)** with screenshots for every step.
 
-Using **[AeroSpace](https://github.com/nikitabobko/AeroSpace)**? See **[docs/AEROSPACE.md](docs/AEROSPACE.md)** for a small `on-window-detected` snippet so the recording HUD stays floating and does not steal focus/workspace behavior from your main Codictate rules.
+Using **[AeroSpace](https://github.com/nikitabobko/AeroSpace)**? See **[docs/AEROSPACE.md](docs/AEROSPACE.md)** for an optional rule snippet if you want to keep separate AeroSpace rules for the main Codictate window and the floating recording HUD.
 
 The short version:
 

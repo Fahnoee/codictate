@@ -7,6 +7,16 @@ swiftc src/bun/utils/audio/MicRecorder.swift \
   -framework AVFoundation \
   -framework CoreAudio
 
+WINDOW_HELPER_PKG="native/CodictateWindowHelper"
+WINDOW_HELPER_VENDOR_DIR="vendors/window-helper"
+WINDOW_HELPER_VENDOR_BIN="$WINDOW_HELPER_VENDOR_DIR/CodictateWindowHelper"
+
+mkdir -p "$WINDOW_HELPER_VENDOR_DIR"
+swift build -c release --package-path "$WINDOW_HELPER_PKG"
+WINDOW_HELPER_BIN_DIR="$(swift build -c release --show-bin-path --package-path "$WINDOW_HELPER_PKG")"
+cp "$WINDOW_HELPER_BIN_DIR/CodictateWindowHelper" "$WINDOW_HELPER_VENDOR_BIN"
+chmod +x "$WINDOW_HELPER_VENDOR_BIN"
+
 # Keep the vendored Formatter helper fresh during normal dev/start flows.
 FORMATTER_PKG="native/CodictateFormatterHelper"
 FORMATTER_VENDOR_DIR="vendors/formatter"

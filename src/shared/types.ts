@@ -367,17 +367,3 @@ export type WebviewRPCType = {
     }
   }>
 }
-
-/** RPC for the small indicator `BrowserWindow` (bun → webview only). */
-export type IndicatorWebviewRPCType = {
-  bun: RPCSchema<{
-    requests: {}
-    messages: {}
-  }>
-  webview: RPCSchema<{
-    requests: {}
-    messages: {
-      updateStatus: { status: AppStatus }
-    }
-  }>
-}

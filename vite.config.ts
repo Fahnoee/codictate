@@ -24,7 +24,7 @@ function stripCrossoriginForElectrobunWebview(): Plugin {
 export default defineConfig({
   plugins: [react(), stripCrossoriginForElectrobunWebview()],
   root: "src/mainview",
-  // Relative `./assets/` per HTML so `views/indicator/` loads its mirrored bundle (not root `/assets/`).
+  // Relative `./assets/` so bundled `views://` pages resolve emitted files correctly.
   base: "./",
   build: {
     outDir: "../../dist",
@@ -32,7 +32,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(projectDir, "src/mainview/index.html"),
-        indicator: path.resolve(projectDir, "src/mainview/indicator.html"),
       },
     },
   },

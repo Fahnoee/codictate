@@ -74,23 +74,7 @@ async function getMainViewUrl(): Promise<string> {
   return 'views://mainview/index.html'
 }
 
-async function getIndicatorViewUrl(): Promise<string> {
-  const channel = await Updater.localInfo.channel()
-  if (channel === 'dev') {
-    try {
-      await fetch(DEV_SERVER_URL, { method: 'HEAD' })
-      return `${DEV_SERVER_URL}/indicator.html`
-    } catch {
-      console.log(
-        "Vite dev server not running — indicator uses bundled views (run 'bun run dev:hmr' for HMR)."
-      )
-    }
-  }
-  return 'views://indicator/index.html'
-}
-
 const url = await getMainViewUrl()
-const indicatorUrl = await getIndicatorViewUrl()
 
 export const UserAppConfig = new AppConfig()
 await UserAppConfig.load()
@@ -264,7 +248,6 @@ const win = setupWindow({
 })
 
 indicatorRef.current = setupIndicatorWindow({
-  url: indicatorUrl,
   getSettings: () => UserAppConfig.getSettings(),
   getRecordingIndicatorPosition: () =>
     UserAppConfig.getRecordingIndicatorPosition(),

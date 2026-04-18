@@ -165,6 +165,10 @@ const helperEntitlementsByBasename: Record<string, string> = {
   KeyListener: join(entitlementsRoot, "KeyListener.entitlements"),
   MicRecorder: join(entitlementsRoot, "MicRecorder.entitlements"),
   "whisper-cli": join(entitlementsRoot, "whisper-cli.entitlements"),
+  CodictateWindowHelper: join(
+    entitlementsRoot,
+    "CodictateWindowHelper.entitlements",
+  ),
   CodictateFormatterHelper: join(
     entitlementsRoot,
     "CodictateFormatterHelper.entitlements",
@@ -254,6 +258,10 @@ verifyRequiredHelperExecutable(
 verifyRequiredHelperExecutable(
   "CodictateFormatterHelper",
   "Re-run: bun run scripts/pre-build.ts",
+);
+verifyRequiredHelperExecutable(
+  "CodictateWindowHelper",
+  "Re-run: bun run build:native",
 );
 
 const machoNativeHelpers = listCodesignableNativeHelpers(nativeHelpersDir);

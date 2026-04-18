@@ -29,8 +29,6 @@ export default {
     copy: {
       "dist/index.html": "views/mainview/index.html",
       "dist/assets": "views/mainview/assets",
-      "dist/indicator.html": "views/indicator/index.html",
-      "dist/indicator-bundled-assets": "views/indicator/assets",
       // -- custom key listener
       "src/bun/utils/keyboard/KeyListener": "native-helpers/KeyListener",
       "src/bun/utils/audio/MicRecorder": "native-helpers/MicRecorder",
@@ -40,6 +38,8 @@ export default {
         "native-helpers/CodictateParakeetHelper",
       "vendors/formatter/CodictateFormatterHelper":
         "native-helpers/CodictateFormatterHelper",
+      "vendors/window-helper/CodictateWindowHelper":
+        "native-helpers/CodictateWindowHelper",
       "vendors/whisper/ggml-large-v3-turbo-q5_0.bin":
         "native-helpers/ggml-large-v3-turbo-q5_0.bin",
       // -- Sounds (src/assets/sounds → app/sounds)

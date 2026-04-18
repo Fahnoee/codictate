@@ -1,117 +1,93 @@
 # Recording indicator (desktop HUD)
 
-This document explains how the small **recording indicator** overlay is built, packaged, and wired into the app—so future changes do not accidentally break a fragile stack (Electrobun + WKWebView + Vite + optional tiling WMs).
+This document explains how the floating recording indicator works after the fullscreen fix.
 
 ## What it is
 
-- A separate **BrowserWindow** with a tiny React surface that mirrors **`AppStatus`** (`ready` | `recording` | `transcribing`).
-- Shown according to **`recordingIndicatorMode`** in settings: `off`, `always`, or `when-active` (default: only while recording or transcribing).
-- Titled **`Codictate indicator`** so window managers can match it by title (see [AEROSPACE.md](./AEROSPACE.md)).
+- A small native macOS `NSPanel` managed by a separate helper executable: `CodictateWindowHelper`
+- Driven by app status: `ready` | `recording` | `transcribing`
+- Shown according to `recordingIndicatorMode`: `off`, `always`, or `when-active`
 
-## Why a second window and second Vite entry
+## Why it is native now
 
-The main UI lives in one webview; the HUD is intentionally **isolated**:
+The previous implementation used a separate Electrobun `BrowserWindow` with a React entrypoint. That worked across normal Spaces, but not reliably over native macOS fullscreen Spaces.
 
-- Different **size**, **transparency**, and **window chrome** (borderless, floating, always-on-top).
-- Avoids entangling overlay logic with the main layout and keeps the bundle for the small view minimal.
+The working fix was to move the HUD to a dedicated AppKit helper process:
 
-So we added a **second HTML entry** to Vite (`indicator.html` → `indicator/main.tsx`) alongside `index.html`.
+- Main app stays in Electrobun/Bun/React
+- Indicator rendering and window behavior live in native AppKit
+- Bun communicates with the helper over stdin/stdout, similar to the existing native helpers
 
-## Build and packaging
+This avoids two problems we hit during the fullscreen work:
 
-### 1. Vite multi-page build and `base: "./"`
+- Electrobun `BrowserWindow` did not provide the right fullscreen-space semantics for this overlay
+- Bun FFI crashed when we tried to drive an `NSPanel` directly through a dylib boundary
 
-- **`vite.config.ts`** declares two Rollup inputs: `main` and `indicator`.
-- **`base: './'`** makes emitted asset URLs **relative** (`./assets/...`). That matters because the packaged page is loaded as **`views://indicator/index.html`**, not from the site root. Absolute `/assets/...` would resolve incorrectly next to that URL.
+An important side effect of that change is that the indicator now behaves properly under AeroSpace as well. There is no special AeroSpace app config involved in Codictate itself.
 
-### 2. Mirrored asset directory for Electrobun
+## Current architecture
 
-Vite writes **one** shared `dist/assets/` for all entrypoints. Electrobun’s **`build.copy`** map needs **distinct source paths** per destination folder. We cannot point both `views/mainview/assets` and `views/indicator/assets` at the same `dist/assets` key twice.
+### Main app side
 
-**Fix:** **`scripts/duplicate-dist-assets-for-indicator.ts`** copies `dist/assets` → `dist/indicator-bundled-assets/` before `electrobun build`.
+- `src/bun/setup-indicator-window.ts`
+  Decides when the indicator should exist and where it should appear
+- `src/bun/utils/window/native-indicator-helper.ts`
+  Spawns `CodictateWindowHelper` and sends `show` / `hide` / `status` commands
 
-**`electrobun.config.ts`** then copies:
+### Native helper side
 
-- `dist/indicator.html` → `views/indicator/index.html`
-- `dist/indicator-bundled-assets` → `views/indicator/assets`
+- `native/CodictateWindowHelper/Sources/CodictateWindowHelper/main.swift`
+  Owns the real `NSPanel`, drawing, animation, and drag/move reporting
 
-Release **`package.json`** scripts run Vite, then this duplicate step, then Electrobun.
+### Build and packaging
 
-### 3. Strip `crossorigin` from built HTML (production)
+- `src/scripts/build-swift.sh`
+  Builds `CodictateWindowHelper` and vendors it to `vendors/window-helper/CodictateWindowHelper`
+- `electrobun.config.ts`
+  Copies that executable into `native-helpers/CodictateWindowHelper`
+- `scripts/post-build.ts`
+  Verifies and codesigns `CodictateWindowHelper` alongside the other native helpers
 
-Vite adds **`crossorigin`** on `<script type="module">` and related tags. With Electrobun’s **`views://`** handler, **WKWebView** can treat those module loads as failing CORS checks. Symptom: **empty transparent window** (you might still see a window border from another tool), because the JS bundle never runs.
+## Native panel behavior
 
-**Fix:** build-only plugin **`stripCrossoriginForElectrobunWebview`** in **`vite.config.ts`** removes `crossorigin` from emitted HTML. Dev server behavior is unchanged in intent; the problem shows up in **packaged** loads.
+The helper uses a borderless, nonactivating `NSPanel` with:
 
-### 4. `<base href="./" />` in `indicator.html`
+- `.canJoinAllSpaces`
+- `.fullScreenAuxiliary`
+- `.stationary`
+- `.ignoresCycle`
+- high window level (`.screenSaver`)
 
-Reinforces correct resolution of `./assets/...` relative to `views/indicator/index.html` under the custom scheme.
+Important detail:
 
-## Bun / Electrobun host behavior (`setup-indicator-window.ts`)
+- `canJoinAllSpaces` and `moveToActiveSpace` cannot be combined; AppKit throws if both are set
 
-### URL selection (`index.ts`)
+## Animation
 
-- **Dev channel** and reachable Vite on port **5173** → `http://localhost:5173/indicator.html` (HMR path).
-- Otherwise → **`views://indicator/index.html`** (bundled app).
+The old animation used React + Motion. The current animation is native AppKit drawing:
 
-### Window options (Electrobun docs)
+- `ready`: subtle breathing pulse
+- `recording`: red pulse/ring animation
+- `transcribing`: animated blue level bars
 
-Official reference: **[BrowserWindow API](https://blackboard.sh/electrobun/docs/apis/browser-window)**.
+## Persistence
 
-We mirror the documented **floating widget** pattern (`transparent: true`, `titleBarStyle: 'hidden'`) and set **`styleMask`** fields the API lists for macOS (`UtilityWindow`, `NonactivatingPanel`, etc.). The docs also describe **`setAlwaysOnTop`** and **`setVisibleOnAllWorkspaces`** for overlays that stay above other windows and span workspaces.
+- The helper reports drag moves back to Bun over stdout as JSON lines
+- `setup-indicator-window.ts` debounces and saves the top-left position into app config
+- Saved positions are clamped back onto a valid display before reuse
 
-| Choice | Reason |
-|--------|--------|
-| **`transparent: true` + `titleBarStyle: 'hidden'`** | Same combination the docs use for non-rectangular / floating UIs; CSS keeps the page background transparent (`indicator.css`). |
-| **`passthrough: false`** | Native mouse passthrough broke **painting** in WKWebView; **click-through** is done with **`pointer-events: none`** on `body` / `#root` (still consistent with a floating overlay). |
-| **No `.show()` / `.focus()` on the HUD** | Public docs: **`focus()`** brings the window forward **and gives it focus**. Electrobun’s implementation ties **`show()`** to that path too — avoid calling either on the indicator so we don’t *extra* focus the HUD. The window is created visible via the constructor (`hidden: false` in typings). |
-| **`NonactivatingPanel` + `UtilityWindow`** | Documented `styleMask` options aimed at utility / panel-style windows. |
-| **`setAlwaysOnTop` / `setVisibleOnAllWorkspaces`** | Documented methods for floating tools (see BrowserWindow “Methods” section). |
-| **Title `Codictate indicator`** | Stable string for AeroSpace / scripting. |
+## What is no longer used
 
-The public BrowserWindow documentation does **not** describe a separate “order on screen without activating the app” API. If creating the window still raises Codictate globally, that is framework / OS behavior to raise with [Electrobun](https://github.com/blackboardsh/electrobun) (issues or Discord), not something we paper over from app code.
+These legacy files are gone because the indicator is no longer a webview:
 
-### Idle `when-active`: hide without `close()` (off-screen park)
-
-For **`recordingIndicatorMode === 'when-active'`**, when dictation finishes the status becomes **`ready`** and the HUD is no longer needed. **Calling `BrowserWindow.close()` on the HUD** can cause macOS to assign key-window status to another window in the same app, typically the main Codictate window, which steals focus from the app you were dictating into.
-
-So in `when-active`, the HUD is kept alive and parked off-screen instead of being closed. The window is **closed** when the user sets the indicator to **`off`**, on **dispose**, or when `indicatorShouldExist` is false for reasons other than idle **`when-active` + `ready`**.
-
-
-### RPC
-
-- **`IndicatorWebviewRPCType`** in **`shared/types.ts`**: Bun → webview messages only (`updateStatus`). Defined symmetrically with **`Electroview.defineRPC`** in the indicator page and **`BrowserView.defineRPC`** on the host.
-
-### Focus and dictation into other apps
-
-Use the **documented** window flags and avoid **`focus()` / `show()`** on the HUD (see table above). Tiling WMs (e.g. AeroSpace) can still react when the app or a window is raised; see [AEROSPACE.md](./AEROSPACE.md).
-
-### Lifecycle
-
-- **`onAppStatus`**: creates/destroys/hides logic driven by mode + status; repositions on the display nearest the cursor so the HUD appears on the screen you are actively using; pushes status to the webview (with retries around RPC readiness).
-- **`onConfigChanged`**: re-evaluates when the user changes indicator mode in Settings.
-- **`dispose`**: closes the indicator on app quit.
-
-Settings changes flow: **`setup-window`** exposes **`onRecordingIndicatorModeChanged`** → **`index.ts`** calls **`indicatorRef.current?.onConfigChanged()`**.
-
-## Frontend files (quick map)
-
-| Area | Files |
-|------|--------|
-| Entry HTML | `src/mainview/indicator.html` |
-| React root | `src/mainview/indicator/main.tsx` |
-| Transparent page chrome | `src/mainview/indicator.css` |
-| Meter UI | `components/Common/VoiceActivityCore.tsx` (`variant: "indicator"` for this HUD) |
-| Types / RPC | `src/shared/types.ts` (`RecordingIndicatorMode`, `IndicatorWebviewRPCType`) |
-| Persistence / Settings UI | `AppConfig`, `SettingsScreen`, webview RPC `setRecordingIndicatorMode` |
-
-## Tiling window managers
-
-If the user assigns **all Codictate windows** to one workspace, the HUD will follow those rules too unless the WM treats it separately. **AeroSpace** users: see **[docs/AEROSPACE.md](./AEROSPACE.md)** (rule order + `check-further-callbacks`).
+- `src/mainview/indicator.html`
+- `src/mainview/indicator/main.tsx`
+- `src/mainview/indicator.css`
+- `IndicatorWebviewRPCType`
+- `scripts/duplicate-dist-assets-for-indicator.ts`
 
 ## Checklist when touching this feature
 
-1. Run **`vite build`** and confirm **`dist/indicator.html`** references `./assets/...` and has **no** `crossorigin` on scripts (production).
-2. Run **`bun run scripts/duplicate-dist-assets-for-indicator.ts`** before packaging if you build manually; **`build:stable` / `build:canary` / `start`** already chain it.
-3. If the HUD is **blank** in a packaged build, suspect **asset paths** or **module load** under `views://` before changing React code.
-4. If **focus** or **workspace jumping** regresses, confirm we still match **[BrowserWindow](https://blackboard.sh/electrobun/docs/apis/browser-window)** guidance (transparent HUD, `styleMask`, no extra `focus()`/`show()` on the indicator) and review WM rules—not AppleScript workarounds.
+1. If fullscreen behavior regresses, inspect the native helper first, not Electrobun `BrowserWindow`
+2. If the indicator stops launching, check that `CodictateWindowHelper` is built into `vendors/window-helper/` and copied into `native-helpers/`
+3. If packaged builds fail notarization/signing, check `scripts/post-build.ts` and `entitlements/CodictateWindowHelper.entitlements`
