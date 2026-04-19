@@ -4,9 +4,56 @@ import { duckDelayAfterStartChimeMs, playEndSound } from '../sound/play-sound'
 import { findMicRecorderBinary } from './find-mic-recorder'
 import { findDevices } from './devices'
 import { log } from '../logger'
+import { stat } from 'node:fs/promises'
 
 /** Set `discard: true` before killing the recorder so onExit skips transcription and UI handoff. */
-export type RecordingSession = { discard: boolean }
+export type RecordingSession = { discard: boolean; startedAtMs: number }
+
+const WAV_HEADER_BYTES = 44
+const PCM_16BIT_MONO_48KHZ_BYTES_PER_MS = 96
+const MIN_VALID_RECORDING_MS = 180
+
+function estimateWavDurationMs(sizeBytes: number): number {
+  const pcmBytes = Math.max(0, sizeBytes - WAV_HEADER_BYTES)
+  return Math.floor(pcmBytes / PCM_16BIT_MONO_48KHZ_BYTES_PER_MS)
+}
+
+async function shouldSkipTranscriptionForShortCapture(
+  session: RecordingSession
+): Promise<{
+  skip: boolean
+  reason?: 'missing-file' | 'stale-file' | 'too-short'
+  sizeBytes?: number
+  durationMs?: number
+}> {
+  try {
+    const fileStats = await stat(RECORDING_PATH)
+    const durationMs = estimateWavDurationMs(fileStats.size)
+    const fileLooksFresh = fileStats.mtimeMs >= session.startedAtMs - 50
+
+    if (!fileLooksFresh) {
+      return {
+        skip: true,
+        reason: 'stale-file',
+        sizeBytes: fileStats.size,
+        durationMs,
+      }
+    }
+
+    if (durationMs < MIN_VALID_RECORDING_MS) {
+      return {
+        skip: true,
+        reason: 'too-short',
+        sizeBytes: fileStats.size,
+        durationMs,
+      }
+    }
+
+    return { skip: false, sizeBytes: fileStats.size, durationMs }
+  } catch {
+    return { skip: true, reason: 'missing-file' }
+  }
+}
 
 export const startRecording = async (
   appConfig: AppConfig,
@@ -90,7 +137,21 @@ export const startRecording = async (
 
         const forceCancelled =
           exitCode === 255 || exitCode === 143 || exitCode === 137
-        const skipPipeline = session.discard || forceCancelled
+        const recordingCheck =
+          session.discard || forceCancelled
+            ? { skip: false as const }
+            : await shouldSkipTranscriptionForShortCapture(session)
+        const skipPipeline =
+          session.discard || forceCancelled || recordingCheck.skip
+
+        if (recordingCheck.skip) {
+          log('mic', 'skipping transcription for invalid capture', {
+            reason: recordingCheck.reason,
+            sizeBytes: recordingCheck.sizeBytes,
+            durationMs: recordingCheck.durationMs,
+            minDurationMs: MIN_VALID_RECORDING_MS,
+          })
+        }
 
         if (!skipPipeline) {
           onComplete()

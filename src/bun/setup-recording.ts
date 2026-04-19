@@ -337,7 +337,7 @@ export const setupRecording = (
       playStartSound(appConfig.getFunModeEnabled())
       setTrayRecording()
       onStatusChange?.('recording')
-      recordingSession = { discard: false }
+      recordingSession = { discard: false, startedAtMs: Date.now() }
       recorderProc = await startRecording(
         appConfig,
         () => {
