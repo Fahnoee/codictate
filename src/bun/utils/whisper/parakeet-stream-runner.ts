@@ -27,7 +27,7 @@ export type ParakeetStreamStartOptions = {
   outputDuckBuiltIn?: boolean
   /** When true, helper also ducks headphone / Bluetooth / USB output. */
   outputDuckHeadphones?: boolean
-  /** Headphone duck target: 0 = fully mute, 100 = no change. */
+  /** Duck target for enabled outputs: 0 = fully mute, 100 = no change. */
   outputDuckLevel?: number
 }
 

@@ -4,11 +4,11 @@ import Darwin
 import Foundation
 
 // macOS marks AVAudioSession / duckOthers as unavailable, so we approximate “duck” by briefly
-// lowering the default output device’s hardware volume when routing is built-in speakers.
+// lowering the default output device’s hardware volume.
 // There is no public API to lower other apps but exclude the host (Codictate) — the scalar is
 // device-wide. After `record()` starts, we delay ducking by `duckDelayMs` (from the WAV length +
-// pad, passed from Bun) so the start chime finishes, then other audio is ducked to scalar 0.
-// Bluetooth/USB and name hints (headphones, AirPods) skip this so private listening is unchanged.
+// pad, passed from Bun) so the start chime finishes, then enabled output is ducked to the
+// configured scalar. Bluetooth/USB and name hints (headphones, AirPods) are opt-in.
 
 private func getDefaultOutputDevice() -> AudioDeviceID {
     var id = AudioDeviceID(0)
@@ -71,13 +71,14 @@ private func outputVolumeScalarAddress() -> AudioObjectPropertyAddress {
 }
 
 /// Lowers default output volume; returns the previous scalar for restore, or nil if unchanged / unsupported.
-/// Built-in speakers: fully muted (scalar 0) when `builtInEnabled`. Headphone ducking is opt-in:
+/// Built-in speakers and headphones share the configured duck target when enabled:
+/// - `builtInEnabled`: apply ducking to built-in speaker output.
 /// - `headphonesEnabled`: apply ducking to headphone/BT/USB output.
-/// - `headphoneLevel`: 0 = fully mute, 100 = no change, values in between are proportional.
+/// - `duckLevel`: 0 = fully mute, 100 = no change, values in between are proportional.
 private func tryApplyOutputDuck(
     builtInEnabled: Bool,
     headphonesEnabled: Bool,
-    headphoneLevel: Int
+    duckLevel: Int
 ) -> SavedOutputVolume? {
     let device = getDefaultOutputDevice()
     let kind = classifyOutputDevice(device)
@@ -93,8 +94,7 @@ private func tryApplyOutputDuck(
     var size = UInt32(MemoryLayout<Float32>.size)
     guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &current) == noErr else { return nil }
 
-    // Speakers: always fully mute. Headphones: use the user-configured level.
-    let ducked: Float32 = kind == .builtIn ? 0 : Float32(max(0, min(100, headphoneLevel))) / 100.0
+    let ducked = Float32(max(0, min(100, duckLevel))) / 100.0
     guard ducked + 0.02 < current else { return nil }
     var toWrite = ducked
     guard AudioObjectSetPropertyData(device, &addr, 0, nil, size, &toWrite) == noErr else { return nil }
@@ -117,10 +117,10 @@ private func restoreOutputDuck(_ saved: SavedOutputVolume) {
 // CLI: MicRecorder --list-devices  → one line JSON {"0":"Mic Name",...}
 //      MicRecorder record <path> <index> <maxSeconds> [duckDelayMs] [duckLevel] [duckHeadphones] [duckBuiltIn]
 // duckDelayMs:    optional 0…10000, ms to wait after record() before lowering output (default 248).
-// duckLevel:      optional 0…100 (default 0). Headphone duck target: 0 = fully mute, 100 = no change.
-//                 Built-in output uses full mute when duckBuiltIn is 1.
+// duckLevel:      optional 0…100 (default 0). Duck target for enabled outputs:
+//                 0 = fully mute, 100 = no change.
 // duckHeadphones: optional 0 or 1 (default 0). Set to 1 to also duck headphone/BT/USB output.
-// duckBuiltIn:    optional 0 or 1 (default 1). Set to 0 to skip muting built-in speaker output.
+// duckBuiltIn:    optional 0 or 1 (default 1). Set to 0 to skip ducking built-in speaker output.
 // Stop early: SIGINT (graceful WAV finalize) or SIGTERM.
 
 private func deviceHasInput(_ id: AudioDeviceID) -> Bool {
@@ -227,7 +227,7 @@ final class RecordSession: NSObject, AVAudioRecorderDelegate {
         guard let applied = tryApplyOutputDuck(
             builtInEnabled: duckIncludeBuiltIn,
             headphonesEnabled: duckIncludeHeadphones,
-            headphoneLevel: duckLevel
+            duckLevel: duckLevel
         ) else { return }
         lock.lock()
         defer { lock.unlock() }

@@ -168,9 +168,8 @@ export interface AppSettings {
   /** Skip Apple Intelligence for documents and only apply lightweight cleanup. */
   formattingDocumentLightweight: boolean
   /**
-   * Duck amount for headphones/Bluetooth/USB when audioDuckingIncludeHeadphones is true.
-   * 0 = fully mute, 100 = no change. Built-in output uses full mute when
-   * audioDuckingIncludeBuiltInSpeakers is true.
+   * Duck amount applied to enabled output ducking targets.
+   * 0 = fully mute, 100 = no change.
    */
   audioDuckingLevel: number
   /** When true, ducking also applies with headphones/Bluetooth/USB (default: true). */

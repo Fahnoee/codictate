@@ -33,6 +33,9 @@ const AUDIO_DUCKING_KEYS = [
 
 export function SectionAudio({ settings }: Props) {
   const queryClient = useQueryClient();
+  const isAnyAudioDuckingEnabled =
+    settings.audioDuckingIncludeBuiltInSpeakers ||
+    settings.audioDuckingIncludeHeadphones;
   const { data: deviceInfo } = useQuery({
     queryKey: ["devices"],
     queryFn: fetchDevices,
@@ -206,7 +209,7 @@ export function SectionAudio({ settings }: Props) {
             </button>
           </div>
           <AnimatePresence>
-            {settings.audioDuckingIncludeHeadphones && (
+            {isAnyAudioDuckingEnabled && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
@@ -216,7 +219,7 @@ export function SectionAudio({ settings }: Props) {
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[17px] text-white/44 font-sans">
-                    Duck amount
+                    Mute amount
                   </span>
                   <span className="text-[17px] text-white/55 font-medium tabular-nums">
                     {settings.audioDuckingLevel === 0
@@ -234,7 +237,7 @@ export function SectionAudio({ settings }: Props) {
                   value={settings.audioDuckingLevel}
                   onChange={handleAudioDuckingLevelChange}
                   className="w-full accent-blue-400 cursor-pointer"
-                  aria-label="Headphone duck amount"
+                  aria-label="Audio duck amount"
                 />
                 <div className="flex justify-between mt-1">
                   <span className="text-[14px] text-white/28">Fully mute</span>
@@ -245,9 +248,9 @@ export function SectionAudio({ settings }: Props) {
           </AnimatePresence>
         </div>
         <p className={settingsHelperClass}>
-          Turn off built-in ducking if you want music or system audio to keep
-          playing on Mac speakers. Turn on headphone ducking to lower Bluetooth,
-          USB, or wired headphone volume while you dictate.
+          Turn on built-in speakers or headphone ducking to lower those outputs
+          while you dictate. The mute amount is shared and applies to whichever
+          outputs are enabled.
         </p>
       </div>
     </>
