@@ -12,6 +12,7 @@ struct FocusedAppContext: Decodable {
 struct FormatterRequest: Decodable {
     let modeId: String
     let transcript: String
+    let transcriptionLanguage: String?
     let userDisplayName: String
     // Email
     let emailIncludeSenderName: Bool
@@ -40,16 +41,20 @@ struct FormatterRequest: Decodable {
 
 @Generable
 struct FormattedEmail {
-    @Guide(description: "Greeting line only, e.g. \"Hi,\" or \"Hi Sarah,\"")
+    // Reasoning field first — the model plans before filling the answer fields.
+    @Guide(description: "Identify from the speech: (1) any salutation opener, (2) the body content, (3) any closing phrase, (4) any sender name.")
+    var reasoningSteps: String
+
+    @Guide(description: "Salutation only — max 5 words, e.g. \"Hi,\" or \"Hi Sarah,\". Empty string if style is none.")
     var greeting: String
 
-    @Guide(description: "Email body paragraphs — no greeting, no closing")
+    @Guide(description: "Message body only. No greeting. No closing. No sender name.")
     var body: String
 
-    @Guide(description: "Closing phrase only, e.g. \"Best regards,\" or \"Thanks,\"")
+    @Guide(description: "Closing phrase only — max 5 words, e.g. \"Best regards,\". Empty string if style is none.")
     var closing: String
 
-    @Guide(description: "Sender name, or empty string if none")
+    @Guide(description: "Sender name only, or empty string.")
     var senderName: String
 }
 
@@ -131,6 +136,7 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--request" {
     request = FormatterRequest(
         modeId: CommandLine.arguments[1],
         transcript: CommandLine.arguments[2...].joined(separator: " "),
+        transcriptionLanguage: nil,
         userDisplayName: "",
         emailIncludeSenderName: false,
         emailGreetingStyle: "auto",
@@ -178,35 +184,70 @@ Task {
 
 RunLoop.main.run()
 
-// MARK: - Email formatting
+// MARK: - Locale
 
-func greetingPreference(_ style: String, custom: String?) -> String {
-    switch style {
-    case "hi":     return "Use an informal greeting tone."
-    case "hello":  return "Use a formal greeting tone."
-    case "custom":
-        let text = custom?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !text.isEmpty {
-            return "Use \"\(text)\" as the greeting word or phrase exactly as written."
-        }
-        return "Choose the most natural greeting."
-    default:       return "Choose the most natural greeting."
+// Exact phrase from Apple's FoundationModels multilingual guidance.
+// Only emitted when the transcription language is a known non-English language.
+// 'auto' and English → returns empty string (no hint needed / language unknown).
+func localeInstruction(for languageId: String?) -> String {
+    guard let id = languageId,
+          id != "auto",
+          !id.hasPrefix("en") else { return "" }
+    // Convert BCP-47 tag to locale identifier style: 'zh-cn' → 'zh_CN'
+    let parts = id.split(separator: "-")
+    let localeId: String
+    if parts.count == 2 {
+        localeId = "\(parts[0].lowercased())_\(parts[1].uppercased())"
+    } else {
+        localeId = id.lowercased()
     }
+    return "The person's locale is \(localeId)."
 }
 
-func closingPreference(_ style: String, custom: String?) -> String {
+// MARK: - Email formatting
+
+/// Returns the full greeting instruction line for the prompt.
+func greetingInstruction(_ style: String, custom: String?) -> String {
+    if style == "none" {
+        return "greeting: Output an empty string. Do NOT generate or include any greeting."
+    }
+    let pref: String
     switch style {
-    case "best-regards":  return "Use a formal, professional closing tone."
-    case "thanks":        return "Use a grateful closing tone."
-    case "kind-regards":  return "Use a warm, friendly closing tone."
+    case "hi":     pref = "Use an informal greeting tone."
+    case "hello":  pref = "Use a formal greeting tone."
     case "custom":
         let text = custom?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !text.isEmpty {
-            return "Use \"\(text)\" as the closing phrase exactly as written."
-        }
-        return "Choose the most natural closing."
-    default:              return "Choose the most natural closing."
+        pref = !text.isEmpty
+            ? "Use \"\(text)\" as the greeting word or phrase exactly as written."
+            : "Choose the most natural greeting."
+    default:       pref = "Choose the most natural greeting."
     }
+    return "greeting: Short salutation only — 1 to 5 words maximum (e.g. \"Hi,\" or \"Hi Sarah,\"). " +
+        "Extract it only if the speech literally starts with a salutation word " +
+        "(hi, hello, hey, dear, hej, hola, bonjour, etc.). " +
+        "If none was spoken, generate a short one. NEVER put body content here. \(pref)"
+}
+
+/// Returns the full closing instruction line for the prompt.
+func closingInstruction(_ style: String, custom: String?) -> String {
+    if style == "none" {
+        return "closing: Output an empty string. Do NOT generate or include any closing or sign-off."
+    }
+    let pref: String
+    switch style {
+    case "best-regards":  pref = "Use a formal, professional closing tone."
+    case "thanks":        pref = "Use a grateful closing tone."
+    case "kind-regards":  pref = "Use a warm, friendly closing tone."
+    case "custom":
+        let text = custom?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        pref = !text.isEmpty
+            ? "Use \"\(text)\" as the closing phrase exactly as written."
+            : "Choose the most natural closing."
+    default:              pref = "Choose the most natural closing."
+    }
+    return "closing: If the speech ends with a farewell phrase (such as best regards, " +
+        "kind regards, thanks, cheers, mvh, or an equivalent in the input language), " +
+        "extract it. Otherwise generate a closing. \(pref)"
 }
 
 func senderGuidance(name: String, include: Bool) -> String {
@@ -348,33 +389,20 @@ func formatEmail(request: FormatterRequest, inputText: String) async {
         return s + "."
     }()
 
-    // System instructions are kept short on purpose.
-    // The 3B on-device model performs better with brief, direct commands.
-    // The @Generable schema is injected by the framework on top of these instructions.
+    let locale = localeInstruction(for: request.transcriptionLanguage)
     let instructions = """
-    You format transcribed speech into email fields.
+    You are an expert email formatter. Convert transcribed speech into clean email fields.
+    \(locale.isEmpty ? "" : "\(locale)\n")
+    MUST NOT add, expand, explain, or complete content not in the speech.
+    MUST copy words faithfully — only fix grammar, punctuation, capitalisation.
+    MUST respond in the same language as the input speech.
 
-    Rules:
-    - Keep the input language. NEVER translate.
-    - NEVER add content that was not in the speech.
-    - Fix grammar, punctuation, and capitalisation. Preserve meaning and names.
-    - The greeting and closing MUST be in the same language as the body.
-    - The user's stored display name is sender context only. NEVER treat it as the recipient name.
-
-    greeting: Extract the opening words if they are a salutation \
-    (hi, hello, hey, dear, hej, hola, bonjour, etc.) optionally followed by a name. \
-    End with a comma. If none was spoken, generate one. \
-    \(greetingPreference(request.emailGreetingStyle, custom: request.emailCustomGreeting))
-
-    body: Everything between the greeting and the closing. \
-    Fix run-on sentences. Capitalise the first word. Separate paragraphs with a blank line.
-
-    closing: If the speech ends with a farewell phrase (such as best regards, \
-    kind regards, thanks, cheers, mvh, or an equivalent in the input language), \
-    extract it. Otherwise generate a closing. \
-    \(closingPreference(request.emailClosingStyle, custom: request.emailCustomClosing))
-
-    \(senderGuidance(name: senderName, include: request.emailIncludeSenderName))
+    Steps:
+    1. reasoningSteps: identify any salutation opener, the body content, any closing phrase, any sender name.
+    2. \(greetingInstruction(request.emailGreetingStyle, custom: request.emailCustomGreeting))
+    3. body: the message content only — fix grammar, capitalise the first word. Do not add content.
+    4. \(closingInstruction(request.emailClosingStyle, custom: request.emailCustomClosing))
+    5. \(senderGuidance(name: senderName, include: request.emailIncludeSenderName))
     """
 
     var promptParts: [String] = []
@@ -435,17 +463,16 @@ func formatIMessage(request: FormatterRequest, inputText: String) async {
         ? "You MAY include at most ONE emoji, only if it clearly fits the mood. Never use more than one."
         : "Do NOT include any emoji."
 
+    let locale = localeInstruction(for: request.transcriptionLanguage)
     let instructions = """
-    You rewrite transcribed speech into a short Messages text.
-
-    Rules:
-    - Keep the input language. NEVER translate.
-    - NEVER add content that was not in the speech.
-    - Produce ONE message only. No greeting. No sign-off. No quoted replies.
-    - Fix grammar, punctuation, capitalisation. Preserve meaning and names.
-    - Keep it short and natural — contractions are fine ("I'm", "don't").
-    - \(imessageToneGuidance(tone))
-    - \(emojiRule)
+    You are an expert Messages formatter. Rewrite transcribed speech as a single text message.
+    \(locale.isEmpty ? "" : "\(locale)\n")
+    MUST NOT add content not in the speech.
+    MUST respond in the same language as the input speech.
+    One message only — no greeting, no sign-off.
+    Fix grammar, punctuation, capitalisation. Keep contractions ("I'm", "don't").
+    \(imessageToneGuidance(tone))
+    \(emojiRule)
     """
 
     let prompt = "Rewrite this speech as a single Messages text:\n\n\(inputText)"
@@ -480,18 +507,17 @@ func formatSlack(request: FormatterRequest, inputText: String) async {
         ? "You may use Slack markdown: *bold*, _italic_, `code`, short bullet lists with `- `. Use sparingly."
         : "Do NOT use any markdown. Plain text only."
 
+    let locale = localeInstruction(for: request.transcriptionLanguage)
     let instructions = """
-    You rewrite transcribed speech into a polished Slack message.
-
-    Rules:
-    - Keep the input language. NEVER translate.
-    - NEVER add content that was not in the speech.
-    - Produce one message. No greeting, no sign-off.
-    - Fix grammar, punctuation, capitalisation. Preserve meaning and names.
-    - Tight paragraphs separated by a single blank line when there is more than one idea.
-    - \(slackToneGuidance(tone))
-    - \(markdownLine)
-    - \(emojiLine)
+    You are an expert Slack formatter. Rewrite transcribed speech as a polished Slack message.
+    \(locale.isEmpty ? "" : "\(locale)\n")
+    MUST NOT add content not in the speech.
+    MUST respond in the same language as the input speech.
+    One message — no greeting, no sign-off.
+    Fix grammar, punctuation, capitalisation.
+    \(slackToneGuidance(tone))
+    \(markdownLine)
+    \(emojiLine)
     """
 
     let prompt = "Rewrite this speech as a Slack message:\n\n\(inputText)"
@@ -533,19 +559,18 @@ func formatDocument(request: FormatterRequest, inputText: String) async {
         ? "Prefer a bulleted list using \"- \" when the content naturally lists items. Otherwise short paragraphs."
         : "Prefer flowing prose with short paragraphs separated by a blank line. Only use bullets when the speech itself listed items."
 
+    let locale = localeInstruction(for: request.transcriptionLanguage)
     let instructions = """
-    You rewrite transcribed speech into a polished plain-text document.
-
-    Rules:
-    - Keep the input language. NEVER translate.
-    - NEVER add content that was not in the speech.
-    - No greeting, no sign-off. No meta-commentary.
-    - Fix grammar, punctuation, capitalisation. Preserve meaning and names.
-    - Keep the speaker's voice. Do not rewrite the author's style.
-    - \(documentToneGuidance(tone))
-    - \(structureLine)
-    - title: empty string unless the speech itself suggests an obvious heading.
-    - body: the full rewritten content. Must not repeat the title.
+    You are an expert document formatter. Rewrite transcribed speech as a polished plain-text document.
+    \(locale.isEmpty ? "" : "\(locale)\n")
+    MUST NOT add content not in the speech.
+    MUST respond in the same language as the input speech.
+    No greeting, no sign-off, no meta-commentary.
+    Fix grammar, punctuation, capitalisation. Keep the speaker's voice.
+    \(documentToneGuidance(tone))
+    \(structureLine)
+    title: empty string unless the speech itself clearly opens with a heading.
+    body: the full rewritten content, not repeating the title.
     """
 
     let prompt = "Rewrite this dictation as a polished document body:\n\n\(inputText)"

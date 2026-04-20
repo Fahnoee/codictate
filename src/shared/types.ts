@@ -35,6 +35,8 @@ export interface FormattingRuntimeSettings {
   formattingEnabledModes: FormattingEnabledModes
   /** Tray-level force override; when non-null, bypasses app detection. */
   formattingForceModeId: FormattingModeId | null
+  /** Transcription language ID (e.g. 'da', 'zh-cn', 'auto'). Passed to the formatter for locale hints. */
+  transcriptionLanguageId: string
   userDisplayName: string
   formattingEmailIncludeSenderName: boolean
   formattingEmailGreetingStyle: FormattingEmailGreetingStyle

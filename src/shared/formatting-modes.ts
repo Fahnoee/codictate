@@ -64,13 +64,14 @@ export function formattingModeLabel(id: FormattingModeId): string {
 
 // ─── Per-mode behavior option types ────────────────────────────────────────
 
-export type FormattingEmailGreetingStyle = 'auto' | 'hi' | 'hello' | 'custom'
+export type FormattingEmailGreetingStyle = 'auto' | 'hi' | 'hello' | 'custom' | 'none'
 export type FormattingEmailClosingStyle =
   | 'auto'
   | 'best-regards'
   | 'thanks'
   | 'kind-regards'
   | 'custom'
+  | 'none'
 
 export type FormattingImessageTone = 'casual' | 'neutral' | 'formal'
 
@@ -128,6 +129,7 @@ const EMAIL_GREETING_STYLES = new Set<FormattingEmailGreetingStyle>([
   'hi',
   'hello',
   'custom',
+  'none',
 ])
 export function isValidEmailGreetingStyle(
   v: unknown
@@ -144,6 +146,7 @@ const EMAIL_CLOSING_STYLES = new Set<FormattingEmailClosingStyle>([
   'thanks',
   'kind-regards',
   'custom',
+  'none',
 ])
 export function isValidEmailClosingStyle(
   v: unknown

@@ -13,6 +13,8 @@ export interface FormatterRequest {
   formattingEnabled: boolean
   modeId: FormattingModeId
   transcript: string
+  /** Transcription language ID ('da', 'zh-cn', 'auto', …). Used by the formatter for locale hints. */
+  transcriptionLanguage: string
   userDisplayName: string
   // Email
   emailIncludeSenderName: boolean
@@ -169,6 +171,7 @@ function buildRequest(
     formattingEnabled: settings.formattingEnabled,
     modeId,
     transcript,
+    transcriptionLanguage: settings.transcriptionLanguageId,
     userDisplayName: settings.userDisplayName.trim(),
     emailIncludeSenderName: settings.formattingEmailIncludeSenderName,
     emailGreetingStyle: settings.formattingEmailGreetingStyle,
@@ -193,18 +196,13 @@ export async function buildFormatterRequest(
   transcript: string,
   settings: FormattingRuntimeSettings
 ): Promise<FormatterRequest | null> {
-  if (!settings.formattingEnabled) return null
-
-  // Tray force-override: skip app detection, apply the chosen mode directly.
-  // Still requires that format's per-mode toggle (same as auto-detect).
+  // Force mode bypasses both the master switch and per-mode toggles.
   if (settings.formattingForceModeId !== null) {
-    const forced = settings.formattingForceModeId
-    if (!(settings.formattingEnabledModes[forced] ?? false)) {
-      return null
-    }
     const focusedApp = await getFocusedAppContext()
-    return buildRequest(forced, transcript, settings, focusedApp)
+    return buildRequest(settings.formattingForceModeId, transcript, settings, focusedApp)
   }
+
+  if (!settings.formattingEnabled) return null
 
   const focusedApp = await getFocusedAppContext()
   for (const modeId of FORMATTING_MODE_ORDER) {

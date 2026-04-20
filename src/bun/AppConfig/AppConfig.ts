@@ -678,6 +678,7 @@ export class AppConfig {
       formattingEnabled: this.formattingEnabled,
       formattingEnabledModes: { ...this.formattingEnabledModes },
       formattingForceModeId: this.formattingForceModeId,
+      transcriptionLanguageId: this.transcriptionLanguageId,
       userDisplayName: this.userDisplayName,
       formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
       formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,

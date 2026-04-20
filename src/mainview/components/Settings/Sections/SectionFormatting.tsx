@@ -50,6 +50,7 @@ const EMAIL_GREETING_OPTIONS: TileOption<FormattingEmailGreetingStyle>[] = [
   { value: "hi", label: "Hi,", sublabel: "Friendly" },
   { value: "hello", label: "Hello,", sublabel: "Classic" },
   { value: "custom", label: "Custom…", sublabel: "You decide" },
+  { value: "none", label: "None", sublabel: "Skip greeting entirely" },
 ];
 
 const EMAIL_CLOSING_OPTIONS: TileOption<FormattingEmailClosingStyle>[] = [
@@ -58,6 +59,7 @@ const EMAIL_CLOSING_OPTIONS: TileOption<FormattingEmailClosingStyle>[] = [
   { value: "thanks", label: "Thanks,", sublabel: "Grateful" },
   { value: "kind-regards", label: "Kind regards,", sublabel: "Warm" },
   { value: "custom", label: "Custom…", sublabel: "You decide" },
+  { value: "none", label: "None", sublabel: "Skip sign-off entirely" },
 ];
 
 const IMESSAGE_TONE_OPTIONS: TileOption<FormattingImessageTone>[] = [
@@ -424,36 +426,43 @@ export function SectionFormatting({ settings }: Props) {
 
       <div className="mb-6 rounded-xl border border-white/11 bg-white/4 px-4 py-3.5">
         <div className="flex items-center gap-3">
-          <div className="flex-1 min-w-0">
-            <span
-              className={`block text-[21px] font-medium ${settings.formattingEnabled ? "text-white/86" : "text-white/60"}`}
-            >
-              Formatting
-            </span>
-            <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
-              Reshape transcripts with Apple Intelligence based on the focused
-              app. Works in standard recording mode only — not stream mode. Each
-              enabled format auto-detects the apps it fits.
-            </span>
-          </div>
-          <button
-            onClick={handleFormattingEnabledToggle}
-            disabled={!settings.formattingAvailable}
-            className={`relative shrink-0 w-10 h-6 rounded-full transition-colors duration-200 cursor-pointer border disabled:cursor-not-allowed disabled:opacity-50 ${
-              settings.formattingEnabled
-                ? "border-blue-400/50 bg-white/10"
-                : "bg-white/7 border-white/14"
-            }`}
-            aria-label="Toggle formatting master switch"
-          >
-            <span
-              className={`absolute top-px w-5 h-5 rounded-full transition-all duration-200 ${
-                settings.formattingEnabled
-                  ? "left-[18px] bg-blue-400"
-                  : "left-0.5 bg-white/40"
-              }`}
-            />
-          </button>
+          {(() => {
+            const effectiveOn = settings.formattingEnabled || settings.formattingForceModeId !== null;
+            return (
+              <>
+                <div className="flex-1 min-w-0">
+                  <span
+                    className={`block text-[21px] font-medium ${effectiveOn ? "text-white/86" : "text-white/60"}`}
+                  >
+                    Formatting
+                  </span>
+                  <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
+                    Auto-detects the focused app and applies the matching format.
+                    Works in standard recording mode only — not stream mode. Force
+                    mode (set from the tray) always applies regardless of this switch.
+                  </span>
+                </div>
+                <button
+                  onClick={handleFormattingEnabledToggle}
+                  disabled={!settings.formattingAvailable}
+                  className={`relative shrink-0 w-10 h-6 rounded-full transition-colors duration-200 cursor-pointer border disabled:cursor-not-allowed disabled:opacity-50 ${
+                    effectiveOn
+                      ? "border-blue-400/50 bg-white/10"
+                      : "bg-white/7 border-white/14"
+                  }`}
+                  aria-label="Toggle formatting master switch"
+                >
+                  <span
+                    className={`absolute top-px w-5 h-5 rounded-full transition-all duration-200 ${
+                      effectiveOn
+                        ? "left-[18px] bg-blue-400"
+                        : "left-0.5 bg-white/40"
+                    }`}
+                  />
+                </button>
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -483,11 +492,12 @@ export function SectionFormatting({ settings }: Props) {
                 <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
               </svg>
               <span className="flex-1 text-[17px] text-white/72 leading-snug">
-                Tray override active:{" "}
+                Force mode active:{" "}
                 <span className="font-medium text-amber-200/90">
                   {formattingModeLabel(settings.formattingForceModeId)}
                 </span>{" "}
-                — app detection is bypassed until cleared.
+                — always applied, even if formatting is off or the format is
+                disabled below. Clear to return to auto-detection.
               </span>
               <button
                 onClick={() => void handleClearFormattingForce()}

@@ -254,7 +254,8 @@ export function ReadyScreen({
   }, [isStreamMode, queryClient, settings, onOpenSettings]);
 
   const formattingAvailable = settings?.formattingAvailable ?? false;
-  const isFormattingActive = settings?.formattingEnabled ?? false;
+  const isFormattingForced = (settings?.formattingForceModeId ?? null) !== null;
+  const isFormattingActive = (settings?.formattingEnabled ?? false) || isFormattingForced;
 
   const handleFormattingToggle = useCallback(async () => {
     if (!settings || !formattingAvailable) return;
@@ -553,9 +554,11 @@ export function ReadyScreen({
           {settings !== undefined && formattingAvailable && (
             <InstantTooltip
               text={
-                isFormattingActive
-                  ? "Formatting on — click to disable"
-                  : "Format output — reshape transcription with Apple Intelligence"
+                isFormattingForced
+                  ? `Force formatting: ${settings?.formattingForceModeId} — clear from tray to disable`
+                  : isFormattingActive
+                    ? "Formatting on — click to disable"
+                    : "Format output — reshape transcription with Apple Intelligence"
               }
               side="top"
               floatInViewport
