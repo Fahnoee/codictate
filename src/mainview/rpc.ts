@@ -327,6 +327,14 @@ export async function setAudioDuckingIncludeBuiltInSpeakers(
   return rpc.request.setAudioDuckingIncludeBuiltInSpeakers({ enabled })
 }
 
+export async function addDictionaryEntry(word: string): Promise<boolean> {
+  return rpc.request.addDictionaryEntry({ word })
+}
+
+export async function removeDictionaryEntry(word: string): Promise<boolean> {
+  return rpc.request.removeDictionaryEntry({ word })
+}
+
 export function downloadWhisperModel(modelId: string): void {
   rpc.send.downloadWhisperModel({ modelId })
 }

@@ -464,6 +464,16 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
+        addDictionaryEntry: async ({ word }: { word: string }) => {
+          const ok = await deps.appConfig.addDictionaryEntry(word)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        removeDictionaryEntry: async ({ word }: { word: string }) => {
+          const ok = await deps.appConfig.removeDictionaryEntry(word)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
         setOnboardingIndicatorPreview: async ({ active, mode }) => {
           deps.appConfig.setRecordingIndicatorOnboardingPreview(active, mode)
           deps.onOnboardingIndicatorPreviewChanged?.()

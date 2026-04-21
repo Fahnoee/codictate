@@ -132,6 +132,7 @@ export class AppConfig {
   private audioDuckingIncludeBuiltInSpeakers: boolean
   /** True when formatting can be offered on this OS; runtime helper still handles failures safely. */
   private formattingAvailable: boolean
+  private dictionaryEntries: string[]
   /**
    * In-memory only: while set, the indicator window uses this mode during
    * onboarding preview (not persisted).
@@ -180,6 +181,7 @@ export class AppConfig {
     this.audioDuckingIncludeHeadphones = true
     this.audioDuckingIncludeBuiltInSpeakers = true
     this.formattingAvailable = detectFormattingAvailable()
+    this.dictionaryEntries = []
   }
 
   // --- Persistence ---
@@ -374,6 +376,18 @@ export class AppConfig {
         this.audioDuckingIncludeBuiltInSpeakers =
           raw.audioDuckingIncludeBuiltInSpeakers
       }
+      if (Array.isArray(raw.dictionaryEntries)) {
+        const seen = new Set<string>()
+        this.dictionaryEntries = (raw.dictionaryEntries as unknown[])
+          .filter((e): e is string => typeof e === 'string' && e.trim().length > 0)
+          .filter((e) => {
+            const key = e.trim().toLowerCase()
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          .map((e) => e.trim())
+      }
       log('config', 'loaded app config', {
         shortcutId: this.shortcutId,
         shortcutHoldOnlyId: this.shortcutHoldOnlyId ?? undefined,
@@ -441,6 +455,7 @@ export class AppConfig {
       audioDuckingIncludeHeadphones: this.audioDuckingIncludeHeadphones,
       audioDuckingIncludeBuiltInSpeakers:
         this.audioDuckingIncludeBuiltInSpeakers,
+      dictionaryEntries: this.dictionaryEntries,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -670,6 +685,7 @@ export class AppConfig {
       audioDuckingIncludeBuiltInSpeakers:
         this.audioDuckingIncludeBuiltInSpeakers,
       formattingAvailable: this.formattingAvailable,
+      dictionaryEntries: [...this.dictionaryEntries],
     }
   }
 
@@ -1039,5 +1055,28 @@ export class AppConfig {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return
     this.recordingIndicatorPosition = { x, y }
     await this.save()
+  }
+
+  public getDictionaryEntries(): string[] {
+    return [...this.dictionaryEntries]
+  }
+
+  public async addDictionaryEntry(word: string): Promise<boolean> {
+    const trimmed = word.trim()
+    if (!trimmed) return false
+    const key = trimmed.toLowerCase()
+    if (this.dictionaryEntries.some((e) => e.toLowerCase() === key)) return true
+    this.dictionaryEntries = [...this.dictionaryEntries, trimmed]
+    await this.save()
+    return true
+  }
+
+  public async removeDictionaryEntry(word: string): Promise<boolean> {
+    const key = word.trim().toLowerCase()
+    const next = this.dictionaryEntries.filter((e) => e.toLowerCase() !== key)
+    if (next.length === this.dictionaryEntries.length) return false
+    this.dictionaryEntries = next
+    await this.save()
+    return true
   }
 }

@@ -8,6 +8,7 @@ import { buildFormatterRequest } from '../formatting/resolve-formatting-request'
 import { join } from 'node:path'
 import { log } from '../logger'
 import type { FormattingRuntimeSettings } from '../../../shared/types'
+import { applyDictionary } from '../dictionary/apply-dictionary'
 
 export const RECORDING_PATH = '/tmp/codictate-recording.wav'
 
@@ -230,13 +231,17 @@ export const speech2text = async (
   whisperLanguageCode: string | null | undefined,
   modelId: string,
   translateToEnglish: boolean,
-  formattingSettings: FormattingRuntimeSettings
+  formattingSettings: FormattingRuntimeSettings,
+  dictionaryEntries: string[] = []
 ) => {
   let transcript = await transcribe(
     whisperLanguageCode,
     modelId,
     translateToEnglish
   )
+  if (dictionaryEntries.length > 0) {
+    transcript = applyDictionary(transcript, dictionaryEntries)
+  }
   const formatterRequest = await buildFormatterRequest(
     transcript,
     formattingSettings

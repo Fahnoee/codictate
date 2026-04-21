@@ -186,6 +186,8 @@ export interface AppSettings {
    * Intelligence). Not persisted — computed at runtime and included in getSettings() responses.
    */
   formattingAvailable: boolean
+  /** User-defined words/phrases the transcription engine should correct to. */
+  dictionaryEntries: string[]
 }
 
 export interface PermissionState {
@@ -328,6 +330,14 @@ export type WebviewRPCType = {
       }
       setAudioDuckingIncludeBuiltInSpeakers: {
         params: { enabled: boolean }
+        response: boolean
+      }
+      addDictionaryEntry: {
+        params: { word: string }
+        response: boolean
+      }
+      removeDictionaryEntry: {
+        params: { word: string }
         response: boolean
       }
       /** Ephemeral: show the floating indicator during onboarding to preview the chosen mode. */
