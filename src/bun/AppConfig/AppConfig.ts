@@ -24,6 +24,7 @@ import type {
   RecordingIndicatorMode,
   ShortcutId,
   StreamTranscriptionMode,
+  DictionaryEntry,
 } from '../../shared/types'
 import {
   DEFAULT_MODEL_ID,
@@ -74,6 +75,18 @@ function isValidRecordingIndicatorMode(
     typeof id === 'string' &&
     RECORDING_INDICATOR_MODES.has(id as RecordingIndicatorMode)
   )
+}
+
+function normalizeDictionaryKey(
+  kind: DictionaryEntry['kind'],
+  text: string,
+  from?: string
+): string {
+  const normalizedText = text.trim().toLowerCase()
+  if (kind === 'replacement') {
+    return `replacement:${(from ?? '').trim().toLowerCase()}=>${normalizedText}`
+  }
+  return `fuzzy:${normalizedText}`
 }
 
 function defaultEnabledModes(): FormattingEnabledModes {
@@ -132,7 +145,8 @@ export class AppConfig {
   private audioDuckingIncludeBuiltInSpeakers: boolean
   /** True when formatting can be offered on this OS; runtime helper still handles failures safely. */
   private formattingAvailable: boolean
-  private dictionaryEntries: string[]
+  private dictionaryEntries: DictionaryEntry[]
+  private dictionaryAutoLearn: boolean
   /**
    * In-memory only: while set, the indicator window uses this mode during
    * onboarding preview (not persisted).
@@ -182,6 +196,7 @@ export class AppConfig {
     this.audioDuckingIncludeBuiltInSpeakers = true
     this.formattingAvailable = detectFormattingAvailable()
     this.dictionaryEntries = []
+    this.dictionaryAutoLearn = true
   }
 
   // --- Persistence ---
@@ -378,15 +393,56 @@ export class AppConfig {
       }
       if (Array.isArray(raw.dictionaryEntries)) {
         const seen = new Set<string>()
-        this.dictionaryEntries = (raw.dictionaryEntries as unknown[])
-          .filter((e): e is string => typeof e === 'string' && e.trim().length > 0)
-          .filter((e) => {
-            const key = e.trim().toLowerCase()
-            if (seen.has(key)) return false
+        const parsed: DictionaryEntry[] = []
+        for (const e of raw.dictionaryEntries as unknown[]) {
+          // Support legacy string[] format
+          if (typeof e === 'string') {
+            const text = e.trim()
+            if (!text) continue
+            const key = normalizeDictionaryKey('fuzzy', text)
+            if (seen.has(key)) continue
             seen.add(key)
-            return true
-          })
-          .map((e) => e.trim())
+            parsed.push({ kind: 'fuzzy', text, source: 'manual' })
+          } else if (
+            e !== null &&
+            typeof e === 'object' &&
+            (typeof (e as Record<string, unknown>).word === 'string' ||
+              typeof (e as Record<string, unknown>).text === 'string')
+          ) {
+            const r = e as Record<string, unknown>
+            const source =
+              r.source === 'auto' ? ('auto' as const) : ('manual' as const)
+            const kind =
+              r.kind === 'replacement'
+                ? ('replacement' as const)
+                : ('fuzzy' as const)
+            const textValue =
+              typeof r.text === 'string'
+                ? r.text
+                : typeof r.word === 'string'
+                  ? r.word
+                  : ''
+            const text = textValue.trim()
+            if (!text) continue
+            const from =
+              kind === 'replacement' && typeof r.from === 'string'
+                ? r.from.trim()
+                : undefined
+            if (kind === 'replacement' && !from) continue
+            const key = normalizeDictionaryKey(kind, text, from)
+            if (seen.has(key)) continue
+            seen.add(key)
+            parsed.push(
+              kind === 'replacement'
+                ? { kind, from, text, source }
+                : { kind, text, source }
+            )
+          }
+        }
+        this.dictionaryEntries = parsed
+      }
+      if (typeof raw.dictionaryAutoLearn === 'boolean') {
+        this.dictionaryAutoLearn = raw.dictionaryAutoLearn
       }
       log('config', 'loaded app config', {
         shortcutId: this.shortcutId,
@@ -456,6 +512,7 @@ export class AppConfig {
       audioDuckingIncludeBuiltInSpeakers:
         this.audioDuckingIncludeBuiltInSpeakers,
       dictionaryEntries: this.dictionaryEntries,
+      dictionaryAutoLearn: this.dictionaryAutoLearn,
       // Always write false — debug mode must never silently resume after restart
       debugMode: false,
     }
@@ -685,7 +742,8 @@ export class AppConfig {
       audioDuckingIncludeBuiltInSpeakers:
         this.audioDuckingIncludeBuiltInSpeakers,
       formattingAvailable: this.formattingAvailable,
-      dictionaryEntries: [...this.dictionaryEntries],
+      dictionaryEntries: this.dictionaryEntries.map((e) => ({ ...e })),
+      dictionaryAutoLearn: this.dictionaryAutoLearn,
     }
   }
 
@@ -1057,25 +1115,62 @@ export class AppConfig {
     await this.save()
   }
 
-  public getDictionaryEntries(): string[] {
-    return [...this.dictionaryEntries]
+  public getDictionaryEntries(): DictionaryEntry[] {
+    return this.dictionaryEntries.map((e) => ({ ...e }))
   }
 
-  public async addDictionaryEntry(word: string): Promise<boolean> {
-    const trimmed = word.trim()
-    if (!trimmed) return false
-    const key = trimmed.toLowerCase()
-    if (this.dictionaryEntries.some((e) => e.toLowerCase() === key)) return true
-    this.dictionaryEntries = [...this.dictionaryEntries, trimmed]
+  public getDictionaryWords(): string[] {
+    return this.dictionaryEntries.map((e) => e.text)
+  }
+
+  public async addDictionaryEntry(
+    entry: Omit<DictionaryEntry, 'source'>,
+    source: 'manual' | 'auto' = 'manual'
+  ): Promise<boolean> {
+    const text = entry.text.trim()
+    const from = entry.kind === 'replacement' ? entry.from?.trim() : undefined
+    if (!text) return false
+    if (entry.kind === 'replacement' && !from) return false
+    const key = normalizeDictionaryKey(entry.kind, text, from)
+    if (
+      this.dictionaryEntries.some(
+        (e) => normalizeDictionaryKey(e.kind, e.text, e.from) === key
+      )
+    )
+      return true
+    this.dictionaryEntries = [
+      ...this.dictionaryEntries,
+      entry.kind === 'replacement'
+        ? { kind: 'replacement', from, text, source }
+        : { kind: 'fuzzy', text, source },
+    ]
     await this.save()
     return true
   }
 
-  public async removeDictionaryEntry(word: string): Promise<boolean> {
-    const key = word.trim().toLowerCase()
-    const next = this.dictionaryEntries.filter((e) => e.toLowerCase() !== key)
+  public async removeDictionaryEntry(
+    entry: Pick<DictionaryEntry, 'kind' | 'text' | 'from'>
+  ): Promise<boolean> {
+    const key = normalizeDictionaryKey(
+      entry.kind,
+      entry.text,
+      entry.kind === 'replacement' ? entry.from : undefined
+    )
+    const next = this.dictionaryEntries.filter(
+      (e) => normalizeDictionaryKey(e.kind, e.text, e.from) !== key
+    )
     if (next.length === this.dictionaryEntries.length) return false
     this.dictionaryEntries = next
+    await this.save()
+    return true
+  }
+
+  public getDictionaryAutoLearn(): boolean {
+    return this.dictionaryAutoLearn
+  }
+
+  public async setDictionaryAutoLearn(enabled: boolean): Promise<boolean> {
+    this.dictionaryAutoLearn = enabled
     await this.save()
     return true
   }

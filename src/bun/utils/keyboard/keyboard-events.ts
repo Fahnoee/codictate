@@ -5,6 +5,7 @@ import {
   unbindNativePasteboardWriter,
 } from '../clipboard/native-pasteboard-bridge'
 import { log } from '../logger'
+import { observerStartWatch } from './observer-helper'
 
 export const KeyCode: Record<number, string> = {
   49: 'space',
@@ -504,6 +505,9 @@ export const pasteTranscript = async (text: string) => {
     charCount: text.length,
   })
   keyListenerPasteText(text)
+  // Start AX observation after paste so corrections are auto-learned.
+  // Small delay lets the paste land before we snapshot the field.
+  setTimeout(() => observerStartWatch(text), 150)
 }
 
 export const replaceTranscript = async (deleteText: string, text: string) => {

@@ -427,7 +427,9 @@ export function SectionFormatting({ settings }: Props) {
       <div className="mb-6 rounded-xl border border-white/11 bg-white/4 px-4 py-3.5">
         <div className="flex items-center gap-3">
           {(() => {
-            const effectiveOn = settings.formattingEnabled || settings.formattingForceModeId !== null;
+            const effectiveOn =
+              settings.formattingEnabled ||
+              settings.formattingForceModeId !== null;
             return (
               <>
                 <div className="flex-1 min-w-0">
@@ -437,9 +439,10 @@ export function SectionFormatting({ settings }: Props) {
                     Formatting
                   </span>
                   <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
-                    Auto-detects the focused app and applies the matching format.
-                    Works in standard recording mode only — not stream mode. Force
-                    mode (set from the tray) always applies regardless of this switch.
+                    Auto-detects the focused app and applies the matching
+                    format. Works in standard recording mode only — not stream
+                    mode. Force mode (set from the tray) always applies
+                    regardless of this switch.
                   </span>
                 </div>
                 <button

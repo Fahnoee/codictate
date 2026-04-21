@@ -199,7 +199,12 @@ export async function buildFormatterRequest(
   // Force mode bypasses both the master switch and per-mode toggles.
   if (settings.formattingForceModeId !== null) {
     const focusedApp = await getFocusedAppContext()
-    return buildRequest(settings.formattingForceModeId, transcript, settings, focusedApp)
+    return buildRequest(
+      settings.formattingForceModeId,
+      transcript,
+      settings,
+      focusedApp
+    )
   }
 
   if (!settings.formattingEnabled) return null

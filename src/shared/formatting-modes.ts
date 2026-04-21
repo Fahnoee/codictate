@@ -64,7 +64,12 @@ export function formattingModeLabel(id: FormattingModeId): string {
 
 // ─── Per-mode behavior option types ────────────────────────────────────────
 
-export type FormattingEmailGreetingStyle = 'auto' | 'hi' | 'hello' | 'custom' | 'none'
+export type FormattingEmailGreetingStyle =
+  | 'auto'
+  | 'hi'
+  | 'hello'
+  | 'custom'
+  | 'none'
 export type FormattingEmailClosingStyle =
   | 'auto'
   | 'best-regards'

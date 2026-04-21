@@ -412,7 +412,10 @@ function startKeyboard() {
         }, 3000)
       }
     },
-    () => devices
+    () => devices,
+    () => {
+      win.send.updateSettings(UserAppConfig.getSettings())
+    }
   )
 }
 

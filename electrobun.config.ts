@@ -40,6 +40,8 @@ export default {
         "native-helpers/CodictateFormatterHelper",
       "vendors/window-helper/CodictateWindowHelper":
         "native-helpers/CodictateWindowHelper",
+      "vendors/observer/CodictateObserverHelper":
+        "native-helpers/CodictateObserverHelper",
       "vendors/whisper/ggml-large-v3-turbo-q5_0.bin":
         "native-helpers/ggml-large-v3-turbo-q5_0.bin",
       // -- Sounds (src/assets/sounds → app/sounds)

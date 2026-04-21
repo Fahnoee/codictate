@@ -187,7 +187,19 @@ export interface AppSettings {
    */
   formattingAvailable: boolean
   /** User-defined words/phrases the transcription engine should correct to. */
-  dictionaryEntries: string[]
+  dictionaryEntries: DictionaryEntry[]
+  /** When true, the app automatically learns corrections from user edits (requires Accessibility). */
+  dictionaryAutoLearn: boolean
+}
+
+export interface DictionaryEntry {
+  kind: 'fuzzy' | 'replacement'
+  /** Canonical output text that should appear in the transcript. */
+  text: string
+  /** Source phrase to replace exactly. Present only for direct replacements. */
+  from?: string
+  /** 'manual' = user typed it in settings; 'auto' = learned from a post-paste correction */
+  source: 'manual' | 'auto'
 }
 
 export interface PermissionState {
@@ -333,11 +345,23 @@ export type WebviewRPCType = {
         response: boolean
       }
       addDictionaryEntry: {
-        params: { word: string }
+        params: {
+          kind: 'fuzzy' | 'replacement'
+          text: string
+          from?: string
+        }
         response: boolean
       }
       removeDictionaryEntry: {
-        params: { word: string }
+        params: {
+          kind: 'fuzzy' | 'replacement'
+          text: string
+          from?: string
+        }
+        response: boolean
+      }
+      setDictionaryAutoLearn: {
+        params: { enabled: boolean }
         response: boolean
       }
       /** Ephemeral: show the floating indicator during onboarding to preview the chosen mode. */

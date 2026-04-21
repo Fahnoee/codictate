@@ -14,6 +14,7 @@
   "scripts": {
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "tsc": "tsc -p tsconfig.bun.json --noEmit && tsc -p tsconfig.vite.json --noEmit",
     "dev": "electrobun dev --watch",
     "dev:hmr": "bun run build:native && concurrently \"bun run hmr\" \"bun run start\"",
     "hmr": "vite --port 5173",

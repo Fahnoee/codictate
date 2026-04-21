@@ -464,13 +464,42 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
-        addDictionaryEntry: async ({ word }: { word: string }) => {
-          const ok = await deps.appConfig.addDictionaryEntry(word)
+        addDictionaryEntry: async ({
+          kind,
+          text,
+          from,
+        }: {
+          kind: 'fuzzy' | 'replacement'
+          text: string
+          from?: string
+        }) => {
+          const ok = await deps.appConfig.addDictionaryEntry({
+            kind,
+            text,
+            from,
+          })
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
-        removeDictionaryEntry: async ({ word }: { word: string }) => {
-          const ok = await deps.appConfig.removeDictionaryEntry(word)
+        removeDictionaryEntry: async ({
+          kind,
+          text,
+          from,
+        }: {
+          kind: 'fuzzy' | 'replacement'
+          text: string
+          from?: string
+        }) => {
+          const ok = await deps.appConfig.removeDictionaryEntry({
+            kind,
+            text,
+            from,
+          })
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          return ok
+        },
+        setDictionaryAutoLearn: async ({ enabled }: { enabled: boolean }) => {
+          const ok = await deps.appConfig.setDictionaryAutoLearn(enabled)
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },

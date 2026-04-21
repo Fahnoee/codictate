@@ -255,7 +255,8 @@ export function ReadyScreen({
 
   const formattingAvailable = settings?.formattingAvailable ?? false;
   const isFormattingForced = (settings?.formattingForceModeId ?? null) !== null;
-  const isFormattingActive = (settings?.formattingEnabled ?? false) || isFormattingForced;
+  const isFormattingActive =
+    (settings?.formattingEnabled ?? false) || isFormattingForced;
 
   const handleFormattingToggle = useCallback(async () => {
     if (!settings || !formattingAvailable) return;

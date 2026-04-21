@@ -17,6 +17,17 @@ WINDOW_HELPER_BIN_DIR="$(swift build -c release --show-bin-path --package-path "
 cp "$WINDOW_HELPER_BIN_DIR/CodictateWindowHelper" "$WINDOW_HELPER_VENDOR_BIN"
 chmod +x "$WINDOW_HELPER_VENDOR_BIN"
 
+# Keep the vendored Observer helper fresh during normal dev/start flows.
+OBSERVER_PKG="native/CodictateObserverHelper"
+OBSERVER_VENDOR_DIR="vendors/observer"
+OBSERVER_VENDOR_BIN="$OBSERVER_VENDOR_DIR/CodictateObserverHelper"
+
+mkdir -p "$OBSERVER_VENDOR_DIR"
+swift build -c release --package-path "$OBSERVER_PKG"
+OBSERVER_BIN_DIR="$(swift build -c release --show-bin-path --package-path "$OBSERVER_PKG")"
+cp "$OBSERVER_BIN_DIR/CodictateObserverHelper" "$OBSERVER_VENDOR_BIN"
+chmod +x "$OBSERVER_VENDOR_BIN"
+
 # Keep the vendored Formatter helper fresh during normal dev/start flows.
 FORMATTER_PKG="native/CodictateFormatterHelper"
 FORMATTER_VENDOR_DIR="vendors/formatter"

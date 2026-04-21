@@ -327,12 +327,26 @@ export async function setAudioDuckingIncludeBuiltInSpeakers(
   return rpc.request.setAudioDuckingIncludeBuiltInSpeakers({ enabled })
 }
 
-export async function addDictionaryEntry(word: string): Promise<boolean> {
-  return rpc.request.addDictionaryEntry({ word })
+export async function addDictionaryEntry(params: {
+  kind: 'fuzzy' | 'replacement'
+  text: string
+  from?: string
+}): Promise<boolean> {
+  return rpc.request.addDictionaryEntry(params)
 }
 
-export async function removeDictionaryEntry(word: string): Promise<boolean> {
-  return rpc.request.removeDictionaryEntry({ word })
+export async function removeDictionaryEntry(params: {
+  kind: 'fuzzy' | 'replacement'
+  text: string
+  from?: string
+}): Promise<boolean> {
+  return rpc.request.removeDictionaryEntry(params)
+}
+
+export async function setDictionaryAutoLearn(
+  enabled: boolean
+): Promise<boolean> {
+  return rpc.request.setDictionaryAutoLearn({ enabled })
 }
 
 export function downloadWhisperModel(modelId: string): void {

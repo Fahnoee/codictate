@@ -25,6 +25,7 @@ import { DICTATION_HOLD_QUALIFY_MS } from '../shared/dictation-shortcut'
 import type { AppStatus, ShortcutId } from '../shared/types'
 import { checkMicrophoneAuthorization } from './utils/audio/check-mic-authorization'
 import { log } from './utils/logger'
+import { startObserverHelper } from './utils/keyboard/observer-helper'
 
 /** Keycodes that should not cancel "wait for Fn chord" when main is fn-globe + hold is fn-* (non-globe). */
 const FN_GLOBE_DEFER_CANCEL_SUPPRESS = new Set<number>([
@@ -79,7 +80,8 @@ export const setupRecording = (
   }: TrayHandlers,
   onStatusChange?: (status: AppStatus) => void,
   onPermissions?: (status: PermissionStatus) => void,
-  getAudioDevices?: () => Record<string, string>
+  getAudioDevices?: () => Record<string, string>,
+  onAutoLearnedEntry?: () => void
 ) => {
   let recorderProc: ReturnType<typeof Bun.spawn> | null = null
   let recordingSession: RecordingSession | null = null
@@ -547,6 +549,18 @@ export const setupRecording = (
         })()
       }
     : undefined
+
+  startObserverHelper(
+    async ({ original, corrected }) => {
+      await appConfig.addDictionaryEntry(
+        { kind: 'replacement', from: original, text: corrected },
+        'auto'
+      )
+      onAutoLearnedEntry?.()
+    },
+    () => appConfig.getDictionaryAutoLearn(),
+    () => appConfig.getDictionaryEntries()
+  )
 
   const keyboard = startKeyboardListener(
     (keyEvent) => {

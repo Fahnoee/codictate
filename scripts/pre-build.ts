@@ -23,6 +23,10 @@ const PARAKEET_BINARY = join(PARAKEET_DIR, "CodictateParakeetHelper");
 
 const FORMATTER_PKG = join(import.meta.dir, "..", "native", "CodictateFormatterHelper");
 const FORMATTER_DIR = join(VENDORS_DIR, "formatter");
+
+const OBSERVER_PKG = join(import.meta.dir, "..", "native", "CodictateObserverHelper");
+const OBSERVER_DIR = join(VENDORS_DIR, "observer");
+const OBSERVER_BINARY = join(OBSERVER_DIR, "CodictateObserverHelper");
 const FORMATTER_BINARY = join(FORMATTER_DIR, "CodictateFormatterHelper");
 const TEXT_PROCESSING_RS_DIR = join(import.meta.dir, "..", "vendors", "text-processing-rs");
 const NEMO_STATIC_LIB = join(
@@ -347,6 +351,48 @@ async function vendorFormatterHelper() {
   console.log("[pre-build] CodictateFormatterHelper stub compiled (formatting disabled)");
 }
 
+async function vendorObserverHelper() {
+  if (existsSync(OBSERVER_BINARY)) {
+    console.log("[pre-build] CodictateObserverHelper already vendored, skipping");
+    return;
+  }
+
+  mkdirSync(OBSERVER_DIR, { recursive: true });
+
+  if (!existsSync(join(OBSERVER_PKG, "Package.swift"))) {
+    throw new Error(
+      `[pre-build] Missing ${OBSERVER_PKG}/Package.swift — cannot build observer helper`,
+    );
+  }
+
+  console.log("[pre-build] Building CodictateObserverHelper…");
+  const build = Bun.spawnSync(["swift", "build", "-c", "release"], {
+    cwd: OBSERVER_PKG,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+
+  if (build.exitCode !== 0) {
+    throw new Error("[pre-build] CodictateObserverHelper Swift build failed");
+  }
+
+  const binPathRes = Bun.spawnSync(
+    ["swift", "build", "-c", "release", "--show-bin-path"],
+    { cwd: OBSERVER_PKG, stdout: "pipe" },
+  );
+  const releaseDir = binPathRes.stdout.toString().trim();
+  const built = join(releaseDir, "CodictateObserverHelper");
+
+  if (!existsSync(built)) {
+    throw new Error(
+      `[pre-build] CodictateObserverHelper not at ${built} (swift build layout changed?)`,
+    );
+  }
+
+  Bun.spawnSync(["cp", built, OBSERVER_BINARY]);
+  chmodSync(OBSERVER_BINARY, 0o755);
+  console.log("[pre-build] CodictateObserverHelper vendored successfully");
+}
+
 const MODEL_NAME = "ggml-large-v3-turbo-q5_0.bin";
 const MODEL_PATH = join(WHISPER_DIR, MODEL_NAME);
 
@@ -392,6 +438,7 @@ if (process.argv.includes("--parakeet-only")) {
 await vendorWhisperBinaries();
 await vendorParakeetHelper();
 await vendorFormatterHelper();
+await vendorObserverHelper();
 await vendorWhisperModel();
 
 console.log("[pre-build] All dependencies ready");

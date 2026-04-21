@@ -177,6 +177,10 @@ const helperEntitlementsByBasename: Record<string, string> = {
     entitlementsRoot,
     "CodictateParakeetHelper.entitlements",
   ),
+  CodictateObserverHelper: join(
+    entitlementsRoot,
+    "CodictateObserverHelper.entitlements",
+  ),
 };
 const CODESIGN_RETRIES = 3;
 const buildEnv = process.env.ELECTROBUN_BUILD_ENV ?? "dev";
