@@ -44,6 +44,7 @@ import {
 import { LanguagePicker } from "../Settings/LanguagePicker";
 import { TranscriptionLanguageHintButton } from "../Settings/TranscriptionLanguageHintButton";
 import { RecordingOrb } from "./RecordingOrb";
+import type { SettingsCategory } from "../Settings/SettingsScreen";
 
 function DictationPttHoldHint({ className = "" }: { className?: string }) {
   return (
@@ -69,7 +70,7 @@ export function ReadyScreen({
   status: AppStatus;
   deviceInfo?: DeviceInfo;
   settings?: AppSettings;
-  onOpenSettings: (section?: string) => void;
+  onOpenSettings: (section?: SettingsCategory) => void;
 }) {
   const isRecording = status === "recording";
   const isTranscribing = status === "transcribing";

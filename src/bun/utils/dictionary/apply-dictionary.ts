@@ -233,6 +233,34 @@ function wordEditRuns(before: string[], after: string[]): WordEditRun[] {
 
   for (const op of ops) {
     if (op.type === 'equal') {
+      // When an edit run ends with an adjacent capitalized word being treated
+      // as equal context (LCS greedily matching it), check whether folding it
+      // into the run's after side actually improves similarity. If so, absorb
+      // it — e.g. "Whisperflow" → "Wispr" + equal("Flow") becomes
+      // "Whisperflow" → "Wispr Flow" instead of the truncated form.
+      if (
+        current &&
+        current.before.length === 1 &&
+        current.after.length >= 1 &&
+        current.after.length < 3 &&
+        /^[A-Z]/.test(op.word)
+      ) {
+        const origCore = normalizeCore(current.before[0])
+        const currJoined = current.after
+          .map(normalizeCore)
+          .filter(Boolean)
+          .join(' ')
+        const extJoined = [currJoined, normalizeCore(op.word)]
+          .filter(Boolean)
+          .join(' ')
+        if (
+          ratio(origCore.toLowerCase(), extJoined.toLowerCase()) >
+          ratio(origCore.toLowerCase(), currJoined.toLowerCase())
+        ) {
+          current.after.push(op.word)
+          continue
+        }
+      }
       if (current && (current.before.length > 0 || current.after.length > 0)) {
         runs.push(current)
       }
@@ -269,9 +297,9 @@ export function extractCorrections(
   const candidates: CorrectionCandidate[] = []
 
   for (const run of runs) {
-    if (run.after.length !== 1) continue
+    if (run.after.length === 0 || run.after.length > 3) continue
 
-    const corrCore = normalizeCore(run.after[0])
+    const corrCore = run.after.map(normalizeCore).filter(Boolean).join(' ')
     if (corrCore.length < 2) continue
 
     const hasCapital = /[A-Z]/.test(corrCore)
@@ -282,7 +310,7 @@ export function extractCorrections(
     const origCore =
       run.before.length === 1
         ? normalizeCore(run.before[0])
-        : run.before.map(normalizeCore).filter(Boolean).join('')
+        : run.before.map(normalizeCore).filter(Boolean).join(' ')
     if (origCore.length === 0) continue
 
     // Case-only correction (e.g. "whisperflow" → "WhisperFlow")

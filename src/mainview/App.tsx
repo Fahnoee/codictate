@@ -11,7 +11,10 @@ import type {
 import { PermissionScreen } from "./components/Permissions/PermissionScreen";
 import { ProductOnboardingScreen } from "./components/Onboarding/ProductOnboardingScreen";
 import { ReadyScreen } from "./components/Ready/ReadyScreen";
-import { SettingsScreen, type SettingsCategory } from "./components/Settings/SettingsScreen";
+import {
+  SettingsScreen,
+  type SettingsCategory,
+} from "./components/Settings/SettingsScreen";
 
 const DEFAULT_PERMISSIONS: PermissionState = {
   inputMonitoring: false,

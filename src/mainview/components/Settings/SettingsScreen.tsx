@@ -238,8 +238,9 @@ export function SettingsScreen({
   onDevPreviewRouteChange?: (route: DevAppPreviewRoute | null) => void;
 }) {
   const queryClient = useQueryClient();
-  const [activeCategory, setActiveCategory] =
-    useState<SettingsCategory>(initialCategory ?? "transcription");
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory>(
+    initialCategory ?? "transcription",
+  );
   const [funModeUnlocked, setFunModeUnlocked] = useState(false);
   const logoClickCountRef = useRef(0);
   const logoClickResetTimerRef = useRef<number | null>(null);

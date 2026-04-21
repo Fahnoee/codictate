@@ -13,10 +13,19 @@ export const AUTO_LEARN_COMMIT_THRESHOLD = 2
 // "Aliz") and need a stable exact mapping instead.
 const FUZZY_PROMOTE_RATIO_THRESHOLD = 80
 
+function compactText(value: string): string {
+  return value.replace(/\s+/g, '').toLowerCase()
+}
+
 function classifyAutoLearnEntry(
   original: string,
   corrected: string
 ): DictionaryEntry['kind'] {
+  // Split/combined variants like "Open Claw" -> "OpenClaw" should become a
+  // fuzzy canonical term so future spaced transcripts are corrected broadly.
+  if (compactText(original) === compactText(corrected)) {
+    return 'fuzzy'
+  }
   if (corrected.includes(' ')) return 'replacement'
   return ratio(original.toLowerCase(), corrected.toLowerCase()) >=
     FUZZY_PROMOTE_RATIO_THRESHOLD
@@ -108,7 +117,11 @@ export function stageDictionaryCandidate(params: {
           (entry) =>
             entry.kind === 'replacement' &&
             replacementKey(entry) ===
-              replacementKey({ kind: 'replacement', from: original, text: corrected })
+              replacementKey({
+                kind: 'replacement',
+                from: original,
+                text: corrected,
+              })
         )
 
   if (alreadyCommitted) {

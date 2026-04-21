@@ -414,7 +414,7 @@ export function SectionDictionary({ settings }: Props) {
                               : "text-white/85"
                           }`}
                         >
-                          {entry.from} {"→"} {entry.text}
+                          {entry.from?.toLowerCase()} {"→"} {entry.text}
                         </div>
                       ) : (
                         <span
@@ -482,7 +482,7 @@ export function SectionDictionary({ settings }: Props) {
               >
                 <div className="min-w-0">
                   <div className="truncate text-[18px] font-medium text-amber-50/82">
-                    {candidate.from} {"→"} {candidate.to}
+                    {candidate.from.toLowerCase()} {"→"} {candidate.to}
                   </div>
                   <div className="mt-1 text-[13px] uppercase tracking-[0.12em] text-white/34">
                     {candidate.corrections} of 2 confirmations

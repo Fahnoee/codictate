@@ -79,6 +79,28 @@ describe('stageDictionaryCandidate', () => {
     expect(result.candidates).toEqual([])
   })
 
+  test('commits split-word compound corrections as fuzzy entries', () => {
+    const result = stageDictionaryCandidate({
+      candidates: [
+        {
+          from: 'Open Claw',
+          to: 'OpenClaw',
+          corrections: AUTO_LEARN_COMMIT_THRESHOLD - 1,
+        },
+      ],
+      entries: [],
+      original: 'Open Claw',
+      corrected: 'OpenClaw',
+    })
+
+    expect(result.outcome).toBe('committed')
+    expect(result.committedEntry).toEqual({
+      kind: 'fuzzy',
+      text: 'OpenClaw',
+    })
+    expect(result.candidates).toEqual([])
+  })
+
   test('does not re-commit if fuzzy entry for corrected term already exists', () => {
     const result = stageDictionaryCandidate({
       candidates: [
