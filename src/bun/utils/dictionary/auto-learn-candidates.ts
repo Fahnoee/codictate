@@ -2,8 +2,27 @@ import type {
   DictionaryCandidate,
   DictionaryEntry,
 } from '../../../shared/types'
+import { ratio } from './apply-dictionary'
 
 export const AUTO_LEARN_COMMIT_THRESHOLD = 2
+
+// Single-word corrections with high character similarity are variants of the
+// same proper noun (e.g. "Electrobon" → "Electrobun") and benefit from fuzzy
+// matching, which catches all future near-homophones automatically.
+// Corrections below this threshold are phonetically distinct (e.g. "Ollies" →
+// "Aliz") and need a stable exact mapping instead.
+const FUZZY_PROMOTE_RATIO_THRESHOLD = 80
+
+function classifyAutoLearnEntry(
+  original: string,
+  corrected: string
+): DictionaryEntry['kind'] {
+  if (corrected.includes(' ')) return 'replacement'
+  return ratio(original.toLowerCase(), corrected.toLowerCase()) >=
+    FUZZY_PROMOTE_RATIO_THRESHOLD
+    ? 'fuzzy'
+    : 'replacement'
+}
 
 function normalizeSpaces(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
@@ -76,17 +95,23 @@ export function stageDictionaryCandidate(params: {
     }
   }
 
-  const committedKey = replacementKey({
-    kind: 'replacement',
-    from: original,
-    text: corrected,
-  })
-  if (
-    params.entries.some(
-      (entry) =>
-        entry.kind === 'replacement' && replacementKey(entry) === committedKey
-    )
-  ) {
+  const kind = classifyAutoLearnEntry(original, corrected)
+  const alreadyCommitted =
+    kind === 'fuzzy'
+      ? params.entries.some(
+          (entry) =>
+            entry.kind === 'fuzzy' &&
+            normalizeCandidateText(entry.text) ===
+              normalizeCandidateText(corrected)
+        )
+      : params.entries.some(
+          (entry) =>
+            entry.kind === 'replacement' &&
+            replacementKey(entry) ===
+              replacementKey({ kind: 'replacement', from: original, text: corrected })
+        )
+
+  if (alreadyCommitted) {
     return {
       candidates: params.candidates.filter(
         (candidate) =>
@@ -109,13 +134,13 @@ export function stageDictionaryCandidate(params: {
   )
 
   if (nextCount >= AUTO_LEARN_COMMIT_THRESHOLD) {
+    const committedEntry: Omit<DictionaryEntry, 'source'> =
+      kind === 'fuzzy'
+        ? { kind: 'fuzzy', text: corrected }
+        : { kind: 'replacement', from: original, text: corrected }
     return {
       candidates: withoutSameOriginal,
-      committedEntry: {
-        kind: 'replacement',
-        from: original,
-        text: corrected,
-      },
+      committedEntry,
       outcome: 'committed',
     }
   }

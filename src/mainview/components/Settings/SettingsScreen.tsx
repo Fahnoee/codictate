@@ -39,7 +39,7 @@ import { SectionGeneral } from "./Sections/SectionGeneral";
 import { SectionFun } from "./Sections/SectionFun";
 import { SectionDictionary } from "./Sections/SectionDictionary";
 
-type SettingsCategory =
+export type SettingsCategory =
   | "transcription"
   | "modes"
   | "formatting"
@@ -72,9 +72,29 @@ const CATEGORIES: {
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-        <line x1="12" x2="12" y1="19" y2="22" />
+        <polyline points="4 7 4 4 20 4 20 7" />
+        <line x1="9" x2="15" y1="20" y2="20" />
+        <line x1="12" x2="12" y1="4" y2="20" />
+      </svg>
+    ),
+  },
+  {
+    id: "audio",
+    label: "Audio",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
       </svg>
     ),
   },
@@ -119,6 +139,25 @@ const CATEGORIES: {
     ),
   },
   {
+    id: "dictionary",
+    label: "Dictionary",
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      </svg>
+    ),
+  },
+  {
     id: "shortcuts",
     label: "Shortcuts",
     icon: (
@@ -141,26 +180,6 @@ const CATEGORIES: {
         <path d="M12 12h.01" />
         <path d="M16 12h.01" />
         <path d="M7 16h10" />
-      </svg>
-    ),
-  },
-  {
-    id: "audio",
-    label: "Audio",
-    icon: (
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
       </svg>
     ),
   },
@@ -203,41 +222,24 @@ const CATEGORIES: {
       </svg>
     ),
   },
-  {
-    id: "dictionary" as SettingsCategory,
-    label: "Dictionary",
-    icon: (
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-      </svg>
-    ),
-  },
 ];
 
 export function SettingsScreen({
   settings,
   onBack,
+  initialCategory,
   devPreviewRoute = null,
   onDevPreviewRouteChange,
 }: {
   settings: AppSettings;
   onBack: () => void;
+  initialCategory?: SettingsCategory;
   devPreviewRoute?: DevAppPreviewRoute | null;
   onDevPreviewRouteChange?: (route: DevAppPreviewRoute | null) => void;
 }) {
   const queryClient = useQueryClient();
   const [activeCategory, setActiveCategory] =
-    useState<SettingsCategory>("transcription");
+    useState<SettingsCategory>(initialCategory ?? "transcription");
   const [funModeUnlocked, setFunModeUnlocked] = useState(false);
   const logoClickCountRef = useRef(0);
   const logoClickResetTimerRef = useRef<number | null>(null);

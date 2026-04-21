@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "motion/react";
 import type {
   AppSettings,
   DictionaryCandidate,
@@ -37,7 +38,14 @@ export function SectionDictionary({ settings }: Props) {
   const [entryKind, setEntryKind] = useState<DictionaryEntry["kind"]>("fuzzy");
   const [inputValue, setInputValue] = useState("");
   const [replacementFromValue, setReplacementFromValue] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showAddForm) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [showAddForm, entryKind]);
 
   const entryKey = useCallback(
     (entry: Pick<DictionaryEntry, "kind" | "text" | "from">) => {
@@ -49,6 +57,12 @@ export function SectionDictionary({ settings }: Props) {
     },
     [],
   );
+
+  const resetForm = useCallback(() => {
+    setInputValue("");
+    setReplacementFromValue("");
+    setEntryKind("fuzzy");
+  }, []);
 
   const handleAdd = useCallback(async () => {
     const text = inputValue.trim();
@@ -62,8 +76,8 @@ export function SectionDictionary({ settings }: Props) {
         : { kind: "fuzzy", text, source: "manual" };
 
     if (dictionary.entries.some((e) => entryKey(e) === entryKey(nextEntry))) {
-      setInputValue("");
-      setReplacementFromValue("");
+      resetForm();
+      setShowAddForm(false);
       return;
     }
 
@@ -78,8 +92,8 @@ export function SectionDictionary({ settings }: Props) {
           }
         : old,
     );
-    setInputValue("");
-    setReplacementFromValue("");
+    resetForm();
+    setShowAddForm(false);
 
     const ok = await addDictionaryEntry(
       entryKind === "replacement"
@@ -97,6 +111,7 @@ export function SectionDictionary({ settings }: Props) {
     queryClient,
     replacementFromValue,
     dictionary.entries,
+    resetForm,
   ]);
 
   const handleRemove = useCallback(
@@ -151,8 +166,12 @@ export function SectionDictionary({ settings }: Props) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") handleAdd();
+      if (e.key === "Escape") {
+        resetForm();
+        setShowAddForm(false);
+      }
     },
-    [handleAdd],
+    [handleAdd, resetForm],
   );
 
   const hasAutoEntries = dictionary.entries.some((e) => e.source === "auto");
@@ -188,6 +207,10 @@ export function SectionDictionary({ settings }: Props) {
     [queryClient],
   );
 
+  const canAdd =
+    inputValue.trim().length > 0 &&
+    (entryKind === "fuzzy" || replacementFromValue.trim().length > 0);
+
   return (
     <>
       <div className="mb-6">
@@ -198,8 +221,7 @@ export function SectionDictionary({ settings }: Props) {
           Dictionary
         </h2>
         <p className="mt-3 text-[18px] text-white/44 leading-relaxed font-sans font-normal">
-          Add fuzzy terms for similar-sounding fixes, or exact replacements for
-          things like abbreviations and learned corrections.
+          Teach Codictate how to spell your terms and abbreviations.
         </p>
       </div>
 
@@ -210,12 +232,8 @@ export function SectionDictionary({ settings }: Props) {
             <span className="block text-[18px] font-medium text-white/85">
               Auto-learn corrections
             </span>
-            <span className="mt-1 block text-[16px] leading-snug text-white/44">
-              Corrections are staged first and only learned after they happen
-              twice. If the same raw output shows up again and you leave it
-              unchanged, the pending candidate is discarded. Works in native
-              macOS apps like Mail, Notes, Pages, and TextEdit. Does not work in
-              browsers or Electron-based apps like Slack or VS Code.
+            <span className="mt-1 block text-[15px] leading-snug text-white/44">
+              Learns replacements from corrections you make after dictating.
             </span>
           </div>
           <button
@@ -223,7 +241,7 @@ export function SectionDictionary({ settings }: Props) {
             onClick={handleAutoLearnToggle}
             className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ${
               dictionary.autoLearn
-                ? "border-white/30 bg-white/18"
+                ? "border-emerald-400/45 bg-emerald-500/35"
                 : "border-white/14 bg-white/7"
             }`}
             aria-label="Toggle auto-learn corrections"
@@ -239,127 +257,124 @@ export function SectionDictionary({ settings }: Props) {
         </div>
       </div>
 
-      <div className="mb-4 flex gap-3">
-        <button
-          type="button"
-          onClick={() => setEntryKind("fuzzy")}
-          className={`rounded-xl border px-4 py-2.5 text-[16px] transition-colors duration-200 ${
-            entryKind === "fuzzy"
-              ? "border-white/24 bg-white/12 text-white/88"
-              : "border-white/10 bg-white/5 text-white/48 hover:border-white/16 hover:text-white/72"
-          }`}
-        >
-          Fuzzy term
-        </button>
-        <button
-          type="button"
-          onClick={() => setEntryKind("replacement")}
-          className={`rounded-xl border px-4 py-2.5 text-[16px] transition-colors duration-200 ${
-            entryKind === "replacement"
-              ? "border-white/24 bg-white/12 text-white/88"
-              : "border-white/10 bg-white/5 text-white/48 hover:border-white/16 hover:text-white/72"
-          }`}
-        >
-          Exact replacement
-        </button>
-      </div>
-
-      {/* Input row */}
-      <div className="mb-6 flex gap-3">
-        {entryKind === "replacement" && (
-          <input
-            type="text"
-            value={replacementFromValue}
-            onChange={(e) => setReplacementFromValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Replace this, e.g. BTW"
-            className="min-w-0 flex-1 rounded-xl border border-white/12 bg-white/5 px-4 py-3 text-[18px] text-white/90 placeholder-white/28 outline-none transition-[border-color,background-color] duration-200 hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12"
-          />
+      {/* Header row: label + Add word button */}
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-[13px] uppercase tracking-[0.14em] text-white/35">
+          Words
+        </span>
+        {!showAddForm && (
+          <button
+            type="button"
+            onClick={() => setShowAddForm(true)}
+            className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-[14px] font-medium text-white/50 transition-colors duration-200 hover:border-white/20 hover:bg-white/8 hover:text-white/75 cursor-pointer"
+          >
+            + Add word
+          </button>
         )}
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            entryKind === "replacement"
-              ? "With this, e.g. by the way"
-              : "Canonical term, e.g. Electrobun"
-          }
-          className="min-w-0 flex-1 rounded-xl border border-white/12 bg-white/5 px-4 py-3 text-[18px] text-white/90 placeholder-white/28 outline-none transition-[border-color,background-color] duration-200 hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12"
-        />
-        <button
-          type="button"
-          onClick={handleAdd}
-          disabled={
-            !inputValue.trim() ||
-            (entryKind === "replacement" && !replacementFromValue.trim())
-          }
-          className="shrink-0 rounded-xl border border-white/14 bg-white/7 px-5 py-3 text-[17px] font-medium text-white/75 transition-colors duration-200 hover:border-white/20 hover:bg-white/10 hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Add
-        </button>
       </div>
 
-      {dictionary.candidates.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-xl border border-amber-200/12 bg-amber-200/[0.04]">
-          <div className="border-b border-amber-200/10 px-5 py-4">
-            <div className="text-[18px] font-medium text-amber-50/88">
-              Pending auto-learn candidates
-            </div>
-            <div className="mt-1 text-[15px] leading-snug text-white/44">
-              These corrections need one more matching edit before they become
-              exact replacements.
-            </div>
-          </div>
-          <ul>
-            {dictionary.candidates.map((candidate, i) => (
-              <li
-                key={`${candidate.from}=>${candidate.to}`}
-                className={`flex items-center justify-between gap-4 px-5 py-4 ${
-                  i > 0 ? "border-t border-amber-200/10" : ""
+      {/* Inline add form */}
+      <AnimatePresence>
+        {showAddForm && (
+          <motion.div
+            key="add-form"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden rounded-xl border border-white/14 bg-white/5"
+          >
+            {/* Type selector */}
+            <div className="flex gap-2 border-b border-white/10 px-4 pt-4 pb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setEntryKind("fuzzy");
+                  setInputValue("");
+                  setReplacementFromValue("");
+                }}
+                className={`rounded-lg border px-3 py-1.5 text-[15px] transition-colors duration-200 ${
+                  entryKind === "fuzzy"
+                    ? "border-white/24 bg-white/12 text-white/88"
+                    : "border-white/10 bg-transparent text-white/42 hover:border-white/16 hover:text-white/65"
                 }`}
               >
-                <div className="min-w-0">
-                  <div className="truncate text-[18px] font-medium text-amber-50/82">
-                    {candidate.from} {"\u2192"} {candidate.to}
-                  </div>
-                  <div className="mt-1 text-[13px] uppercase tracking-[0.12em] text-white/34">
-                    {candidate.corrections} of 2 confirmations
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveCandidate(candidate)}
-                  aria-label={`Dismiss candidate ${candidate.from} to ${candidate.to}`}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/40 transition-colors duration-200 hover:border-white/18 hover:bg-white/8 hover:text-white/70"
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+                Fuzzy term
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEntryKind("replacement");
+                  setInputValue("");
+                  setReplacementFromValue("");
+                }}
+                className={`rounded-lg border px-3 py-1.5 text-[15px] transition-colors duration-200 ${
+                  entryKind === "replacement"
+                    ? "border-white/24 bg-white/12 text-white/88"
+                    : "border-white/10 bg-transparent text-white/42 hover:border-white/16 hover:text-white/65"
+                }`}
+              >
+                Exact replacement
+              </button>
+            </div>
+
+            {/* Inputs */}
+            <div className="flex gap-3 px-4 py-4">
+              {entryKind === "replacement" && (
+                <input
+                  type="text"
+                  value={replacementFromValue}
+                  onChange={(e) => setReplacementFromValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Replace this, e.g. BTW"
+                  className="min-w-0 flex-1 rounded-xl border border-white/12 bg-white/5 px-4 py-3 text-[18px] text-white/90 placeholder-white/28 outline-none transition-[border-color,background-color] duration-200 hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12"
+                />
+              )}
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  entryKind === "replacement"
+                    ? "With this, e.g. by the way"
+                    : "Canonical term, e.g. Electrobun"
+                }
+                className="min-w-0 flex-1 rounded-xl border border-white/12 bg-white/5 px-4 py-3 text-[18px] text-white/90 placeholder-white/28 outline-none transition-[border-color,background-color] duration-200 hover:border-white/18 hover:bg-white/7 focus-visible:border-white/26 focus-visible:ring-2 focus-visible:ring-white/12"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 border-t border-white/10 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setShowAddForm(false);
+                }}
+                className="rounded-xl border border-white/10 bg-transparent px-4 py-2 text-[16px] text-white/48 transition-colors duration-200 hover:border-white/18 hover:text-white/72 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAdd}
+                disabled={!canAdd}
+                className="rounded-xl border border-white/14 bg-white/7 px-5 py-2 text-[16px] font-medium text-white/75 transition-colors duration-200 hover:border-white/20 hover:bg-white/10 hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+              >
+                Add
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Entries list */}
       <div className="overflow-hidden rounded-xl border border-white/11 bg-white/4">
         {dictionary.entries.length === 0 ? (
           <div className="px-5 py-8 text-center text-[17px] text-white/34">
-            No words added yet. Add a word above to get started.
+            No words added yet.
           </div>
         ) : (
           <>
@@ -399,7 +414,7 @@ export function SectionDictionary({ settings }: Props) {
                               : "text-white/85"
                           }`}
                         >
-                          {entry.from} {"\u2192"} {entry.text}
+                          {entry.from} {"→"} {entry.text}
                         </div>
                       ) : (
                         <span
@@ -445,6 +460,59 @@ export function SectionDictionary({ settings }: Props) {
           </>
         )}
       </div>
+
+      {/* Pending auto-learn candidates — shown at bottom */}
+      {dictionary.candidates.length > 0 && (
+        <div className="mt-6 overflow-hidden rounded-xl border border-amber-200/12 bg-amber-200/[0.04]">
+          <div className="border-b border-amber-200/10 px-5 py-4">
+            <div className="text-[18px] font-medium text-amber-50/88">
+              Pending auto-learn
+            </div>
+            <div className="mt-1 text-[15px] leading-snug text-white/44">
+              One more matching correction will add these automatically.
+            </div>
+          </div>
+          <ul>
+            {dictionary.candidates.map((candidate, i) => (
+              <li
+                key={`${candidate.from}=>${candidate.to}`}
+                className={`flex items-center justify-between gap-4 px-5 py-4 ${
+                  i > 0 ? "border-t border-amber-200/10" : ""
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-[18px] font-medium text-amber-50/82">
+                    {candidate.from} {"→"} {candidate.to}
+                  </div>
+                  <div className="mt-1 text-[13px] uppercase tracking-[0.12em] text-white/34">
+                    {candidate.corrections} of 2 confirmations
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCandidate(candidate)}
+                  aria-label={`Dismiss candidate ${candidate.from} to ${candidate.to}`}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/40 transition-colors duration-200 hover:border-white/18 hover:bg-white/8 hover:text-white/70"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </>
   );
 }

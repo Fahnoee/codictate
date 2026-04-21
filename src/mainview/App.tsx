@@ -11,7 +11,7 @@ import type {
 import { PermissionScreen } from "./components/Permissions/PermissionScreen";
 import { ProductOnboardingScreen } from "./components/Onboarding/ProductOnboardingScreen";
 import { ReadyScreen } from "./components/Ready/ReadyScreen";
-import { SettingsScreen } from "./components/Settings/SettingsScreen";
+import { SettingsScreen, type SettingsCategory } from "./components/Settings/SettingsScreen";
 
 const DEFAULT_PERMISSIONS: PermissionState = {
   inputMonitoring: false,
@@ -53,6 +53,9 @@ export default function App() {
 
   const [status, setStatus] = useState<AppStatus>("ready");
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsInitialCategory, setSettingsInitialCategory] = useState<
+    SettingsCategory | undefined
+  >(undefined);
   const [devPreviewRoute, setDevPreviewRoute] =
     useState<DevAppPreviewRoute | null>(null);
 
@@ -120,7 +123,10 @@ export default function App() {
             status={status}
             deviceInfo={deviceInfo}
             settings={settings}
-            onOpenSettings={() => setShowSettings(true)}
+            onOpenSettings={(section) => {
+              setSettingsInitialCategory(section);
+              setShowSettings(true);
+            }}
           />
         );
       }
@@ -136,7 +142,11 @@ export default function App() {
       ) : showSettings && settings ? (
         <SettingsScreen
           settings={settings}
-          onBack={() => setShowSettings(false)}
+          onBack={() => {
+            setShowSettings(false);
+            setSettingsInitialCategory(undefined);
+          }}
+          initialCategory={settingsInitialCategory}
           devPreviewRoute={isDev ? devPreviewRoute : undefined}
           onDevPreviewRouteChange={
             isDev
@@ -152,7 +162,10 @@ export default function App() {
           status={status}
           deviceInfo={deviceInfo}
           settings={settings}
-          onOpenSettings={() => setShowSettings(true)}
+          onOpenSettings={(section) => {
+            setSettingsInitialCategory(section);
+            setShowSettings(true);
+          }}
         />
       )}
     </>
