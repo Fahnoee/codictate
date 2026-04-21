@@ -5,7 +5,7 @@ import {
   unbindNativePasteboardWriter,
 } from '../clipboard/native-pasteboard-bridge'
 import { log } from '../logger'
-import { observerStartWatch } from './observer-helper'
+import { observerFinish, observerStartWatch } from './observer-helper'
 
 export const KeyCode: Record<number, string> = {
   49: 'space',
@@ -522,4 +522,8 @@ export const replaceTranscript = async (deleteText: string, text: string) => {
     insertChars: [...text].length,
   })
   keyListenerReplaceText({ deleteText, text })
+}
+
+export const finishObservedCorrection = () => {
+  observerFinish()
 }

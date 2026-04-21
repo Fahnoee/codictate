@@ -277,16 +277,31 @@ export function ProductOnboardingScreen({
       ]);
       if (results.some((ok) => !ok)) return;
       mergeSettings({
-        formattingEmailGreetingStyle: "auto",
-        formattingEmailClosingStyle: "auto",
-        formattingImessageTone: tones.imessage,
-        formattingSlackTone: tones.slack,
-        formattingDocumentTone: tones.document,
-        formattingImessageAllowEmoji: emojiDraft,
-        formattingSlackAllowEmoji: emojiDraft,
-        formattingImessageLightweight: true,
-        formattingSlackLightweight: true,
-        formattingDocumentLightweight: true,
+        formatting: {
+          ...settings.formatting,
+          email: {
+            ...settings.formatting.email,
+            greetingStyle: "auto",
+            closingStyle: "auto",
+          },
+          imessage: {
+            ...settings.formatting.imessage,
+            tone: tones.imessage,
+            allowEmoji: emojiDraft,
+            lightweight: true,
+          },
+          slack: {
+            ...settings.formatting.slack,
+            tone: tones.slack,
+            allowEmoji: emojiDraft,
+            lightweight: true,
+          },
+          document: {
+            ...settings.formatting.document,
+            tone: tones.document,
+            lightweight: true,
+          },
+        },
       });
       const ok = await completeOnboarding();
       if (ok) {

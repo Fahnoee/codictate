@@ -9,6 +9,7 @@ import {
   type StreamSession,
 } from './utils/whisper/parakeet-stream-runner'
 import {
+  finishObservedCorrection,
   FN_PHYSICAL_KEYCODES,
   getShortcutDefinition,
   Key,
@@ -380,6 +381,14 @@ export const setupRecording = (
   }
 
   const handleKeyEvent = async (keyEvent: KeyEvent) => {
+    if (
+      keyEvent.keyDown &&
+      keyEvent.keycode === Key.enter &&
+      !keyEvent.isRepeat
+    ) {
+      finishObservedCorrection()
+    }
+
     const hybrid = getHybridShortcut()
     const holdOnly = getHoldOnlyShortcut()
 
@@ -552,11 +561,32 @@ export const setupRecording = (
 
   startObserverHelper(
     async ({ original, corrected }) => {
-      await appConfig.addDictionaryEntry(
-        { kind: 'replacement', from: original, text: corrected },
-        'auto'
+      const outcome = await appConfig.stageAutoLearnCorrection(
+        original,
+        corrected
       )
-      onAutoLearnedEntry?.()
+      log('observer', 'processed auto-learn candidate', {
+        original,
+        corrected,
+        outcome,
+      })
+      if (outcome === 'committed') {
+        onAutoLearnedEntry?.()
+      }
+    },
+    async ({ currentText, candidatesFound }) => {
+      if (candidatesFound > 0) return
+      const removed =
+        await appConfig.invalidateDictionaryCandidatesForText(currentText)
+      if (removed.length === 0) return
+      log('observer', 'discarded pending auto-learn candidates', {
+        currentText,
+        removed: removed.map((candidate) => ({
+          from: candidate.from,
+          to: candidate.to,
+          corrections: candidate.corrections,
+        })),
+      })
     },
     () => appConfig.getDictionaryAutoLearn(),
     () => appConfig.getDictionaryEntries()

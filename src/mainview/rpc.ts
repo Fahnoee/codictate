@@ -5,19 +5,14 @@ import type {
   PermissionState,
   DeviceInfo,
   AppSettings,
+  DictionaryCandidate,
+  DictionaryEntry,
   SettingsPane,
   ShortcutId,
   StreamTranscriptionMode,
   UpdateCheckState,
   RecordingIndicatorMode,
   AppStatus,
-  FormattingModeId,
-  FormattingEmailGreetingStyle,
-  FormattingEmailClosingStyle,
-  FormattingImessageTone,
-  FormattingSlackTone,
-  FormattingDocumentTone,
-  FormattingDocumentStructure,
 } from '../shared/types'
 import { appEvents } from './app-events'
 import { SPEECH_MODELS } from '../shared/speech-models'
@@ -110,13 +105,13 @@ export async function fetchSettings(): Promise<AppSettings> {
 }
 
 export async function setShortcut(shortcutId: ShortcutId): Promise<boolean> {
-  return rpc.request.setSettings({ shortcutId })
+  return rpc.request.updateGeneralSettings({ patch: { shortcutId } })
 }
 
 export async function setShortcutHoldOnly(
   shortcutHoldOnlyId: ShortcutId | null
 ): Promise<boolean> {
-  return rpc.request.setSettings({ shortcutHoldOnlyId })
+  return rpc.request.updateGeneralSettings({ patch: { shortcutHoldOnlyId } })
 }
 
 export async function setAudioDevice(index: number): Promise<boolean> {
@@ -132,33 +127,43 @@ export function triggerApplyUpdate(): void {
 }
 
 export async function setDebugMode(enabled: boolean): Promise<boolean> {
-  return rpc.request.setDebugMode({ enabled })
+  return rpc.request.updateGeneralSettings({ patch: { debugMode: enabled } })
 }
 
 export async function setFunModeEnabled(enabled: boolean): Promise<boolean> {
-  return rpc.request.setFunModeEnabled({ enabled })
+  return rpc.request.updateGeneralSettings({
+    patch: { funModeEnabled: enabled },
+  })
 }
 
 export async function setTranscriptionLanguage(
   transcriptionLanguageId: string
 ): Promise<boolean> {
-  return rpc.request.setTranscriptionLanguage({ transcriptionLanguageId })
+  return rpc.request.updateTranscriptionSettings({
+    patch: { transcriptionLanguageId },
+  })
 }
 
 export async function completeOnboarding(): Promise<boolean> {
-  return rpc.request.completeOnboarding({})
+  return rpc.request.updateGeneralSettings({
+    patch: { onboardingCompleted: true },
+  })
 }
 
 export async function setMaxRecordingDuration(
   maxRecordingDuration: number
 ): Promise<boolean> {
-  return rpc.request.setMaxRecordingDuration({ maxRecordingDuration })
+  return rpc.request.updateTranscriptionSettings({
+    patch: { maxRecordingDuration },
+  })
 }
 
 export async function setRecordingIndicatorMode(
   mode: RecordingIndicatorMode
 ): Promise<boolean> {
-  return rpc.request.setRecordingIndicatorMode({ mode })
+  return rpc.request.updateGeneralSettings({
+    patch: { recordingIndicatorMode: mode },
+  })
 }
 
 export async function setOnboardingIndicatorPreview(params: {
@@ -173,158 +178,202 @@ export function copyDebugLog(): void {
 }
 
 export async function setWhisperModel(modelId: string): Promise<boolean> {
-  return rpc.request.setWhisperModel({ modelId })
+  return rpc.request.updateTranscriptionSettings({
+    patch: { whisperModelId: modelId },
+  })
 }
 
 export async function setTranslateToEnglish(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setTranslateToEnglish({ enabled })
+  return rpc.request.updateTranscriptionSettings({
+    patch: { translateToEnglish: enabled },
+  })
 }
 
 export async function setTranslateDefaultLanguage(
   languageId: string
 ): Promise<boolean> {
-  return rpc.request.setTranslateDefaultLanguage({ languageId })
+  return rpc.request.updateTranscriptionSettings({
+    patch: { translateDefaultLanguageId: languageId },
+  })
 }
 
 export async function setStreamMode(enabled: boolean): Promise<boolean> {
-  return rpc.request.setStreamMode({ enabled })
+  return rpc.request.updateTranscriptionSettings({
+    patch: { streamMode: enabled },
+  })
 }
 
 export async function setStreamTranscriptionMode(
   mode: StreamTranscriptionMode
 ): Promise<boolean> {
-  return rpc.request.setStreamTranscriptionMode({ mode })
+  return rpc.request.updateTranscriptionSettings({
+    patch: { streamTranscriptionMode: mode },
+  })
 }
 
 export async function setFormattingEnabled(enabled: boolean): Promise<boolean> {
-  return rpc.request.setFormattingEnabled({ enabled })
+  return rpc.request.updateFormattingSettings({ patch: { enabled } })
 }
 
 export async function setFormattingModeEnabled(
-  modeId: FormattingModeId,
+  modeId: keyof AppSettings['formatting']['enabledModes'],
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingModeEnabled({ modeId, enabled })
+  return rpc.request.updateFormattingSettings({
+    patch: { enabledModes: { [modeId]: enabled } },
+  })
 }
 
 export async function setFormattingForceModeId(
-  modeId: FormattingModeId | null
+  modeId: AppSettings['formatting']['forceModeId']
 ): Promise<boolean> {
-  return rpc.request.setFormattingForceModeId({ modeId })
+  return rpc.request.updateFormattingSettings({
+    patch: { forceModeId: modeId },
+  })
 }
 
 export async function setUserDisplayName(
   userDisplayName: string
 ): Promise<boolean> {
-  return rpc.request.setUserDisplayName({ userDisplayName })
+  return rpc.request.updateGeneralSettings({ patch: { userDisplayName } })
 }
 
 export async function setFormattingEmailIncludeSenderName(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingEmailIncludeSenderName({ enabled })
+  return rpc.request.updateFormattingSettings({
+    patch: { email: { includeSenderName: enabled } },
+  })
 }
 
 export async function setFormattingEmailGreetingStyle(
-  style: FormattingEmailGreetingStyle
+  style: AppSettings['formatting']['email']['greetingStyle']
 ): Promise<boolean> {
-  return rpc.request.setFormattingEmailGreetingStyle({ style })
+  return rpc.request.updateFormattingSettings({
+    patch: { email: { greetingStyle: style } },
+  })
 }
 
 export async function setFormattingEmailClosingStyle(
-  style: FormattingEmailClosingStyle
+  style: AppSettings['formatting']['email']['closingStyle']
 ): Promise<boolean> {
-  return rpc.request.setFormattingEmailClosingStyle({ style })
+  return rpc.request.updateFormattingSettings({
+    patch: { email: { closingStyle: style } },
+  })
 }
 
 export async function setFormattingEmailCustomGreeting(
   text: string
 ): Promise<boolean> {
-  return rpc.request.setFormattingEmailCustomGreeting({ text })
+  return rpc.request.updateFormattingSettings({
+    patch: { email: { customGreeting: text } },
+  })
 }
 
 export async function setFormattingEmailCustomClosing(
   text: string
 ): Promise<boolean> {
-  return rpc.request.setFormattingEmailCustomClosing({ text })
+  return rpc.request.updateFormattingSettings({
+    patch: { email: { customClosing: text } },
+  })
 }
 
 export async function setFormattingImessageTone(
-  tone: FormattingImessageTone
+  tone: AppSettings['formatting']['imessage']['tone']
 ): Promise<boolean> {
-  return rpc.request.setFormattingImessageTone({ tone })
+  return rpc.request.updateFormattingSettings({ patch: { imessage: { tone } } })
 }
 
 export async function setFormattingImessageAllowEmoji(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingImessageAllowEmoji({ enabled })
+  return rpc.request.updateFormattingSettings({
+    patch: { imessage: { allowEmoji: enabled } },
+  })
 }
 
 export async function setFormattingImessageLightweight(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingImessageLightweight({ enabled })
+  return rpc.request.updateFormattingSettings({
+    patch: { imessage: { lightweight: enabled } },
+  })
 }
 
 export async function setFormattingSlackTone(
-  tone: FormattingSlackTone
+  tone: AppSettings['formatting']['slack']['tone']
 ): Promise<boolean> {
-  return rpc.request.setFormattingSlackTone({ tone })
+  return rpc.request.updateFormattingSettings({ patch: { slack: { tone } } })
 }
 
 export async function setFormattingSlackAllowEmoji(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingSlackAllowEmoji({ enabled })
+  return rpc.request.updateFormattingSettings({
+    patch: { slack: { allowEmoji: enabled } },
+  })
 }
 
 export async function setFormattingSlackUseMarkdown(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingSlackUseMarkdown({ enabled })
+  return rpc.request.updateFormattingSettings({
+    patch: { slack: { useMarkdown: enabled } },
+  })
 }
 
 export async function setFormattingSlackLightweight(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingSlackLightweight({ enabled })
+  return rpc.request.updateFormattingSettings({
+    patch: { slack: { lightweight: enabled } },
+  })
 }
 
 export async function setFormattingDocumentTone(
-  tone: FormattingDocumentTone
+  tone: AppSettings['formatting']['document']['tone']
 ): Promise<boolean> {
-  return rpc.request.setFormattingDocumentTone({ tone })
+  return rpc.request.updateFormattingSettings({
+    patch: { document: { tone } },
+  })
 }
 
 export async function setFormattingDocumentStructure(
-  structure: FormattingDocumentStructure
+  structure: AppSettings['formatting']['document']['structure']
 ): Promise<boolean> {
-  return rpc.request.setFormattingDocumentStructure({ structure })
+  return rpc.request.updateFormattingSettings({
+    patch: { document: { structure } },
+  })
 }
 
 export async function setFormattingDocumentLightweight(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setFormattingDocumentLightweight({ enabled })
+  return rpc.request.updateFormattingSettings({
+    patch: { document: { lightweight: enabled } },
+  })
 }
 
 export async function setAudioDuckingLevel(level: number): Promise<boolean> {
-  return rpc.request.setAudioDuckingLevel({ level })
+  return rpc.request.updateAudioDuckingSettings({ patch: { level } })
 }
 
 export async function setAudioDuckingIncludeHeadphones(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setAudioDuckingIncludeHeadphones({ enabled })
+  return rpc.request.updateAudioDuckingSettings({
+    patch: { includeHeadphones: enabled },
+  })
 }
 
 export async function setAudioDuckingIncludeBuiltInSpeakers(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setAudioDuckingIncludeBuiltInSpeakers({ enabled })
+  return rpc.request.updateAudioDuckingSettings({
+    patch: { includeBuiltInSpeakers: enabled },
+  })
 }
 
 export async function addDictionaryEntry(params: {
@@ -332,7 +381,16 @@ export async function addDictionaryEntry(params: {
   text: string
   from?: string
 }): Promise<boolean> {
-  return rpc.request.addDictionaryEntry(params)
+  const current = queryClient.getQueryData<AppSettings>(['settings'])
+  if (!current) return false
+  const entries: DictionaryEntry[] = [...current.dictionary.entries]
+  entries.push({
+    kind: params.kind,
+    text: params.text,
+    ...(params.from ? { from: params.from } : {}),
+    source: 'manual',
+  })
+  return rpc.request.updateDictionarySettings({ patch: { entries } })
 }
 
 export async function removeDictionaryEntry(params: {
@@ -340,13 +398,41 @@ export async function removeDictionaryEntry(params: {
   text: string
   from?: string
 }): Promise<boolean> {
-  return rpc.request.removeDictionaryEntry(params)
+  const current = queryClient.getQueryData<AppSettings>(['settings'])
+  if (!current) return false
+  const key = `${params.kind}:${(params.from ?? '').trim().toLowerCase()}=>${params.text
+    .trim()
+    .toLowerCase()}`
+  const entries = current.dictionary.entries.filter((entry) => {
+    const entryKey = `${entry.kind}:${(entry.from ?? '').trim().toLowerCase()}=>${entry.text
+      .trim()
+      .toLowerCase()}`
+    return entryKey !== key
+  })
+  return rpc.request.updateDictionarySettings({ patch: { entries } })
 }
 
 export async function setDictionaryAutoLearn(
   enabled: boolean
 ): Promise<boolean> {
-  return rpc.request.setDictionaryAutoLearn({ enabled })
+  return rpc.request.updateDictionarySettings({ patch: { autoLearn: enabled } })
+}
+
+export async function removeDictionaryCandidate(
+  candidate: Pick<DictionaryCandidate, 'from' | 'to'>
+): Promise<boolean> {
+  const current = queryClient.getQueryData<AppSettings>(['settings'])
+  if (!current) return false
+  const from = candidate.from.trim().toLowerCase()
+  const to = candidate.to.trim().toLowerCase()
+  const candidates = current.dictionary.candidates.filter(
+    (entry) =>
+      !(
+        entry.from.trim().toLowerCase() === from &&
+        entry.to.trim().toLowerCase() === to
+      )
+  )
+  return rpc.request.updateDictionarySettings({ patch: { candidates } })
 }
 
 export function downloadWhisperModel(modelId: string): void {

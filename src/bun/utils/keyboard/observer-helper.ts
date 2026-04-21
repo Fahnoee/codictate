@@ -3,8 +3,47 @@ import { log } from '../logger'
 import { extractCorrections } from '../dictionary/apply-dictionary'
 import type { DictionaryEntry } from '../../../shared/types'
 
-let observerSend: ((cmd: string) => void) | null = null
-let pendingObservedText: string | null = null
+interface ObserverCommand {
+  command: 'observe' | 'finish' | 'cancel' | 'quit'
+  targetText?: string
+}
+
+let observerSend: ((cmd: ObserverCommand) => void) | null = null
+
+function countTokens(text: string): number {
+  return text.match(/\S+/g)?.length ?? 0
+}
+
+function sliceEndByTokenCount(
+  text: string,
+  start: number,
+  tokenCount: number
+): number {
+  if (tokenCount <= 0) return start
+
+  let idx = start
+  let seenTokens = 0
+  let inToken = false
+
+  while (idx < text.length) {
+    const char = text[idx]
+    const isWhitespace = /\s/.test(char)
+
+    if (!isWhitespace && !inToken) {
+      inToken = true
+      seenTokens++
+    } else if (isWhitespace && inToken) {
+      inToken = false
+      if (seenTokens >= tokenCount) {
+        return idx
+      }
+    }
+
+    idx++
+  }
+
+  return idx
+}
 
 function scopeObservedChange(
   originalText: string,
@@ -24,13 +63,26 @@ function scopeObservedChange(
     return { originalText, currentText, scoped: false }
   }
 
-  const lengthDelta = currentText.length - originalText.length
   const scopedStart = start
   const scopedEndBefore = start + targetText.length
-  const scopedEndAfter = Math.max(
-    scopedStart,
-    Math.min(currentText.length, scopedEndBefore + lengthDelta)
-  )
+  const suffix = originalText.slice(scopedEndBefore)
+  let scopedEndAfter = scopedEndBefore
+
+  if (suffix.length > 0) {
+    const suffixIndex = currentText.indexOf(suffix, scopedStart)
+    if (suffixIndex !== -1) {
+      scopedEndAfter = suffixIndex
+    }
+  }
+
+  if (scopedEndAfter === scopedEndBefore) {
+    const targetTokenCount = countTokens(targetText)
+    scopedEndAfter = sliceEndByTokenCount(
+      currentText,
+      scopedStart,
+      targetTokenCount
+    )
+  }
 
   return {
     originalText: originalText.slice(scopedStart, scopedEndBefore),
@@ -41,6 +93,11 @@ function scopeObservedChange(
 
 export function startObserverHelper(
   onCorrection: (candidate: { original: string; corrected: string }) => void,
+  onObservationSettled: (result: {
+    originalText: string
+    currentText: string
+    candidatesFound: number
+  }) => void,
   isAutoLearnEnabled: () => boolean,
   _getDictionaryEntries: () => DictionaryEntry[]
 ) {
@@ -75,7 +132,7 @@ export function startObserverHelper(
     return
   }
 
-  const send = (cmd: object) => {
+  const send = (cmd: ObserverCommand) => {
     try {
       stdin.write(JSON.stringify(cmd) + '\n')
       stdin.flush()
@@ -84,9 +141,12 @@ export function startObserverHelper(
     }
   }
 
-  observerSend = (command: string) => {
-    log('observer', 'sending command to helper', { command })
-    send({ command })
+  observerSend = (command) => {
+    log('observer', 'sending command to helper', {
+      command: command.command,
+      targetTextChars: command.targetText?.length,
+    })
+    send(command)
   }
 
   proc.exited.then((code) => {
@@ -109,8 +169,9 @@ export function startObserverHelper(
         if (!line.trim()) continue
         try {
           const msg = JSON.parse(line) as Record<string, unknown>
-          if (msg.type === 'correction') {
-            log('observer', 'received correction event', {
+          if (msg.type === 'correction' || msg.type === 'observationFinished') {
+            log('observer', 'received observation event', {
+              eventType: String(msg.type),
               originalText: String(msg.originalText ?? ''),
               currentText: String(msg.currentText ?? ''),
               autoLearnEnabled: isAutoLearnEnabled(),
@@ -118,14 +179,19 @@ export function startObserverHelper(
             if (!isAutoLearnEnabled()) continue
             const observedBefore = String(msg.originalText ?? '')
             const observedAfter = String(msg.currentText ?? '')
+            const targetText =
+              typeof msg.targetText === 'string' ? msg.targetText : null
             const scopedChange = scopeObservedChange(
               observedBefore,
               observedAfter,
-              pendingObservedText
+              targetText
             )
             const originalText = scopedChange.originalText
             const currentText = scopedChange.currentText
-            const candidates = extractCorrections(originalText, currentText)
+            const candidates =
+              msg.type === 'correction'
+                ? extractCorrections(originalText, currentText)
+                : []
             log('observer', 'extractCorrections result', {
               scopedToPastedText: scopedChange.scoped,
               comparedOriginalText: originalText,
@@ -135,8 +201,13 @@ export function startObserverHelper(
                 (c) => `${c.original} → ${c.corrected}`
               ),
             })
+            onObservationSettled({
+              originalText,
+              currentText,
+              candidatesFound: candidates.length,
+            })
             for (const candidate of candidates) {
-              log('observer', 'auto-learned correction', {
+              log('observer', 'observed correction candidate', {
                 original: candidate.original,
                 corrected: candidate.corrected,
               })
@@ -160,12 +231,15 @@ export function observerStartWatch(targetText?: string) {
     log('observer', 'observerStartWatch called but helper is not running')
     return
   }
-  pendingObservedText = targetText ?? null
-  observerSend('observe')
+  observerSend({ command: 'observe', targetText })
+}
+
+export function observerFinish() {
+  if (!observerSend) return
+  observerSend({ command: 'finish' })
 }
 
 export function observerCancel() {
-  pendingObservedText = null
   if (!observerSend) return
-  observerSend('cancel')
+  observerSend({ command: 'cancel' })
 }

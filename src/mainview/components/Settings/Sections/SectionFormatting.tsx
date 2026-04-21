@@ -13,6 +13,7 @@ import type {
   FormattingEmailGreetingStyle,
   FormattingImessageTone,
   FormattingModeId,
+  FormattingSettingsPatch,
   FormattingSlackTone,
 } from "../../../../shared/types";
 import {
@@ -185,42 +186,95 @@ type Props = {
 
 export function SectionFormatting({ settings }: Props) {
   const queryClient = useQueryClient();
+  const formatting = settings.formatting;
   const [focusedFormat, setFocusedFormat] = useState<FormattingModeId>("email");
   const [customGreetingDraft, setCustomGreetingDraft] = useState("");
   const [customClosingDraft, setCustomClosingDraft] = useState("");
 
   useEffect(() => {
-    setCustomGreetingDraft(settings.formattingEmailCustomGreeting);
-  }, [settings.formattingEmailCustomGreeting]);
+    setCustomGreetingDraft(formatting.email.customGreeting);
+  }, [formatting.email.customGreeting]);
 
   useEffect(() => {
-    setCustomClosingDraft(settings.formattingEmailCustomClosing);
-  }, [settings.formattingEmailCustomClosing]);
+    setCustomClosingDraft(formatting.email.customClosing);
+  }, [formatting.email.customClosing]);
+
+  const mergeFormatting = useCallback(
+    (old: AppSettings, patch: FormattingSettingsPatch): AppSettings => {
+      const nextFormatting: AppSettings["formatting"] = {
+        ...old.formatting,
+        ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.forceModeId !== undefined
+          ? { forceModeId: patch.forceModeId }
+          : {}),
+        ...(patch.enabledModes
+          ? {
+              enabledModes: {
+                ...old.formatting.enabledModes,
+                ...patch.enabledModes,
+              },
+            }
+          : {}),
+        ...(patch.email
+          ? {
+              email: {
+                ...old.formatting.email,
+                ...patch.email,
+              },
+            }
+          : {}),
+        ...(patch.imessage
+          ? {
+              imessage: {
+                ...old.formatting.imessage,
+                ...patch.imessage,
+              },
+            }
+          : {}),
+        ...(patch.slack
+          ? {
+              slack: {
+                ...old.formatting.slack,
+                ...patch.slack,
+              },
+            }
+          : {}),
+        ...(patch.document
+          ? {
+              document: {
+                ...old.formatting.document,
+                ...patch.document,
+              },
+            }
+          : {}),
+      };
+
+      return {
+        ...old,
+        formatting: nextFormatting,
+      };
+    },
+    [],
+  );
 
   const handleFormattingEnabledToggle = useCallback(async () => {
-    const newValue = !settings.formattingEnabled;
+    const newValue = !formatting.enabled;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingEnabled: newValue } : old,
+      old ? mergeFormatting(old, { enabled: newValue }) : old,
     );
     const ok = await setFormattingEnabled(newValue);
     if (!ok) {
       queryClient.setQueryData(["settings"], await fetchSettings());
     }
-  }, [queryClient, settings.formattingEnabled]);
+  }, [formatting.enabled, mergeFormatting, queryClient]);
 
   const handleFormattingModeToggle = useCallback(
     async (modeId: FormattingModeId) => {
-      const current = settings.formattingEnabledModes[modeId] ?? false;
+      const current = formatting.enabledModes[modeId] ?? false;
       const newValue = !current;
       queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
         old
-          ? {
-              ...old,
-              formattingEnabledModes: {
-                ...old.formattingEnabledModes,
-                [modeId]: newValue,
-              },
-            }
+          ? mergeFormatting(old, { enabledModes: { [modeId]: newValue } })
           : old,
       );
       const ok = await setFormattingModeEnabled(modeId, newValue);
@@ -228,30 +282,31 @@ export function SectionFormatting({ settings }: Props) {
         queryClient.setQueryData(["settings"], await fetchSettings());
       }
     },
-    [queryClient, settings.formattingEnabledModes],
+    [formatting.enabledModes, mergeFormatting, queryClient],
   );
 
   const handleClearFormattingForce = useCallback(async () => {
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingForceModeId: null } : old,
+      old ? mergeFormatting(old, { forceModeId: null }) : old,
     );
     const ok = await setFormattingForceModeId(null);
     if (!ok) {
       queryClient.setQueryData(["settings"], await fetchSettings());
     }
-  }, [queryClient]);
+  }, [mergeFormatting, queryClient]);
 
   const handleCustomGreetingCommit = useCallback(async () => {
     const text = customGreetingDraft.trim();
-    if (text === settings.formattingEmailCustomGreeting) return;
+    if (text === formatting.email.customGreeting) return;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingEmailCustomGreeting: text } : old,
+      old ? mergeFormatting(old, { email: { customGreeting: text } }) : old,
     );
     await setFormattingEmailCustomGreeting(text);
   }, [
-    queryClient,
-    settings.formattingEmailCustomGreeting,
     customGreetingDraft,
+    formatting.email.customGreeting,
+    mergeFormatting,
+    queryClient,
   ]);
 
   useEffect(() => {
@@ -263,12 +318,17 @@ export function SectionFormatting({ settings }: Props) {
 
   const handleCustomClosingCommit = useCallback(async () => {
     const text = customClosingDraft.trim();
-    if (text === settings.formattingEmailCustomClosing) return;
+    if (text === formatting.email.customClosing) return;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingEmailCustomClosing: text } : old,
+      old ? mergeFormatting(old, { email: { customClosing: text } }) : old,
     );
     await setFormattingEmailCustomClosing(text);
-  }, [queryClient, settings.formattingEmailCustomClosing, customClosingDraft]);
+  }, [
+    customClosingDraft,
+    formatting.email.customClosing,
+    mergeFormatting,
+    queryClient,
+  ]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -280,141 +340,143 @@ export function SectionFormatting({ settings }: Props) {
   const handleEmailGreetingStyleChange = useCallback(
     async (style: FormattingEmailGreetingStyle) => {
       queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-        old ? { ...old, formattingEmailGreetingStyle: style } : old,
+        old ? mergeFormatting(old, { email: { greetingStyle: style } }) : old,
       );
       const ok = await setFormattingEmailGreetingStyle(style);
       if (!ok) {
         queryClient.setQueryData(["settings"], await fetchSettings());
       }
     },
-    [queryClient],
+    [mergeFormatting, queryClient],
   );
 
   const handleEmailClosingStyleChange = useCallback(
     async (style: FormattingEmailClosingStyle) => {
       queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-        old ? { ...old, formattingEmailClosingStyle: style } : old,
+        old ? mergeFormatting(old, { email: { closingStyle: style } }) : old,
       );
       const ok = await setFormattingEmailClosingStyle(style);
       if (!ok) {
         queryClient.setQueryData(["settings"], await fetchSettings());
       }
     },
-    [queryClient],
+    [mergeFormatting, queryClient],
   );
 
   const handleImessageToneChange = useCallback(
     async (tone: FormattingImessageTone) => {
       queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-        old ? { ...old, formattingImessageTone: tone } : old,
+        old ? mergeFormatting(old, { imessage: { tone } }) : old,
       );
       const ok = await setFormattingImessageTone(tone);
       if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
     },
-    [queryClient],
+    [mergeFormatting, queryClient],
   );
 
   const handleFormattingImessageAllowEmojiToggle = useCallback(async () => {
-    const newValue = !settings.formattingImessageAllowEmoji;
+    const newValue = !formatting.imessage.allowEmoji;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingImessageAllowEmoji: newValue } : old,
+      old ? mergeFormatting(old, { imessage: { allowEmoji: newValue } }) : old,
     );
     const ok = await setFormattingImessageAllowEmoji(newValue);
     if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
-  }, [queryClient, settings.formattingImessageAllowEmoji]);
+  }, [formatting.imessage.allowEmoji, mergeFormatting, queryClient]);
 
   const handleFormattingImessageLightweightToggle = useCallback(async () => {
-    const newValue = !settings.formattingImessageLightweight;
+    const newValue = !formatting.imessage.lightweight;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingImessageLightweight: newValue } : old,
+      old ? mergeFormatting(old, { imessage: { lightweight: newValue } }) : old,
     );
     const ok = await setFormattingImessageLightweight(newValue);
     if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
-  }, [queryClient, settings.formattingImessageLightweight]);
+  }, [formatting.imessage.lightweight, mergeFormatting, queryClient]);
 
   const handleSlackToneChange = useCallback(
     async (tone: FormattingSlackTone) => {
       queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-        old ? { ...old, formattingSlackTone: tone } : old,
+        old ? mergeFormatting(old, { slack: { tone } }) : old,
       );
       const ok = await setFormattingSlackTone(tone);
       if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
     },
-    [queryClient],
+    [mergeFormatting, queryClient],
   );
 
   const handleFormattingSlackAllowEmojiToggle = useCallback(async () => {
-    const newValue = !settings.formattingSlackAllowEmoji;
+    const newValue = !formatting.slack.allowEmoji;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingSlackAllowEmoji: newValue } : old,
+      old ? mergeFormatting(old, { slack: { allowEmoji: newValue } }) : old,
     );
     const ok = await setFormattingSlackAllowEmoji(newValue);
     if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
-  }, [queryClient, settings.formattingSlackAllowEmoji]);
+  }, [formatting.slack.allowEmoji, mergeFormatting, queryClient]);
 
   const handleFormattingSlackUseMarkdownToggle = useCallback(async () => {
-    const newValue = !settings.formattingSlackUseMarkdown;
+    const newValue = !formatting.slack.useMarkdown;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingSlackUseMarkdown: newValue } : old,
+      old ? mergeFormatting(old, { slack: { useMarkdown: newValue } }) : old,
     );
     const ok = await setFormattingSlackUseMarkdown(newValue);
     if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
-  }, [queryClient, settings.formattingSlackUseMarkdown]);
+  }, [formatting.slack.useMarkdown, mergeFormatting, queryClient]);
 
   const handleFormattingSlackLightweightToggle = useCallback(async () => {
-    const newValue = !settings.formattingSlackLightweight;
+    const newValue = !formatting.slack.lightweight;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingSlackLightweight: newValue } : old,
+      old ? mergeFormatting(old, { slack: { lightweight: newValue } }) : old,
     );
     const ok = await setFormattingSlackLightweight(newValue);
     if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
-  }, [queryClient, settings.formattingSlackLightweight]);
+  }, [formatting.slack.lightweight, mergeFormatting, queryClient]);
 
   const handleDocumentToneChange = useCallback(
     async (tone: FormattingDocumentTone) => {
       queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-        old ? { ...old, formattingDocumentTone: tone } : old,
+        old ? mergeFormatting(old, { document: { tone } }) : old,
       );
       const ok = await setFormattingDocumentTone(tone);
       if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
     },
-    [queryClient],
+    [mergeFormatting, queryClient],
   );
 
   const handleDocumentStructureChange = useCallback(
     async (structure: FormattingDocumentStructure) => {
       queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-        old ? { ...old, formattingDocumentStructure: structure } : old,
+        old ? mergeFormatting(old, { document: { structure } }) : old,
       );
       const ok = await setFormattingDocumentStructure(structure);
       if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
     },
-    [queryClient],
+    [mergeFormatting, queryClient],
   );
 
   const handleFormattingDocumentLightweightToggle = useCallback(async () => {
-    const newValue = !settings.formattingDocumentLightweight;
+    const newValue = !formatting.document.lightweight;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingDocumentLightweight: newValue } : old,
+      old ? mergeFormatting(old, { document: { lightweight: newValue } }) : old,
     );
     const ok = await setFormattingDocumentLightweight(newValue);
     if (!ok) queryClient.setQueryData(["settings"], await fetchSettings());
-  }, [queryClient, settings.formattingDocumentLightweight]);
+  }, [formatting.document.lightweight, mergeFormatting, queryClient]);
 
   const handleFormattingEmailIncludeSenderNameToggle = useCallback(async () => {
-    const newValue = !settings.formattingEmailIncludeSenderName;
+    const newValue = !formatting.email.includeSenderName;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, formattingEmailIncludeSenderName: newValue } : old,
+      old
+        ? mergeFormatting(old, { email: { includeSenderName: newValue } })
+        : old,
     );
     const ok = await setFormattingEmailIncludeSenderName(newValue);
     if (!ok) {
       queryClient.setQueryData(["settings"], await fetchSettings());
     }
-  }, [queryClient, settings.formattingEmailIncludeSenderName]);
+  }, [formatting.email.includeSenderName, mergeFormatting, queryClient]);
 
   return (
     <>
-      {!settings.formattingAvailable && (
+      {!formatting.available && (
         <div className="mb-6 rounded-xl border border-white/10 bg-white/4 px-4 py-3.5">
           <p className="text-[18px] text-white/44 leading-relaxed font-sans">
             Be aware: output formatting only works on{" "}
@@ -428,8 +490,7 @@ export function SectionFormatting({ settings }: Props) {
         <div className="flex items-center gap-3">
           {(() => {
             const effectiveOn =
-              settings.formattingEnabled ||
-              settings.formattingForceModeId !== null;
+              formatting.enabled || formatting.forceModeId !== null;
             return (
               <>
                 <div className="flex-1 min-w-0">
@@ -447,7 +508,7 @@ export function SectionFormatting({ settings }: Props) {
                 </div>
                 <button
                   onClick={handleFormattingEnabledToggle}
-                  disabled={!settings.formattingAvailable}
+                  disabled={!formatting.available}
                   className={`relative shrink-0 w-10 h-6 rounded-full transition-colors duration-200 cursor-pointer border disabled:cursor-not-allowed disabled:opacity-50 ${
                     effectiveOn
                       ? "border-blue-400/50 bg-white/10"
@@ -470,7 +531,7 @@ export function SectionFormatting({ settings }: Props) {
       </div>
 
       <AnimatePresence>
-        {settings.formattingForceModeId !== null && (
+        {formatting.forceModeId !== null && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -497,7 +558,7 @@ export function SectionFormatting({ settings }: Props) {
               <span className="flex-1 text-[17px] text-white/72 leading-snug">
                 Force mode active:{" "}
                 <span className="font-medium text-amber-200/90">
-                  {formattingModeLabel(settings.formattingForceModeId)}
+                  {formattingModeLabel(formatting.forceModeId)}
                 </span>{" "}
                 — always applied, even if formatting is off or the format is
                 disabled below. Clear to return to auto-detection.
@@ -521,7 +582,7 @@ export function SectionFormatting({ settings }: Props) {
         </div>
         <div className="grid grid-cols-1 gap-2.5 min-[520px]:grid-cols-2 xl:grid-cols-4">
           {FORMATTING_MODES.map((mode) => {
-            const enabled = settings.formattingEnabledModes[mode.id] ?? false;
+            const enabled = formatting.enabledModes[mode.id] ?? false;
             const focused = focusedFormat === mode.id;
             return (
               <div
@@ -559,11 +620,10 @@ export function SectionFormatting({ settings }: Props) {
                     {mode.tagline}
                   </span>
                   {(mode.id === "imessage" &&
-                    settings.formattingImessageLightweight) ||
-                  (mode.id === "slack" &&
-                    settings.formattingSlackLightweight) ||
+                    formatting.imessage.lightweight) ||
+                  (mode.id === "slack" && formatting.slack.lightweight) ||
                   (mode.id === "document" &&
-                    settings.formattingDocumentLightweight) ? (
+                    formatting.document.lightweight) ? (
                     <span className="mt-2 inline-flex rounded-md border border-white/12 bg-white/5 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/48">
                       Light formatting
                     </span>
@@ -600,7 +660,7 @@ export function SectionFormatting({ settings }: Props) {
             <div className="flex items-center gap-3 px-4 py-3.5">
               <div className="flex-1 min-w-0">
                 <span
-                  className={`block text-[21px] font-medium ${settings.formattingEmailIncludeSenderName ? "text-white/78" : "text-white/58"}`}
+                  className={`block text-[21px] font-medium ${formatting.email.includeSenderName ? "text-white/78" : "text-white/58"}`}
                 >
                   Add my name to email sign-off
                 </span>
@@ -612,7 +672,7 @@ export function SectionFormatting({ settings }: Props) {
               <button
                 onClick={handleFormattingEmailIncludeSenderNameToggle}
                 className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                  settings.formattingEmailIncludeSenderName
+                  formatting.email.includeSenderName
                     ? "border-blue-400/50 bg-white/10"
                     : "bg-white/7 border-white/14"
                 }`}
@@ -620,7 +680,7 @@ export function SectionFormatting({ settings }: Props) {
               >
                 <span
                   className={`absolute top-px w-4 h-4 rounded-full transition-all duration-200 ${
-                    settings.formattingEmailIncludeSenderName
+                    formatting.email.includeSenderName
                       ? "left-4 bg-blue-400"
                       : "left-0.5 bg-white/40"
                   }`}
@@ -634,13 +694,13 @@ export function SectionFormatting({ settings }: Props) {
               Greeting style
             </span>
             <DropdownPicker
-              value={settings.formattingEmailGreetingStyle}
+              value={formatting.email.greetingStyle}
               onChange={handleEmailGreetingStyleChange}
               options={EMAIL_GREETING_OPTIONS}
               ariaLabel="Preferred email greeting style"
             />
             <AnimatePresence>
-              {settings.formattingEmailGreetingStyle === "custom" && (
+              {formatting.email.greetingStyle === "custom" && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
@@ -666,13 +726,13 @@ export function SectionFormatting({ settings }: Props) {
               Closing style
             </span>
             <DropdownPicker
-              value={settings.formattingEmailClosingStyle}
+              value={formatting.email.closingStyle}
               onChange={handleEmailClosingStyleChange}
               options={EMAIL_CLOSING_OPTIONS}
               ariaLabel="Preferred email closing style"
             />
             <AnimatePresence>
-              {settings.formattingEmailClosingStyle === "custom" && (
+              {formatting.email.closingStyle === "custom" && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
@@ -710,7 +770,7 @@ export function SectionFormatting({ settings }: Props) {
             <div className="flex items-center gap-3 px-4 py-3.5">
               <div className="flex-1 min-w-0">
                 <span
-                  className={`block text-[21px] font-medium ${settings.formattingImessageLightweight ? "text-white/78" : "text-white/58"}`}
+                  className={`block text-[21px] font-medium ${formatting.imessage.lightweight ? "text-white/78" : "text-white/58"}`}
                 >
                   Light formatting only
                 </span>
@@ -723,7 +783,7 @@ export function SectionFormatting({ settings }: Props) {
               <button
                 onClick={handleFormattingImessageLightweightToggle}
                 className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                  settings.formattingImessageLightweight
+                  formatting.imessage.lightweight
                     ? "border-blue-400/50 bg-white/10"
                     : "bg-white/7 border-white/14"
                 }`}
@@ -731,7 +791,7 @@ export function SectionFormatting({ settings }: Props) {
               >
                 <span
                   className={`absolute top-px w-4 h-4 rounded-full transition-all duration-200 ${
-                    settings.formattingImessageLightweight
+                    formatting.imessage.lightweight
                       ? "left-4 bg-blue-400"
                       : "left-0.5 bg-white/40"
                   }`}
@@ -739,13 +799,13 @@ export function SectionFormatting({ settings }: Props) {
               </button>
             </div>
             <LightLockedShell
-              locked={settings.formattingImessageLightweight}
+              locked={formatting.imessage.lightweight}
               hint={LIGHT_AI_LOCKED_HINT}
             >
               <div className="flex items-center gap-3 px-4 py-3.5">
                 <div className="flex-1 min-w-0">
                   <span
-                    className={`block text-[21px] font-medium ${settings.formattingImessageAllowEmoji ? "text-white/78" : "text-white/58"}`}
+                    className={`block text-[21px] font-medium ${formatting.imessage.allowEmoji ? "text-white/78" : "text-white/58"}`}
                   >
                     Allow emoji
                   </span>
@@ -758,7 +818,7 @@ export function SectionFormatting({ settings }: Props) {
                   type="button"
                   onClick={handleFormattingImessageAllowEmojiToggle}
                   className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                    settings.formattingImessageAllowEmoji
+                    formatting.imessage.allowEmoji
                       ? "border-blue-400/50 bg-white/10"
                       : "bg-white/7 border-white/14"
                   }`}
@@ -766,7 +826,7 @@ export function SectionFormatting({ settings }: Props) {
                 >
                   <span
                     className={`absolute top-px w-4 h-4 rounded-full transition-all duration-200 ${
-                      settings.formattingImessageAllowEmoji
+                      formatting.imessage.allowEmoji
                         ? "left-4 bg-blue-400"
                         : "left-0.5 bg-white/40"
                     }`}
@@ -780,7 +840,7 @@ export function SectionFormatting({ settings }: Props) {
               Tone
             </span>
             <TileGroup
-              value={settings.formattingImessageTone}
+              value={formatting.imessage.tone}
               onChange={handleImessageToneChange}
               options={IMESSAGE_TONE_OPTIONS}
               columns={3}
@@ -805,7 +865,7 @@ export function SectionFormatting({ settings }: Props) {
             <div className="flex items-center gap-3 px-4 py-3.5">
               <div className="flex-1 min-w-0">
                 <span
-                  className={`block text-[21px] font-medium ${settings.formattingSlackLightweight ? "text-white/78" : "text-white/58"}`}
+                  className={`block text-[21px] font-medium ${formatting.slack.lightweight ? "text-white/78" : "text-white/58"}`}
                 >
                   Light formatting only
                 </span>
@@ -818,7 +878,7 @@ export function SectionFormatting({ settings }: Props) {
               <button
                 onClick={handleFormattingSlackLightweightToggle}
                 className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                  settings.formattingSlackLightweight
+                  formatting.slack.lightweight
                     ? "border-blue-400/50 bg-white/10"
                     : "bg-white/7 border-white/14"
                 }`}
@@ -826,7 +886,7 @@ export function SectionFormatting({ settings }: Props) {
               >
                 <span
                   className={`absolute top-px w-4 h-4 rounded-full transition-all duration-200 ${
-                    settings.formattingSlackLightweight
+                    formatting.slack.lightweight
                       ? "left-4 bg-blue-400"
                       : "left-0.5 bg-white/40"
                   }`}
@@ -834,14 +894,14 @@ export function SectionFormatting({ settings }: Props) {
               </button>
             </div>
             <LightLockedShell
-              locked={settings.formattingSlackLightweight}
+              locked={formatting.slack.lightweight}
               hint={LIGHT_AI_LOCKED_HINT}
             >
               <div className="divide-y divide-white/8">
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   <div className="flex-1 min-w-0">
                     <span
-                      className={`block text-[21px] font-medium ${settings.formattingSlackUseMarkdown ? "text-white/78" : "text-white/58"}`}
+                      className={`block text-[21px] font-medium ${formatting.slack.useMarkdown ? "text-white/78" : "text-white/58"}`}
                     >
                       Use Slack markdown
                     </span>
@@ -857,7 +917,7 @@ export function SectionFormatting({ settings }: Props) {
                     type="button"
                     onClick={handleFormattingSlackUseMarkdownToggle}
                     className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                      settings.formattingSlackUseMarkdown
+                      formatting.slack.useMarkdown
                         ? "border-blue-400/50 bg-white/10"
                         : "bg-white/7 border-white/14"
                     }`}
@@ -865,7 +925,7 @@ export function SectionFormatting({ settings }: Props) {
                   >
                     <span
                       className={`absolute top-px w-4 h-4 rounded-full transition-all duration-200 ${
-                        settings.formattingSlackUseMarkdown
+                        formatting.slack.useMarkdown
                           ? "left-4 bg-blue-400"
                           : "left-0.5 bg-white/40"
                       }`}
@@ -875,7 +935,7 @@ export function SectionFormatting({ settings }: Props) {
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   <div className="flex-1 min-w-0">
                     <span
-                      className={`block text-[21px] font-medium ${settings.formattingSlackAllowEmoji ? "text-white/78" : "text-white/58"}`}
+                      className={`block text-[21px] font-medium ${formatting.slack.allowEmoji ? "text-white/78" : "text-white/58"}`}
                     >
                       Allow emoji
                     </span>
@@ -887,7 +947,7 @@ export function SectionFormatting({ settings }: Props) {
                     type="button"
                     onClick={handleFormattingSlackAllowEmojiToggle}
                     className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                      settings.formattingSlackAllowEmoji
+                      formatting.slack.allowEmoji
                         ? "border-blue-400/50 bg-white/10"
                         : "bg-white/7 border-white/14"
                     }`}
@@ -895,7 +955,7 @@ export function SectionFormatting({ settings }: Props) {
                   >
                     <span
                       className={`absolute top-px w-4 h-4 rounded-full transition-all duration-200 ${
-                        settings.formattingSlackAllowEmoji
+                        formatting.slack.allowEmoji
                           ? "left-4 bg-blue-400"
                           : "left-0.5 bg-white/40"
                       }`}
@@ -910,7 +970,7 @@ export function SectionFormatting({ settings }: Props) {
               Tone
             </span>
             <TileGroup
-              value={settings.formattingSlackTone}
+              value={formatting.slack.tone}
               onChange={handleSlackToneChange}
               options={SLACK_TONE_OPTIONS}
               columns={3}
@@ -935,7 +995,7 @@ export function SectionFormatting({ settings }: Props) {
             <div className="flex items-center gap-3 px-4 py-3.5">
               <div className="flex-1 min-w-0">
                 <span
-                  className={`block text-[21px] font-medium ${settings.formattingDocumentLightweight ? "text-white/78" : "text-white/58"}`}
+                  className={`block text-[21px] font-medium ${formatting.document.lightweight ? "text-white/78" : "text-white/58"}`}
                 >
                   Light formatting only
                 </span>
@@ -949,7 +1009,7 @@ export function SectionFormatting({ settings }: Props) {
                 type="button"
                 onClick={handleFormattingDocumentLightweightToggle}
                 className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                  settings.formattingDocumentLightweight
+                  formatting.document.lightweight
                     ? "border-blue-400/50 bg-white/10"
                     : "bg-white/7 border-white/14"
                 }`}
@@ -957,7 +1017,7 @@ export function SectionFormatting({ settings }: Props) {
               >
                 <span
                   className={`absolute top-px w-4 h-4 rounded-full transition-all duration-200 ${
-                    settings.formattingDocumentLightweight
+                    formatting.document.lightweight
                       ? "left-4 bg-blue-400"
                       : "left-0.5 bg-white/40"
                   }`}
@@ -970,7 +1030,7 @@ export function SectionFormatting({ settings }: Props) {
               Tone
             </span>
             <TileGroup
-              value={settings.formattingDocumentTone}
+              value={formatting.document.tone}
               onChange={handleDocumentToneChange}
               options={DOCUMENT_TONE_OPTIONS}
               columns={3}
@@ -982,12 +1042,12 @@ export function SectionFormatting({ settings }: Props) {
               Structure
             </span>
             <LightLockedShell
-              locked={settings.formattingDocumentLightweight}
+              locked={formatting.document.lightweight}
               hint={LIGHT_AI_LOCKED_HINT}
             >
               <div className="px-1 pb-1 pt-0.5 sm:px-2">
                 <TileGroup
-                  value={settings.formattingDocumentStructure}
+                  value={formatting.document.structure}
                   onChange={handleDocumentStructureChange}
                   options={DOCUMENT_STRUCTURE_OPTIONS}
                   columns={2}

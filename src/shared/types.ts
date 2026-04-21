@@ -28,32 +28,100 @@ export interface FocusedAppContext {
 
 export type FormattingEnabledModes = Record<FormattingModeId, boolean>
 
+export interface FormattingEmailSettings {
+  includeSenderName: boolean
+  greetingStyle: FormattingEmailGreetingStyle
+  closingStyle: FormattingEmailClosingStyle
+  customGreeting: string
+  customClosing: string
+}
+
+export interface FormattingImessageSettings {
+  tone: FormattingImessageTone
+  allowEmoji: boolean
+  lightweight: boolean
+}
+
+export interface FormattingSlackSettings {
+  tone: FormattingSlackTone
+  allowEmoji: boolean
+  useMarkdown: boolean
+  lightweight: boolean
+}
+
+export interface FormattingDocumentSettings {
+  tone: FormattingDocumentTone
+  structure: FormattingDocumentStructure
+  lightweight: boolean
+}
+
+export interface FormattingSettings {
+  enabled: boolean
+  enabledModes: FormattingEnabledModes
+  forceModeId: FormattingModeId | null
+  available: boolean
+  email: FormattingEmailSettings
+  imessage: FormattingImessageSettings
+  slack: FormattingSlackSettings
+  document: FormattingDocumentSettings
+}
+
+export interface AudioDuckingSettings {
+  /**
+   * Duck amount applied to enabled output ducking targets.
+   * 0 = fully mute, 100 = no change.
+   */
+  level: number
+  /** When true, ducking also applies with headphones/Bluetooth/USB (default: true). */
+  includeHeadphones: boolean
+  /**
+   * When true, mute built-in Mac speaker output while dictating (MicRecorder and stream helper).
+   * Default true.
+   */
+  includeBuiltInSpeakers: boolean
+}
+
+export interface DictionaryEntry {
+  kind: 'fuzzy' | 'replacement'
+  /** Canonical output text that should appear in the transcript. */
+  text: string
+  /** Source phrase to replace exactly. Present only for direct replacements. */
+  from?: string
+  /** 'manual' = user typed it in settings; 'auto' = learned from a post-paste correction */
+  source: 'manual' | 'auto'
+}
+
+export interface DictionaryCandidate {
+  /** Source phrase that may deserve an exact replacement. */
+  from: string
+  /** Corrected text the user changed it to. */
+  to: string
+  /** Number of separate observed corrections for this pair. */
+  corrections: number
+}
+
+export interface DictionarySettings {
+  entries: DictionaryEntry[]
+  /** When true, the app automatically learns corrections from user edits (requires Accessibility). */
+  autoLearn: boolean
+  /** Pending exact-replacement candidates that need repeat confirmation before being learned. */
+  candidates: DictionaryCandidate[]
+}
+
 export interface FormattingRuntimeSettings {
   /** Master switch — when false, runtime never formats. */
-  formattingEnabled: boolean
+  enabled: boolean
   /** Per-format on/off used by app-aware auto-detect. */
-  formattingEnabledModes: FormattingEnabledModes
+  enabledModes: FormattingEnabledModes
   /** Tray-level force override; when non-null, bypasses app detection. */
-  formattingForceModeId: FormattingModeId | null
+  forceModeId: FormattingModeId | null
   /** Transcription language ID (e.g. 'da', 'zh-cn', 'auto'). Passed to the formatter for locale hints. */
   transcriptionLanguageId: string
   userDisplayName: string
-  formattingEmailIncludeSenderName: boolean
-  formattingEmailGreetingStyle: FormattingEmailGreetingStyle
-  formattingEmailClosingStyle: FormattingEmailClosingStyle
-  formattingEmailCustomGreeting: string
-  formattingEmailCustomClosing: string
-  formattingImessageTone: FormattingImessageTone
-  formattingImessageAllowEmoji: boolean
-  formattingImessageLightweight: boolean
-  formattingSlackTone: FormattingSlackTone
-  formattingSlackAllowEmoji: boolean
-  formattingSlackUseMarkdown: boolean
-  formattingSlackLightweight: boolean
-  formattingDocumentTone: FormattingDocumentTone
-  formattingDocumentStructure: FormattingDocumentStructure
-  /** Skip Apple Intelligence for document apps and only apply lightweight cleanup. */
-  formattingDocumentLightweight: boolean
+  email: FormattingEmailSettings
+  imessage: FormattingImessageSettings
+  slack: FormattingSlackSettings
+  document: FormattingDocumentSettings
 }
 
 export type AppStatus = 'ready' | 'recording' | 'transcribing' | 'streaming'
@@ -129,77 +197,9 @@ export interface AppSettings {
   streamTranscriptionMode: StreamTranscriptionMode
   /** General user profile name, available to formatting and future personalized behaviors. */
   userDisplayName: string
-  /** Master switch for post-processing formatting (FoundationModels, macOS 26+). */
-  formattingEnabled: boolean
-  /** Per-format opt-in for app-aware auto-detect. */
-  formattingEnabledModes: FormattingEnabledModes
-  /**
-   * Tray-level force override. When non-null, this mode is applied to the next
-   * dictations regardless of which app is focused. Stays on until the user
-   * picks "Auto" again from the tray. Ignored when `formattingEnabled` is false.
-   */
-  formattingForceModeId: FormattingModeId | null
-  /** When true, email formatting may append the user's stored display name in the sign-off. */
-  formattingEmailIncludeSenderName: boolean
-  /** Preferred greeting tone for email formatting. */
-  formattingEmailGreetingStyle: FormattingEmailGreetingStyle
-  /** Preferred closing tone for email formatting. */
-  formattingEmailClosingStyle: FormattingEmailClosingStyle
-  /** Custom greeting text used when greeting style is 'custom'. */
-  formattingEmailCustomGreeting: string
-  /** Custom closing text used when closing style is 'custom'. */
-  formattingEmailCustomClosing: string
-  /** Messages tone. */
-  formattingImessageTone: FormattingImessageTone
-  /** Allow emoji in Messages output. */
-  formattingImessageAllowEmoji: boolean
-  /** Skip Apple Intelligence for Messages and only apply lightweight deterministic styling. */
-  formattingImessageLightweight: boolean
-  /** Slack tone. */
-  formattingSlackTone: FormattingSlackTone
-  /** Allow emoji in Slack output. */
-  formattingSlackAllowEmoji: boolean
-  /** Allow Slack-flavoured markdown (*bold*, _italic_, `code`, lists). */
-  formattingSlackUseMarkdown: boolean
-  /** Skip Apple Intelligence for Slack and only apply lightweight deterministic styling. */
-  formattingSlackLightweight: boolean
-  /** Document tone. */
-  formattingDocumentTone: FormattingDocumentTone
-  /** Document structure preference. */
-  formattingDocumentStructure: FormattingDocumentStructure
-  /** Skip Apple Intelligence for documents and only apply lightweight cleanup. */
-  formattingDocumentLightweight: boolean
-  /**
-   * Duck amount applied to enabled output ducking targets.
-   * 0 = fully mute, 100 = no change.
-   */
-  audioDuckingLevel: number
-  /** When true, ducking also applies with headphones/Bluetooth/USB (default: true). */
-  audioDuckingIncludeHeadphones: boolean
-  /**
-   * When true, mute built-in Mac speaker output while dictating (MicRecorder and stream helper).
-   * Default true.
-   */
-  audioDuckingIncludeBuiltInSpeakers: boolean
-  /**
-   * Read-only: true when FoundationModels is available on this device (macOS 26+ with Apple
-   * Intelligence). Not persisted — computed at runtime and included in getSettings() responses.
-   */
-  formattingAvailable: boolean
-  /** User-defined words/phrases the transcription engine should correct to. */
-  dictionaryEntries: DictionaryEntry[]
-  /** When true, the app automatically learns corrections from user edits (requires Accessibility). */
-  dictionaryAutoLearn: boolean
-}
-
-export interface DictionaryEntry {
-  kind: 'fuzzy' | 'replacement'
-  /** Canonical output text that should appear in the transcript. */
-  text: string
-  /** Source phrase to replace exactly. Present only for direct replacements. */
-  from?: string
-  /** 'manual' = user typed it in settings; 'auto' = learned from a post-paste correction */
-  source: 'manual' | 'auto'
+  formatting: FormattingSettings
+  audioDucking: AudioDuckingSettings
+  dictionary: DictionarySettings
 }
 
 export interface PermissionState {
@@ -214,154 +214,71 @@ export interface DeviceInfo {
   selectedDevice: number
 }
 
+export interface GeneralSettingsPatch {
+  shortcutId?: ShortcutId
+  shortcutHoldOnlyId?: ShortcutId | null
+  debugMode?: boolean
+  funModeEnabled?: boolean
+  userDisplayName?: string
+  onboardingCompleted?: boolean
+  recordingIndicatorMode?: RecordingIndicatorMode
+  recordingIndicatorPosition?: { x: number; y: number } | null
+}
+
+export interface TranscriptionSettingsPatch {
+  transcriptionLanguageId?: string
+  maxRecordingDuration?: number
+  whisperModelId?: string
+  translateToEnglish?: boolean
+  translateDefaultLanguageId?: string
+  streamMode?: boolean
+  streamTranscriptionMode?: StreamTranscriptionMode
+}
+
+export interface FormattingSettingsPatch {
+  enabled?: boolean
+  enabledModes?: Partial<FormattingEnabledModes>
+  forceModeId?: FormattingModeId | null
+  email?: Partial<FormattingEmailSettings>
+  imessage?: Partial<FormattingImessageSettings>
+  slack?: Partial<FormattingSlackSettings>
+  document?: Partial<FormattingDocumentSettings>
+}
+
+export interface DictionarySettingsPatch {
+  entries?: DictionaryEntry[]
+  autoLearn?: boolean
+  candidates?: DictionaryCandidate[]
+}
+
+export type AudioDuckingSettingsPatch = Partial<AudioDuckingSettings>
+
 export type WebviewRPCType = {
-  // Messages/requests handled by the Bun (main) process
   bun: RPCSchema<{
     requests: {
       startMicSession: { params: {}; response: boolean }
       getPermissions: { params: {}; response: PermissionState }
       getDevices: { params: {}; response: DeviceInfo }
       getSettings: { params: {}; response: AppSettings }
-      setSettings: {
-        params: {
-          shortcutId?: ShortcutId
-          shortcutHoldOnlyId?: ShortcutId | null
-        }
+      updateGeneralSettings: {
+        params: { patch: GeneralSettingsPatch }
         response: boolean
       }
       setAudioDevice: { params: { index: number }; response: boolean }
-      setDebugMode: { params: { enabled: boolean }; response: boolean }
-      setFunModeEnabled: { params: { enabled: boolean }; response: boolean }
-      setTranscriptionLanguage: {
-        params: { transcriptionLanguageId: string }
+      updateTranscriptionSettings: {
+        params: { patch: TranscriptionSettingsPatch }
         response: boolean
       }
-      setMaxRecordingDuration: {
-        params: { maxRecordingDuration: number }
+      updateFormattingSettings: {
+        params: { patch: FormattingSettingsPatch }
         response: boolean
       }
-      setWhisperModel: { params: { modelId: string }; response: boolean }
-      setTranslateToEnglish: { params: { enabled: boolean }; response: boolean }
-      setTranslateDefaultLanguage: {
-        params: { languageId: string }
+      updateAudioDuckingSettings: {
+        params: { patch: AudioDuckingSettingsPatch }
         response: boolean
       }
-      completeOnboarding: { params: {}; response: boolean }
-      setRecordingIndicatorMode: {
-        params: { mode: RecordingIndicatorMode }
-        response: boolean
-      }
-      setStreamMode: { params: { enabled: boolean }; response: boolean }
-      setStreamTranscriptionMode: {
-        params: { mode: StreamTranscriptionMode }
-        response: boolean
-      }
-      setFormattingEnabled: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setFormattingModeEnabled: {
-        params: { modeId: FormattingModeId; enabled: boolean }
-        response: boolean
-      }
-      setFormattingForceModeId: {
-        params: { modeId: FormattingModeId | null }
-        response: boolean
-      }
-      setUserDisplayName: {
-        params: { userDisplayName: string }
-        response: boolean
-      }
-      setFormattingEmailIncludeSenderName: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setFormattingEmailGreetingStyle: {
-        params: { style: FormattingEmailGreetingStyle }
-        response: boolean
-      }
-      setFormattingEmailClosingStyle: {
-        params: { style: FormattingEmailClosingStyle }
-        response: boolean
-      }
-      setFormattingEmailCustomGreeting: {
-        params: { text: string }
-        response: boolean
-      }
-      setFormattingEmailCustomClosing: {
-        params: { text: string }
-        response: boolean
-      }
-      setFormattingImessageTone: {
-        params: { tone: FormattingImessageTone }
-        response: boolean
-      }
-      setFormattingImessageAllowEmoji: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setFormattingImessageLightweight: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setFormattingSlackTone: {
-        params: { tone: FormattingSlackTone }
-        response: boolean
-      }
-      setFormattingSlackAllowEmoji: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setFormattingSlackUseMarkdown: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setFormattingSlackLightweight: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setFormattingDocumentTone: {
-        params: { tone: FormattingDocumentTone }
-        response: boolean
-      }
-      setFormattingDocumentStructure: {
-        params: { structure: FormattingDocumentStructure }
-        response: boolean
-      }
-      setFormattingDocumentLightweight: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setAudioDuckingLevel: {
-        params: { level: number }
-        response: boolean
-      }
-      setAudioDuckingIncludeHeadphones: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      setAudioDuckingIncludeBuiltInSpeakers: {
-        params: { enabled: boolean }
-        response: boolean
-      }
-      addDictionaryEntry: {
-        params: {
-          kind: 'fuzzy' | 'replacement'
-          text: string
-          from?: string
-        }
-        response: boolean
-      }
-      removeDictionaryEntry: {
-        params: {
-          kind: 'fuzzy' | 'replacement'
-          text: string
-          from?: string
-        }
-        response: boolean
-      }
-      setDictionaryAutoLearn: {
-        params: { enabled: boolean }
+      updateDictionarySettings: {
+        params: { patch: DictionarySettingsPatch }
         response: boolean
       }
       /** Ephemeral: show the floating indicator during onboarding to preview the chosen mode. */
@@ -382,7 +299,6 @@ export type WebviewRPCType = {
       deleteWhisperModel: { modelId: string }
     }
   }>
-  // Messages/requests handled by the browser (webview)
   webview: RPCSchema<{
     requests: {}
     messages: {

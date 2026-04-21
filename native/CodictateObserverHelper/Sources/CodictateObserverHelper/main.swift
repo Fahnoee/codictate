@@ -19,6 +19,7 @@ final class ObserverState: @unchecked Sendable {
   var systemObserver: AXObserver?
   var observedElement: AXUIElement?
   var snapshotBefore: String = ""
+  var targetText: String?
   var active = false
   var timeoutWork: DispatchWorkItem?
 }
@@ -76,15 +77,18 @@ func finishObservation() {
   guard
     AXUIElementCopyAttributeValue(
       element, kAXValueAttribute as CFString, &valRef) == .success,
-    let snapshotAfter = valRef as? String,
-    snapshotAfter != state.snapshotBefore
+    let snapshotAfter = valRef as? String
   else { return }
 
-  emit([
-    "type": "correction",
+  var payload = [
+    "type": snapshotAfter != state.snapshotBefore ? "correction" : "observationFinished",
     "originalText": state.snapshotBefore,
     "currentText": snapshotAfter,
-  ])
+  ]
+  if let targetText = state.targetText {
+    payload["targetText"] = targetText
+  }
+  emit(payload)
 }
 
 func teardownObservers() {
@@ -107,19 +111,18 @@ func teardownObservers() {
   state.elementObserver = nil
   state.systemObserver = nil
   state.observedElement = nil
+  state.targetText = nil
 }
 
-func startObservation() {
+func startObservation(targetText: String?) {
   guard AXIsProcessTrusted() else {
     emit(["type": "unsupported"])
     return
   }
 
-  // Cancel any previous observation
+  // Flush any previous observation before replacing it.
   if state.active {
-    state.active = false
-    state.timeoutWork?.cancel()
-    teardownObservers()
+    finishObservation()
   }
 
   let sysWide = AXUIElementCreateSystemWide()
@@ -146,6 +149,7 @@ func startObservation() {
   }
 
   state.snapshotBefore = snapshot
+  state.targetText = targetText
   state.observedElement = element
   state.active = true
 
@@ -194,6 +198,7 @@ func startObservation() {
 
 struct Command: Codable {
   let command: String
+  let targetText: String?
 }
 
 DispatchQueue.global(qos: .userInitiated).async {
@@ -205,7 +210,9 @@ DispatchQueue.global(qos: .userInitiated).async {
     DispatchQueue.main.async {
       switch cmd.command {
       case "observe":
-        startObservation()
+        startObservation(targetText: cmd.targetText)
+      case "finish":
+        finishObservation()
       case "cancel":
         if state.active {
           state.active = false

@@ -4,26 +4,19 @@ import type {
   AppSettings,
   AppStatus,
   DeviceInfo,
-  FormattingEmailClosingStyle,
-  FormattingEmailGreetingStyle,
-  FormattingImessageTone,
-  FormattingSlackTone,
-  FormattingDocumentTone,
-  FormattingDocumentStructure,
-  FormattingModeId,
+  AudioDuckingSettingsPatch,
+  DictionarySettingsPatch,
+  FormattingSettingsPatch,
+  GeneralSettingsPatch,
   PermissionState,
   SettingsPane,
-  StreamTranscriptionMode,
+  TranscriptionSettingsPatch,
   UpdateCheckState,
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
-import { log } from './utils/logger'
 import { modelManager } from './utils/whisper/model-manager'
-import {
-  isTranslateCapableModelId,
-  resolveTranslateModelId,
-} from '../shared/whisper-models'
+import { isTranslateCapableModelId } from '../shared/whisper-models'
 
 const SYSTEM_PREFS_URLS: Record<SettingsPane, string> = {
   inputMonitoring:
@@ -115,20 +108,64 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           }
         },
         getSettings: async () => deps.appConfig.getSettings(),
-        setSettings: async ({ shortcutId, shortcutHoldOnlyId }) => {
-          if (shortcutId === undefined && shortcutHoldOnlyId === undefined) {
+        updateGeneralSettings: async ({
+          patch,
+        }: {
+          patch: GeneralSettingsPatch
+        }) => {
+          if (Object.keys(patch).length === 0) {
             return false
           }
-          if (shortcutId !== undefined) {
-            const ok = await deps.appConfig.setShortcutId(shortcutId)
-            if (!ok) return false
+          const requiresFullRefresh =
+            patch.shortcutId !== undefined ||
+            patch.shortcutHoldOnlyId !== undefined
+          const ok = await deps.appConfig.updateGeneralSettings(patch)
+          if (!ok) return false
+          if (requiresFullRefresh) {
+            await deps.onSettingsChanged()
+          } else {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+            if (patch.recordingIndicatorMode !== undefined) {
+              deps.onRecordingIndicatorModeChanged?.()
+            }
+            if (patch.onboardingCompleted) {
+              deps.onOnboardingCompleted?.()
+            }
           }
-          if (shortcutHoldOnlyId !== undefined) {
-            const ok =
-              await deps.appConfig.setShortcutHoldOnlyId(shortcutHoldOnlyId)
-            if (!ok) return false
+          return true
+        },
+        updateTranscriptionSettings: async ({
+          patch,
+        }: {
+          patch: TranscriptionSettingsPatch
+        }) => {
+          if (Object.keys(patch).length === 0) return false
+          const ok = await deps.appConfig.updateTranscriptionSettings(patch)
+          if (!ok) {
+            rpc.send.updateSettings(deps.appConfig.getSettings())
+            return false
           }
-          await deps.onSettingsChanged()
+          rpc.send.updateSettings(deps.appConfig.getSettings())
+          if (
+            patch.transcriptionLanguageId !== undefined ||
+            patch.translateDefaultLanguageId !== undefined
+          ) {
+            deps.onTranscriptionMenuSync?.()
+          }
+          if (
+            patch.whisperModelId !== undefined ||
+            patch.translateToEnglish !== undefined ||
+            patch.translateDefaultLanguageId !== undefined ||
+            patch.transcriptionLanguageId !== undefined
+          ) {
+            deps.onTranslateChanged?.()
+          }
+          if (
+            patch.streamMode !== undefined ||
+            patch.streamTranscriptionMode !== undefined
+          ) {
+            deps.onStreamModeChanged?.()
+          }
           return true
         },
         setAudioDevice: async ({ index }) => {
@@ -141,365 +178,38 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
 
           return true
         },
-        setDebugMode: async ({ enabled }) => {
-          await deps.onSetDebugMode?.(enabled)
-          return true
-        },
-        setFunModeEnabled: async ({ enabled }) => {
-          const ok = await deps.appConfig.setFunModeEnabled(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setTranscriptionLanguage: async ({ transcriptionLanguageId }) => {
-          const ok = await deps.appConfig.setTranscriptionLanguageId(
-            transcriptionLanguageId
-          )
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
-            deps.onTranscriptionMenuSync?.()
-          }
-          return ok
-        },
-        setMaxRecordingDuration: async ({ maxRecordingDuration }) => {
-          const ok =
-            await deps.appConfig.setMaxRecordingDurationSeconds(
-              maxRecordingDuration
-            )
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
-          }
-          return ok
-        },
-        setWhisperModel: async ({ modelId }) => {
-          const ok = await deps.appConfig.setWhisperModelId(modelId)
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
-            deps.onTranslateChanged?.()
-          }
-          return ok
-        },
-        setTranslateDefaultLanguage: async ({ languageId }) => {
-          const normalized = languageId === '' ? 'auto' : languageId
-          const ok =
-            await deps.appConfig.setTranslateDefaultLanguageId(normalized)
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
-            deps.onTranslateChanged?.()
-          }
-          return ok
-        },
-        setTranslateToEnglish: async ({ enabled }) => {
-          if (enabled) {
-            // Small or Large only (selected + on disk); Turbo cannot translate.
-            const selected = deps.appConfig.getWhisperModelId()
-            if (
-              resolveTranslateModelId(selected, (id) =>
-                modelManager.isModelAvailable(id)
-              ) === null
-            ) {
-              rpc.send.updateSettings(deps.appConfig.getSettings())
-              return false
-            }
-            if (deps.appConfig.getTranscriptionLanguageId() === 'auto') {
-              const srcLang = deps.appConfig.getTranslateDefaultLanguageId()
-              if (srcLang === 'auto') {
-                rpc.send.updateSettings(deps.appConfig.getSettings())
-                return false
-              }
-              const ok = await deps.appConfig.setTranslateOn(srcLang)
-              if (!ok) {
-                rpc.send.updateSettings(deps.appConfig.getSettings())
-                return false
-              }
-            } else {
-              await deps.appConfig.setTranslateToEnglish(true)
-            }
-          } else {
-            await deps.appConfig.setTranslateOff()
-          }
-          rpc.send.updateSettings(deps.appConfig.getSettings())
-          deps.onTranslateChanged?.()
-          return true
-        },
-        completeOnboarding: async () => {
-          await deps.appConfig.setOnboardingCompleted(true)
-          rpc.send.updateSettings(deps.appConfig.getSettings())
-          deps.onOnboardingCompleted?.()
-          return true
-        },
-        setRecordingIndicatorMode: async ({ mode }) => {
-          const ok = await deps.appConfig.setRecordingIndicatorMode(mode)
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
-            deps.onRecordingIndicatorModeChanged?.()
-          }
-          return ok
-        },
-        setStreamMode: async ({ enabled }) => {
-          log('config', 'rpc setStreamMode request', { enabled })
-          const ok = await deps.appConfig.setStreamMode(enabled)
-          log('config', 'rpc setStreamMode applied', {
-            ok,
-            streamMode: deps.appConfig.getStreamMode(),
-          })
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
-            deps.onStreamModeChanged?.()
-          }
-          return ok
-        },
-        setStreamTranscriptionMode: async ({
-          mode,
+        updateFormattingSettings: async ({
+          patch,
         }: {
-          mode: StreamTranscriptionMode
+          patch: FormattingSettingsPatch
         }) => {
-          log('config', 'rpc setStreamTranscriptionMode request', { mode })
-          await deps.appConfig.setStreamTranscriptionMode(mode)
-          rpc.send.updateSettings(deps.appConfig.getSettings())
-          deps.onStreamModeChanged?.()
-          return true
-        },
-        setFormattingEnabled: async ({ enabled }: { enabled: boolean }) => {
-          log('config', 'rpc setFormattingEnabled request', { enabled })
-          const ok = await deps.appConfig.setFormattingEnabled(enabled)
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
+          const ok = await deps.appConfig.updateFormattingSettings(patch)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
+          if (
+            ok &&
+            (patch.enabled !== undefined ||
+              patch.forceModeId !== undefined ||
+              patch.enabledModes !== undefined)
+          ) {
             deps.onFormattingModeChanged?.()
           }
           return ok
         },
-        setFormattingModeEnabled: async ({
-          modeId,
-          enabled,
+        updateAudioDuckingSettings: async ({
+          patch,
         }: {
-          modeId: FormattingModeId
-          enabled: boolean
+          patch: AudioDuckingSettingsPatch
         }) => {
-          log('config', 'rpc setFormattingModeEnabled request', {
-            modeId,
-            enabled,
-          })
-          const ok = await deps.appConfig.setFormattingModeEnabled(
-            modeId,
-            enabled
-          )
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
-            deps.onFormattingModeChanged?.()
-          }
+          const ok = await deps.appConfig.updateAudioDuckingSettings(patch)
+          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },
-        setFormattingForceModeId: async ({
-          modeId,
+        updateDictionarySettings: async ({
+          patch,
         }: {
-          modeId: FormattingModeId | null
+          patch: DictionarySettingsPatch
         }) => {
-          log('config', 'rpc setFormattingForceModeId request', { modeId })
-          const ok = await deps.appConfig.setFormattingForceModeId(modeId)
-          if (ok) {
-            rpc.send.updateSettings(deps.appConfig.getSettings())
-            deps.onFormattingModeChanged?.()
-          }
-          return ok
-        },
-        setUserDisplayName: async ({ userDisplayName }) => {
-          const ok = await deps.appConfig.setUserDisplayName(userDisplayName)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingEmailIncludeSenderName: async ({ enabled }) => {
-          const ok =
-            await deps.appConfig.setFormattingEmailIncludeSenderName(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingEmailGreetingStyle: async ({
-          style,
-        }: {
-          style: FormattingEmailGreetingStyle
-        }) => {
-          const ok = await deps.appConfig.setFormattingEmailGreetingStyle(style)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingEmailClosingStyle: async ({
-          style,
-        }: {
-          style: FormattingEmailClosingStyle
-        }) => {
-          const ok = await deps.appConfig.setFormattingEmailClosingStyle(style)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingEmailCustomGreeting: async ({
-          text,
-        }: {
-          text: string
-        }) => {
-          const ok = await deps.appConfig.setFormattingEmailCustomGreeting(text)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingEmailCustomClosing: async ({ text }: { text: string }) => {
-          const ok = await deps.appConfig.setFormattingEmailCustomClosing(text)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingImessageTone: async ({
-          tone,
-        }: {
-          tone: FormattingImessageTone
-        }) => {
-          const ok = await deps.appConfig.setFormattingImessageTone(tone)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingImessageAllowEmoji: async ({
-          enabled,
-        }: {
-          enabled: boolean
-        }) => {
-          const ok =
-            await deps.appConfig.setFormattingImessageAllowEmoji(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingImessageLightweight: async ({
-          enabled,
-        }: {
-          enabled: boolean
-        }) => {
-          const ok =
-            await deps.appConfig.setFormattingImessageLightweight(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingSlackTone: async ({
-          tone,
-        }: {
-          tone: FormattingSlackTone
-        }) => {
-          const ok = await deps.appConfig.setFormattingSlackTone(tone)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingSlackAllowEmoji: async ({
-          enabled,
-        }: {
-          enabled: boolean
-        }) => {
-          const ok = await deps.appConfig.setFormattingSlackAllowEmoji(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingSlackUseMarkdown: async ({
-          enabled,
-        }: {
-          enabled: boolean
-        }) => {
-          const ok = await deps.appConfig.setFormattingSlackUseMarkdown(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingSlackLightweight: async ({
-          enabled,
-        }: {
-          enabled: boolean
-        }) => {
-          const ok = await deps.appConfig.setFormattingSlackLightweight(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingDocumentTone: async ({
-          tone,
-        }: {
-          tone: FormattingDocumentTone
-        }) => {
-          const ok = await deps.appConfig.setFormattingDocumentTone(tone)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingDocumentStructure: async ({
-          structure,
-        }: {
-          structure: FormattingDocumentStructure
-        }) => {
-          const ok =
-            await deps.appConfig.setFormattingDocumentStructure(structure)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setFormattingDocumentLightweight: async ({
-          enabled,
-        }: {
-          enabled: boolean
-        }) => {
-          const ok =
-            await deps.appConfig.setFormattingDocumentLightweight(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setAudioDuckingLevel: async ({ level }: { level: number }) => {
-          const ok = await deps.appConfig.setAudioDuckingLevel(level)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setAudioDuckingIncludeHeadphones: async ({
-          enabled,
-        }: {
-          enabled: boolean
-        }) => {
-          const ok =
-            await deps.appConfig.setAudioDuckingIncludeHeadphones(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setAudioDuckingIncludeBuiltInSpeakers: async ({
-          enabled,
-        }: {
-          enabled: boolean
-        }) => {
-          const ok =
-            await deps.appConfig.setAudioDuckingIncludeBuiltInSpeakers(enabled)
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        addDictionaryEntry: async ({
-          kind,
-          text,
-          from,
-        }: {
-          kind: 'fuzzy' | 'replacement'
-          text: string
-          from?: string
-        }) => {
-          const ok = await deps.appConfig.addDictionaryEntry({
-            kind,
-            text,
-            from,
-          })
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        removeDictionaryEntry: async ({
-          kind,
-          text,
-          from,
-        }: {
-          kind: 'fuzzy' | 'replacement'
-          text: string
-          from?: string
-        }) => {
-          const ok = await deps.appConfig.removeDictionaryEntry({
-            kind,
-            text,
-            from,
-          })
-          if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
-          return ok
-        },
-        setDictionaryAutoLearn: async ({ enabled }: { enabled: boolean }) => {
-          const ok = await deps.appConfig.setDictionaryAutoLearn(enabled)
+          const ok = await deps.appConfig.updateDictionarySettings(patch)
           if (ok) rpc.send.updateSettings(deps.appConfig.getSettings())
           return ok
         },

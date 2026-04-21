@@ -18,22 +18,22 @@ export interface FormatterRequest {
   userDisplayName: string
   // Email
   emailIncludeSenderName: boolean
-  emailGreetingStyle: FormattingRuntimeSettings['formattingEmailGreetingStyle']
-  emailClosingStyle: FormattingRuntimeSettings['formattingEmailClosingStyle']
+  emailGreetingStyle: FormattingRuntimeSettings['email']['greetingStyle']
+  emailClosingStyle: FormattingRuntimeSettings['email']['closingStyle']
   emailCustomGreeting: string
   emailCustomClosing: string
   // iMessage
-  imessageTone: FormattingRuntimeSettings['formattingImessageTone']
+  imessageTone: FormattingRuntimeSettings['imessage']['tone']
   imessageAllowEmoji: boolean
   imessageLightweight: boolean
   // Slack
-  slackTone: FormattingRuntimeSettings['formattingSlackTone']
+  slackTone: FormattingRuntimeSettings['slack']['tone']
   slackAllowEmoji: boolean
   slackUseMarkdown: boolean
   slackLightweight: boolean
   // Document
-  documentTone: FormattingRuntimeSettings['formattingDocumentTone']
-  documentStructure: FormattingRuntimeSettings['formattingDocumentStructure']
+  documentTone: FormattingRuntimeSettings['document']['tone']
+  documentStructure: FormattingRuntimeSettings['document']['structure']
   documentLightweight: boolean
   focusedApp: FocusedAppContext | null
 }
@@ -168,26 +168,26 @@ function buildRequest(
   focusedApp: FocusedAppContext | null
 ): FormatterRequest {
   return {
-    formattingEnabled: settings.formattingEnabled,
+    formattingEnabled: settings.enabled,
     modeId,
     transcript,
     transcriptionLanguage: settings.transcriptionLanguageId,
     userDisplayName: settings.userDisplayName.trim(),
-    emailIncludeSenderName: settings.formattingEmailIncludeSenderName,
-    emailGreetingStyle: settings.formattingEmailGreetingStyle,
-    emailClosingStyle: settings.formattingEmailClosingStyle,
-    emailCustomGreeting: settings.formattingEmailCustomGreeting,
-    emailCustomClosing: settings.formattingEmailCustomClosing,
-    imessageTone: settings.formattingImessageTone,
-    imessageAllowEmoji: settings.formattingImessageAllowEmoji,
-    imessageLightweight: settings.formattingImessageLightweight,
-    slackTone: settings.formattingSlackTone,
-    slackAllowEmoji: settings.formattingSlackAllowEmoji,
-    slackUseMarkdown: settings.formattingSlackUseMarkdown,
-    slackLightweight: settings.formattingSlackLightweight,
-    documentTone: settings.formattingDocumentTone,
-    documentStructure: settings.formattingDocumentStructure,
-    documentLightweight: settings.formattingDocumentLightweight,
+    emailIncludeSenderName: settings.email.includeSenderName,
+    emailGreetingStyle: settings.email.greetingStyle,
+    emailClosingStyle: settings.email.closingStyle,
+    emailCustomGreeting: settings.email.customGreeting,
+    emailCustomClosing: settings.email.customClosing,
+    imessageTone: settings.imessage.tone,
+    imessageAllowEmoji: settings.imessage.allowEmoji,
+    imessageLightweight: settings.imessage.lightweight,
+    slackTone: settings.slack.tone,
+    slackAllowEmoji: settings.slack.allowEmoji,
+    slackUseMarkdown: settings.slack.useMarkdown,
+    slackLightweight: settings.slack.lightweight,
+    documentTone: settings.document.tone,
+    documentStructure: settings.document.structure,
+    documentLightweight: settings.document.lightweight,
     focusedApp,
   }
 }
@@ -197,21 +197,16 @@ export async function buildFormatterRequest(
   settings: FormattingRuntimeSettings
 ): Promise<FormatterRequest | null> {
   // Force mode bypasses both the master switch and per-mode toggles.
-  if (settings.formattingForceModeId !== null) {
+  if (settings.forceModeId !== null) {
     const focusedApp = await getFocusedAppContext()
-    return buildRequest(
-      settings.formattingForceModeId,
-      transcript,
-      settings,
-      focusedApp
-    )
+    return buildRequest(settings.forceModeId, transcript, settings, focusedApp)
   }
 
-  if (!settings.formattingEnabled) return null
+  if (!settings.enabled) return null
 
   const focusedApp = await getFocusedAppContext()
   for (const modeId of FORMATTING_MODE_ORDER) {
-    if (!settings.formattingEnabledModes[modeId]) continue
+    if (!settings.enabledModes[modeId]) continue
     if (appMatchesMode(modeId, focusedApp)) {
       return buildRequest(modeId, transcript, settings, focusedApp)
     }

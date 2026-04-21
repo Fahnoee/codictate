@@ -16,26 +16,13 @@ type Props = {
   settings: AppSettings;
 };
 
-type AudioDuckingPatch = Partial<
-  Pick<
-    AppSettings,
-    | "audioDuckingLevel"
-    | "audioDuckingIncludeHeadphones"
-    | "audioDuckingIncludeBuiltInSpeakers"
-  >
->;
-
-const AUDIO_DUCKING_KEYS = [
-  "audioDuckingLevel",
-  "audioDuckingIncludeHeadphones",
-  "audioDuckingIncludeBuiltInSpeakers",
-] as const;
+type AudioDuckingPatch = Partial<AppSettings["audioDucking"]>;
 
 export function SectionAudio({ settings }: Props) {
   const queryClient = useQueryClient();
+  const audioDucking = settings.audioDucking;
   const isAnyAudioDuckingEnabled =
-    settings.audioDuckingIncludeBuiltInSpeakers ||
-    settings.audioDuckingIncludeHeadphones;
+    audioDucking.includeBuiltInSpeakers || audioDucking.includeHeadphones;
   const { data: deviceInfo } = useQuery({
     queryKey: ["devices"],
     queryFn: fetchDevices,
@@ -60,7 +47,15 @@ export function SectionAudio({ settings }: Props) {
         queryClient.getQueryData<AppSettings>(settingsKey) ?? settings;
 
       queryClient.setQueryData(settingsKey, (old: AppSettings | undefined) =>
-        old ? { ...old, ...patch } : old,
+        old
+          ? {
+              ...old,
+              audioDucking: {
+                ...old.audioDucking,
+                ...patch,
+              },
+            }
+          : old,
       );
 
       const ok = await persist();
@@ -72,24 +67,31 @@ export function SectionAudio({ settings }: Props) {
           if (!current) return current;
 
           const next = { ...current };
+          next.audioDucking = { ...current.audioDucking };
           let changed = false;
 
-          for (const key of AUDIO_DUCKING_KEYS) {
-            if (!(key in patch)) continue;
-            if (current[key] !== patch[key]) continue;
-            switch (key) {
-              case "audioDuckingLevel":
-                next.audioDuckingLevel = previous.audioDuckingLevel;
-                break;
-              case "audioDuckingIncludeHeadphones":
-                next.audioDuckingIncludeHeadphones =
-                  previous.audioDuckingIncludeHeadphones;
-                break;
-              case "audioDuckingIncludeBuiltInSpeakers":
-                next.audioDuckingIncludeBuiltInSpeakers =
-                  previous.audioDuckingIncludeBuiltInSpeakers;
-                break;
-            }
+          if (
+            patch.level !== undefined &&
+            current.audioDucking.level === patch.level
+          ) {
+            next.audioDucking.level = previous.audioDucking.level;
+            changed = true;
+          }
+          if (
+            patch.includeHeadphones !== undefined &&
+            current.audioDucking.includeHeadphones === patch.includeHeadphones
+          ) {
+            next.audioDucking.includeHeadphones =
+              previous.audioDucking.includeHeadphones;
+            changed = true;
+          }
+          if (
+            patch.includeBuiltInSpeakers !== undefined &&
+            current.audioDucking.includeBuiltInSpeakers ===
+              patch.includeBuiltInSpeakers
+          ) {
+            next.audioDucking.includeBuiltInSpeakers =
+              previous.audioDucking.includeBuiltInSpeakers;
             changed = true;
           }
 
@@ -103,7 +105,7 @@ export function SectionAudio({ settings }: Props) {
   const handleAudioDuckingLevelChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const level = Number(event.target.value);
-      await updateAudioDuckingSetting({ audioDuckingLevel: level }, () =>
+      await updateAudioDuckingSetting({ level }, () =>
         setAudioDuckingLevel(level),
       );
     },
@@ -111,20 +113,18 @@ export function SectionAudio({ settings }: Props) {
   );
 
   const handleAudioDuckingIncludeHeadphonesToggle = useCallback(async () => {
-    const newValue = !settings.audioDuckingIncludeHeadphones;
-    await updateAudioDuckingSetting(
-      { audioDuckingIncludeHeadphones: newValue },
-      () => setAudioDuckingIncludeHeadphones(newValue),
+    const newValue = !audioDucking.includeHeadphones;
+    await updateAudioDuckingSetting({ includeHeadphones: newValue }, () =>
+      setAudioDuckingIncludeHeadphones(newValue),
     );
-  }, [settings.audioDuckingIncludeHeadphones, updateAudioDuckingSetting]);
+  }, [audioDucking.includeHeadphones, updateAudioDuckingSetting]);
 
   const handleAudioDuckingIncludeBuiltInToggle = useCallback(async () => {
-    const newValue = !settings.audioDuckingIncludeBuiltInSpeakers;
-    await updateAudioDuckingSetting(
-      { audioDuckingIncludeBuiltInSpeakers: newValue },
-      () => setAudioDuckingIncludeBuiltInSpeakers(newValue),
+    const newValue = !audioDucking.includeBuiltInSpeakers;
+    await updateAudioDuckingSetting({ includeBuiltInSpeakers: newValue }, () =>
+      setAudioDuckingIncludeBuiltInSpeakers(newValue),
     );
-  }, [settings.audioDuckingIncludeBuiltInSpeakers, updateAudioDuckingSetting]);
+  }, [audioDucking.includeBuiltInSpeakers, updateAudioDuckingSetting]);
 
   return (
     <>
@@ -151,7 +151,7 @@ export function SectionAudio({ settings }: Props) {
           <div className="flex items-center gap-3 px-4 py-3.5">
             <div className="flex-1 min-w-0">
               <span
-                className={`block text-[21px] font-medium ${settings.audioDuckingIncludeBuiltInSpeakers ? "text-white/78" : "text-white/58"}`}
+                className={`block text-[21px] font-medium ${audioDucking.includeBuiltInSpeakers ? "text-white/78" : "text-white/58"}`}
               >
                 Built-in speakers
               </span>
@@ -163,7 +163,7 @@ export function SectionAudio({ settings }: Props) {
             <button
               onClick={handleAudioDuckingIncludeBuiltInToggle}
               className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                settings.audioDuckingIncludeBuiltInSpeakers
+                audioDucking.includeBuiltInSpeakers
                   ? "bg-blue-500/30 border-blue-400/30"
                   : "bg-white/7 border-white/14"
               }`}
@@ -171,7 +171,7 @@ export function SectionAudio({ settings }: Props) {
             >
               <span
                 className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
-                  settings.audioDuckingIncludeBuiltInSpeakers
+                  audioDucking.includeBuiltInSpeakers
                     ? "left-4 bg-blue-400/90"
                     : "left-0.5 bg-white/40"
                 }`}
@@ -181,7 +181,7 @@ export function SectionAudio({ settings }: Props) {
           <div className="flex items-center gap-3 px-4 py-3.5">
             <div className="flex-1 min-w-0">
               <span
-                className={`block text-[21px] font-medium ${settings.audioDuckingIncludeHeadphones ? "text-white/78" : "text-white/58"}`}
+                className={`block text-[21px] font-medium ${audioDucking.includeHeadphones ? "text-white/78" : "text-white/58"}`}
               >
                 Headphones & Bluetooth
               </span>
@@ -193,7 +193,7 @@ export function SectionAudio({ settings }: Props) {
             <button
               onClick={handleAudioDuckingIncludeHeadphonesToggle}
               className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
-                settings.audioDuckingIncludeHeadphones
+                audioDucking.includeHeadphones
                   ? "bg-blue-500/30 border-blue-400/30"
                   : "bg-white/7 border-white/14"
               }`}
@@ -201,7 +201,7 @@ export function SectionAudio({ settings }: Props) {
             >
               <span
                 className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 ${
-                  settings.audioDuckingIncludeHeadphones
+                  audioDucking.includeHeadphones
                     ? "left-4 bg-blue-400/90"
                     : "left-0.5 bg-white/40"
                 }`}
@@ -222,11 +222,11 @@ export function SectionAudio({ settings }: Props) {
                     Mute amount
                   </span>
                   <span className="text-[17px] text-white/55 font-medium tabular-nums">
-                    {settings.audioDuckingLevel === 0
+                    {audioDucking.level === 0
                       ? "Fully mute"
-                      : settings.audioDuckingLevel === 100
+                      : audioDucking.level === 100
                         ? "No change"
-                        : `${100 - settings.audioDuckingLevel}% quieter`}
+                        : `${100 - audioDucking.level}% quieter`}
                   </span>
                 </div>
                 <input
@@ -234,7 +234,7 @@ export function SectionAudio({ settings }: Props) {
                   min={0}
                   max={100}
                   step={5}
-                  value={settings.audioDuckingLevel}
+                  value={audioDucking.level}
                   onChange={handleAudioDuckingLevelChange}
                   className="w-full accent-blue-400 cursor-pointer"
                   aria-label="Audio duck amount"

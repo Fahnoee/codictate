@@ -13,18 +13,20 @@ import {
 } from '../../shared/transcription-languages'
 import type {
   AppSettings,
-  FormattingEmailClosingStyle,
-  FormattingEmailGreetingStyle,
-  FormattingEnabledModes,
-  FormattingImessageTone,
-  FormattingSlackTone,
-  FormattingDocumentTone,
-  FormattingDocumentStructure,
+  AudioDuckingSettings,
+  AudioDuckingSettingsPatch,
+  DictionaryCandidate,
+  DictionaryEntry,
+  DictionarySettings,
+  DictionarySettingsPatch,
   FormattingRuntimeSettings,
+  FormattingSettings,
+  FormattingSettingsPatch,
+  GeneralSettingsPatch,
   RecordingIndicatorMode,
   ShortcutId,
   StreamTranscriptionMode,
-  DictionaryEntry,
+  TranscriptionSettingsPatch,
 } from '../../shared/types'
 import {
   DEFAULT_MODEL_ID,
@@ -45,6 +47,11 @@ import {
 import { modelManager } from '../utils/whisper/model-manager'
 import { detectFormattingAvailable } from '../utils/formatting/formatting-availability'
 import { disableDebug, enableDebug, log } from '../utils/logger'
+import {
+  invalidateDictionaryCandidatesForText as getInvalidatedDictionaryCandidatesForText,
+  parseDictionaryCandidates,
+  stageDictionaryCandidate,
+} from '../utils/dictionary/auto-learn-candidates'
 
 const CONFIG_DIR = join(
   homedir(),
@@ -52,7 +59,9 @@ const CONFIG_DIR = join(
   'Application Support',
   'codictate'
 )
-const CONFIG_PATH = join(CONFIG_DIR, 'app-config.json')
+const MAIN_CONFIG_PATH = join(CONFIG_DIR, 'main-config.json')
+const DICTIONARY_CONFIG_PATH = join(CONFIG_DIR, 'dictionary-config.json')
+const LEGACY_CONFIG_PATH = join(CONFIG_DIR, 'app-config.json')
 
 const VALID_SHORTCUT_IDS = new Set<ShortcutId>(
   SHORTCUT_OPTIONS.map((o) => o.id)
@@ -89,7 +98,7 @@ function normalizeDictionaryKey(
   return `fuzzy:${normalizedText}`
 }
 
-function defaultEnabledModes(): FormattingEnabledModes {
+function defaultEnabledModes(): FormattingSettings['enabledModes'] {
   return {
     email: false,
     imessage: false,
@@ -98,59 +107,97 @@ function defaultEnabledModes(): FormattingEnabledModes {
   }
 }
 
+function defaultFormattingSettings(available: boolean): FormattingSettings {
+  return {
+    enabled: false,
+    enabledModes: defaultEnabledModes(),
+    forceModeId: null,
+    available,
+    email: {
+      includeSenderName: false,
+      greetingStyle: 'auto',
+      closingStyle: 'auto',
+      customGreeting: '',
+      customClosing: '',
+    },
+    imessage: {
+      tone: 'neutral',
+      allowEmoji: false,
+      lightweight: true,
+    },
+    slack: {
+      tone: 'professional',
+      allowEmoji: false,
+      useMarkdown: true,
+      lightweight: true,
+    },
+    document: {
+      tone: 'neutral',
+      structure: 'prose',
+      lightweight: true,
+    },
+  }
+}
+
+function defaultAudioDuckingSettings(): AudioDuckingSettings {
+  return {
+    level: 0,
+    includeHeadphones: true,
+    includeBuiltInSpeakers: true,
+  }
+}
+
+function defaultDictionarySettings(): DictionarySettings {
+  return {
+    entries: [],
+    autoLearn: true,
+    candidates: [],
+  }
+}
+
+interface PersistedMainSettings {
+  audioDeviceName: string | null
+  audioDevice: number
+  shortcutId: ShortcutId
+  shortcutHoldOnlyId: ShortcutId | null
+  funModeEnabled: boolean
+  transcriptionLanguageId: string
+  maxRecordingDuration: RecordingDurationPresetSeconds
+  whisperModelId: string
+  translateToEnglish: boolean
+  translateDefaultLanguageId: string
+  onboardingCompleted: boolean
+  recordingIndicatorMode: RecordingIndicatorMode
+  recordingIndicatorPosition: { x: number; y: number } | null
+  streamMode: boolean
+  streamTranscriptionMode: StreamTranscriptionMode
+  userDisplayName: string
+  formatting: Omit<FormattingSettings, 'available'>
+  audioDucking: AudioDuckingSettings
+  debugMode: false
+}
+
 export class AppConfig {
-  // Name is the primary key — stable across device list reorders.
-  // Index is stored as a fallback for configs that predate name storage.
   private audioDeviceName: string | null
   private audioDevice: number
   private shortcutId: ShortcutId
   private shortcutHoldOnlyId: ShortcutId | null
-  // debugMode is never persisted as true — always written as false on disk
-  // so logging never silently resumes after a restart.
   private debugMode: boolean
   private funModeEnabled: boolean
   private transcriptionLanguageId: string
   private maxRecordingDuration: RecordingDurationPresetSeconds
   private whisperModelId: string
   private translateToEnglish: boolean
-  /** Always `'auto'` or a valid transcription language id (never null). */
   private translateDefaultLanguageId: string
-  /** False until first-run onboarding finishes; true for legacy configs missing the key. */
   private onboardingCompleted: boolean
   private recordingIndicatorMode: RecordingIndicatorMode
   private recordingIndicatorPosition: { x: number; y: number } | null
   private streamMode: boolean
   private streamTranscriptionMode: StreamTranscriptionMode
   private userDisplayName: string
-  private formattingEnabled: boolean
-  private formattingEnabledModes: FormattingEnabledModes
-  private formattingForceModeId: FormattingModeId | null
-  private formattingEmailIncludeSenderName: boolean
-  private formattingEmailGreetingStyle: FormattingEmailGreetingStyle
-  private formattingEmailClosingStyle: FormattingEmailClosingStyle
-  private formattingEmailCustomGreeting: string
-  private formattingEmailCustomClosing: string
-  private formattingImessageTone: FormattingImessageTone
-  private formattingImessageAllowEmoji: boolean
-  private formattingImessageLightweight: boolean
-  private formattingSlackTone: FormattingSlackTone
-  private formattingSlackAllowEmoji: boolean
-  private formattingSlackUseMarkdown: boolean
-  private formattingSlackLightweight: boolean
-  private formattingDocumentTone: FormattingDocumentTone
-  private formattingDocumentStructure: FormattingDocumentStructure
-  private formattingDocumentLightweight: boolean
-  private audioDuckingLevel: number
-  private audioDuckingIncludeHeadphones: boolean
-  private audioDuckingIncludeBuiltInSpeakers: boolean
-  /** True when formatting can be offered on this OS; runtime helper still handles failures safely. */
-  private formattingAvailable: boolean
-  private dictionaryEntries: DictionaryEntry[]
-  private dictionaryAutoLearn: boolean
-  /**
-   * In-memory only: while set, the indicator window uses this mode during
-   * onboarding preview (not persisted).
-   */
+  private formatting: FormattingSettings
+  private audioDucking: AudioDuckingSettings
+  private dictionary: DictionarySettings
   private recordingIndicatorOnboardingPreviewMode: RecordingIndicatorMode | null =
     null
 
@@ -172,306 +219,12 @@ export class AppConfig {
     this.streamMode = false
     this.streamTranscriptionMode = 'vad'
     this.userDisplayName = ''
-    this.formattingEnabled = false
-    this.formattingEnabledModes = defaultEnabledModes()
-    this.formattingForceModeId = null
-    this.formattingEmailIncludeSenderName = false
-    this.formattingEmailGreetingStyle = 'auto'
-    this.formattingEmailClosingStyle = 'auto'
-    this.formattingEmailCustomGreeting = ''
-    this.formattingEmailCustomClosing = ''
-    this.formattingImessageTone = 'neutral'
-    this.formattingImessageAllowEmoji = false
-    this.formattingImessageLightweight = true
-    this.formattingSlackTone = 'professional'
-    this.formattingSlackAllowEmoji = false
-    this.formattingSlackUseMarkdown = true
-    this.formattingSlackLightweight = true
-    this.formattingDocumentTone = 'neutral'
-    this.formattingDocumentStructure = 'prose'
-    this.formattingDocumentLightweight = true
-    // Default: fully mute headphones too, so dictation never competes with playback.
-    this.audioDuckingLevel = 0
-    this.audioDuckingIncludeHeadphones = true
-    this.audioDuckingIncludeBuiltInSpeakers = true
-    this.formattingAvailable = detectFormattingAvailable()
-    this.dictionaryEntries = []
-    this.dictionaryAutoLearn = true
+    this.formatting = defaultFormattingSettings(detectFormattingAvailable())
+    this.audioDucking = defaultAudioDuckingSettings()
+    this.dictionary = defaultDictionarySettings()
   }
 
-  // --- Persistence ---
-
-  public async load() {
-    try {
-      const file = Bun.file(CONFIG_PATH)
-      const raw = await file.json()
-      if (raw.audioDeviceName !== undefined)
-        this.audioDeviceName = raw.audioDeviceName
-      if (raw.audioDevice !== undefined) this.audioDevice = raw.audioDevice
-      if (raw.shortcutId !== undefined && isValidShortcutId(raw.shortcutId)) {
-        this.shortcutId = raw.shortcutId
-      }
-      if (
-        raw.shortcutHoldOnlyId !== undefined &&
-        raw.shortcutHoldOnlyId !== null &&
-        isValidShortcutId(raw.shortcutHoldOnlyId)
-      ) {
-        this.shortcutHoldOnlyId = raw.shortcutHoldOnlyId
-      } else if (raw.shortcutHoldOnlyId === null) {
-        this.shortcutHoldOnlyId = null
-      }
-      if (
-        raw.transcriptionLanguageId !== undefined &&
-        isValidTranscriptionLanguageId(raw.transcriptionLanguageId)
-      ) {
-        this.transcriptionLanguageId = raw.transcriptionLanguageId
-      }
-      if (typeof raw.funModeEnabled === 'boolean') {
-        this.funModeEnabled = raw.funModeEnabled
-      }
-      if (
-        raw.maxRecordingDuration !== undefined &&
-        isValidMaxRecordingDurationSeconds(raw.maxRecordingDuration)
-      ) {
-        this.maxRecordingDuration = raw.maxRecordingDuration
-      }
-      if (
-        raw.whisperModelId !== undefined &&
-        isValidWhisperModelId(raw.whisperModelId)
-      ) {
-        this.whisperModelId = raw.whisperModelId
-      }
-      if (raw.translateToEnglish !== undefined) {
-        this.translateToEnglish = Boolean(raw.translateToEnglish)
-      }
-      {
-        const rawTd = raw.translateDefaultLanguageId
-        if (
-          typeof rawTd === 'string' &&
-          isValidTranscriptionLanguageId(rawTd)
-        ) {
-          this.translateDefaultLanguageId = rawTd
-        } else {
-          // Legacy `null` / missing / invalid → treat as unset default
-          this.translateDefaultLanguageId = 'auto'
-        }
-      }
-      if (raw.onboardingCompleted === true) {
-        this.onboardingCompleted = true
-      } else if (raw.onboardingCompleted === false) {
-        this.onboardingCompleted = false
-      } else {
-        // Key absent: existing installs before this field shipped
-        this.onboardingCompleted = true
-      }
-      if (
-        raw.recordingIndicatorMode !== undefined &&
-        isValidRecordingIndicatorMode(raw.recordingIndicatorMode)
-      ) {
-        this.recordingIndicatorMode = raw.recordingIndicatorMode
-      }
-      if (
-        raw.recordingIndicatorPosition !== undefined &&
-        raw.recordingIndicatorPosition !== null &&
-        typeof raw.recordingIndicatorPosition === 'object' &&
-        Number.isFinite(raw.recordingIndicatorPosition.x) &&
-        Number.isFinite(raw.recordingIndicatorPosition.y)
-      ) {
-        this.recordingIndicatorPosition = {
-          x: raw.recordingIndicatorPosition.x,
-          y: raw.recordingIndicatorPosition.y,
-        }
-      } else if (raw.recordingIndicatorPosition === null) {
-        this.recordingIndicatorPosition = null
-      }
-      if (
-        this.shortcutHoldOnlyId !== null &&
-        this.shortcutHoldOnlyId === this.shortcutId
-      ) {
-        this.shortcutHoldOnlyId = null
-      }
-      if (typeof raw.streamMode === 'boolean') {
-        this.streamMode = raw.streamMode
-      }
-      if (
-        raw.streamTranscriptionMode === 'live' ||
-        raw.streamTranscriptionMode === 'vad'
-      ) {
-        this.streamTranscriptionMode = raw.streamTranscriptionMode
-      }
-      if (typeof raw.userDisplayName === 'string') {
-        this.userDisplayName = raw.userDisplayName.trim()
-      }
-
-      // --- Formatting (new multi-enable model, with legacy migration) ---
-      if (typeof raw.formattingEnabled === 'boolean') {
-        this.formattingEnabled = raw.formattingEnabled
-      } else if (typeof raw.formattingModeId === 'string') {
-        // Legacy: any non-'none' mode implied formatting was active.
-        this.formattingEnabled = raw.formattingModeId !== 'none'
-      }
-      if (
-        raw.formattingEnabledModes !== undefined &&
-        raw.formattingEnabledModes !== null &&
-        typeof raw.formattingEnabledModes === 'object'
-      ) {
-        const next = defaultEnabledModes()
-        for (const id of FORMATTING_MODE_ORDER) {
-          const v = (raw.formattingEnabledModes as Record<string, unknown>)[id]
-          if (typeof v === 'boolean') next[id] = v
-        }
-        this.formattingEnabledModes = next
-      } else if (raw.formattingModeId === 'email') {
-        // Legacy single-mode: flip email on so old users retain their behaviour.
-        this.formattingEnabledModes = { ...defaultEnabledModes(), email: true }
-      }
-      if (raw.formattingForceModeId === null) {
-        this.formattingForceModeId = null
-      } else if (isValidFormattingModeId(raw.formattingForceModeId)) {
-        this.formattingForceModeId = raw.formattingForceModeId
-      }
-      if (typeof raw.formattingEmailIncludeSenderName === 'boolean') {
-        this.formattingEmailIncludeSenderName =
-          raw.formattingEmailIncludeSenderName
-      }
-      if (isValidEmailGreetingStyle(raw.formattingEmailGreetingStyle)) {
-        this.formattingEmailGreetingStyle = raw.formattingEmailGreetingStyle
-      }
-      if (isValidEmailClosingStyle(raw.formattingEmailClosingStyle)) {
-        this.formattingEmailClosingStyle = raw.formattingEmailClosingStyle
-      }
-      if (typeof raw.formattingEmailCustomGreeting === 'string') {
-        this.formattingEmailCustomGreeting = raw.formattingEmailCustomGreeting
-      }
-      if (typeof raw.formattingEmailCustomClosing === 'string') {
-        this.formattingEmailCustomClosing = raw.formattingEmailCustomClosing
-      }
-      if (isValidImessageTone(raw.formattingImessageTone)) {
-        this.formattingImessageTone = raw.formattingImessageTone
-      }
-      if (typeof raw.formattingImessageAllowEmoji === 'boolean') {
-        this.formattingImessageAllowEmoji = raw.formattingImessageAllowEmoji
-      }
-      if (typeof raw.formattingImessageLightweight === 'boolean') {
-        this.formattingImessageLightweight = raw.formattingImessageLightweight
-      }
-      if (isValidSlackTone(raw.formattingSlackTone)) {
-        this.formattingSlackTone = raw.formattingSlackTone
-      }
-      if (typeof raw.formattingSlackAllowEmoji === 'boolean') {
-        this.formattingSlackAllowEmoji = raw.formattingSlackAllowEmoji
-      }
-      if (typeof raw.formattingSlackUseMarkdown === 'boolean') {
-        this.formattingSlackUseMarkdown = raw.formattingSlackUseMarkdown
-      }
-      if (typeof raw.formattingSlackLightweight === 'boolean') {
-        this.formattingSlackLightweight = raw.formattingSlackLightweight
-      }
-      if (isValidDocumentTone(raw.formattingDocumentTone)) {
-        this.formattingDocumentTone = raw.formattingDocumentTone
-      }
-      if (isValidDocumentStructure(raw.formattingDocumentStructure)) {
-        this.formattingDocumentStructure = raw.formattingDocumentStructure
-      }
-      if (typeof raw.formattingDocumentLightweight === 'boolean') {
-        this.formattingDocumentLightweight = raw.formattingDocumentLightweight
-      }
-      if (
-        typeof raw.audioDuckingLevel === 'number' &&
-        Number.isFinite(raw.audioDuckingLevel) &&
-        raw.audioDuckingLevel >= 0 &&
-        raw.audioDuckingLevel <= 100
-      ) {
-        this.audioDuckingLevel = raw.audioDuckingLevel
-      }
-      if (typeof raw.audioDuckingIncludeHeadphones === 'boolean') {
-        this.audioDuckingIncludeHeadphones = raw.audioDuckingIncludeHeadphones
-      }
-      if (typeof raw.audioDuckingIncludeBuiltInSpeakers === 'boolean') {
-        this.audioDuckingIncludeBuiltInSpeakers =
-          raw.audioDuckingIncludeBuiltInSpeakers
-      }
-      if (Array.isArray(raw.dictionaryEntries)) {
-        const seen = new Set<string>()
-        const parsed: DictionaryEntry[] = []
-        for (const e of raw.dictionaryEntries as unknown[]) {
-          // Support legacy string[] format
-          if (typeof e === 'string') {
-            const text = e.trim()
-            if (!text) continue
-            const key = normalizeDictionaryKey('fuzzy', text)
-            if (seen.has(key)) continue
-            seen.add(key)
-            parsed.push({ kind: 'fuzzy', text, source: 'manual' })
-          } else if (
-            e !== null &&
-            typeof e === 'object' &&
-            (typeof (e as Record<string, unknown>).word === 'string' ||
-              typeof (e as Record<string, unknown>).text === 'string')
-          ) {
-            const r = e as Record<string, unknown>
-            const source =
-              r.source === 'auto' ? ('auto' as const) : ('manual' as const)
-            const kind =
-              r.kind === 'replacement'
-                ? ('replacement' as const)
-                : ('fuzzy' as const)
-            const textValue =
-              typeof r.text === 'string'
-                ? r.text
-                : typeof r.word === 'string'
-                  ? r.word
-                  : ''
-            const text = textValue.trim()
-            if (!text) continue
-            const from =
-              kind === 'replacement' && typeof r.from === 'string'
-                ? r.from.trim()
-                : undefined
-            if (kind === 'replacement' && !from) continue
-            const key = normalizeDictionaryKey(kind, text, from)
-            if (seen.has(key)) continue
-            seen.add(key)
-            parsed.push(
-              kind === 'replacement'
-                ? { kind, from, text, source }
-                : { kind, text, source }
-            )
-          }
-        }
-        this.dictionaryEntries = parsed
-      }
-      if (typeof raw.dictionaryAutoLearn === 'boolean') {
-        this.dictionaryAutoLearn = raw.dictionaryAutoLearn
-      }
-      log('config', 'loaded app config', {
-        shortcutId: this.shortcutId,
-        shortcutHoldOnlyId: this.shortcutHoldOnlyId ?? undefined,
-        streamMode: this.streamMode,
-        streamTranscriptionMode: this.streamTranscriptionMode,
-        translateToEnglish: this.translateToEnglish,
-        transcriptionLanguageId: this.transcriptionLanguageId,
-        formattingEnabled: this.formattingEnabled,
-        formattingForceModeId: this.formattingForceModeId,
-      })
-    } catch {
-      // No config file yet, defaults will be used
-      log('config', 'using default app config', {
-        shortcutId: this.shortcutId,
-        streamMode: this.streamMode,
-        streamTranscriptionMode: this.streamTranscriptionMode,
-      })
-    }
-  }
-
-  public async save() {
-    mkdirSync(CONFIG_DIR, { recursive: true })
-    await Bun.write(CONFIG_PATH, JSON.stringify(this.get(), null, 2))
-  }
-
-  // --- Schema ---
-
-  public get() {
+  private getPersistedMainSettings(): PersistedMainSettings {
     return {
       audioDeviceName: this.audioDeviceName,
       audioDevice: this.audioDevice,
@@ -489,52 +242,791 @@ export class AppConfig {
       streamMode: this.streamMode,
       streamTranscriptionMode: this.streamTranscriptionMode,
       userDisplayName: this.userDisplayName,
-      formattingEnabled: this.formattingEnabled,
-      formattingEnabledModes: this.formattingEnabledModes,
-      formattingForceModeId: this.formattingForceModeId,
-      formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
-      formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
-      formattingEmailClosingStyle: this.formattingEmailClosingStyle,
-      formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
-      formattingEmailCustomClosing: this.formattingEmailCustomClosing,
-      formattingImessageTone: this.formattingImessageTone,
-      formattingImessageAllowEmoji: this.formattingImessageAllowEmoji,
-      formattingImessageLightweight: this.formattingImessageLightweight,
-      formattingSlackTone: this.formattingSlackTone,
-      formattingSlackAllowEmoji: this.formattingSlackAllowEmoji,
-      formattingSlackUseMarkdown: this.formattingSlackUseMarkdown,
-      formattingSlackLightweight: this.formattingSlackLightweight,
-      formattingDocumentTone: this.formattingDocumentTone,
-      formattingDocumentStructure: this.formattingDocumentStructure,
-      formattingDocumentLightweight: this.formattingDocumentLightweight,
-      audioDuckingLevel: this.audioDuckingLevel,
-      audioDuckingIncludeHeadphones: this.audioDuckingIncludeHeadphones,
-      audioDuckingIncludeBuiltInSpeakers:
-        this.audioDuckingIncludeBuiltInSpeakers,
-      dictionaryEntries: this.dictionaryEntries,
-      dictionaryAutoLearn: this.dictionaryAutoLearn,
-      // Always write false — debug mode must never silently resume after restart
+      formatting: {
+        enabled: this.formatting.enabled,
+        enabledModes: { ...this.formatting.enabledModes },
+        forceModeId: this.formatting.forceModeId,
+        email: { ...this.formatting.email },
+        imessage: { ...this.formatting.imessage },
+        slack: { ...this.formatting.slack },
+        document: { ...this.formatting.document },
+      },
+      audioDucking: { ...this.audioDucking },
       debugMode: false,
     }
   }
 
-  // --- Getters / Setters ---
-
-  /**
-   * Saves both the device index and its name.
-   * The name is the primary key used by resolveAudioDevice().
-   */
-  public async setAudioDevice(index: number, name?: string) {
-    this.audioDevice = index
-    if (name !== undefined) this.audioDeviceName = name
-    await this.save()
+  private async saveMain(): Promise<void> {
+    mkdirSync(CONFIG_DIR, { recursive: true })
+    await Bun.write(
+      MAIN_CONFIG_PATH,
+      JSON.stringify(this.getPersistedMainSettings(), null, 2)
+    )
   }
 
-  /**
-   * Returns the current device index by looking up the stored name
-   * in the live device list. Falls back to the stored index if the
-   * name is not found (e.g. device was removed or not yet present).
-   */
+  private async saveDictionary(): Promise<void> {
+    mkdirSync(CONFIG_DIR, { recursive: true })
+    await Bun.write(
+      DICTIONARY_CONFIG_PATH,
+      JSON.stringify(
+        {
+          entries: this.dictionary.entries,
+          autoLearn: this.dictionary.autoLearn,
+          candidates: this.dictionary.candidates,
+        },
+        null,
+        2
+      )
+    )
+  }
+
+  private async saveAll(): Promise<void> {
+    await Promise.all([this.saveMain(), this.saveDictionary()])
+  }
+
+  private applyPersistedMain(raw: Record<string, unknown>): void {
+    if (raw.audioDeviceName !== undefined) {
+      this.audioDeviceName =
+        typeof raw.audioDeviceName === 'string' || raw.audioDeviceName === null
+          ? raw.audioDeviceName
+          : this.audioDeviceName
+    }
+    if (typeof raw.audioDevice === 'number') this.audioDevice = raw.audioDevice
+    if (isValidShortcutId(raw.shortcutId)) this.shortcutId = raw.shortcutId
+    if (
+      raw.shortcutHoldOnlyId !== undefined &&
+      raw.shortcutHoldOnlyId !== null &&
+      isValidShortcutId(raw.shortcutHoldOnlyId)
+    ) {
+      this.shortcutHoldOnlyId = raw.shortcutHoldOnlyId
+    } else if (raw.shortcutHoldOnlyId === null) {
+      this.shortcutHoldOnlyId = null
+    }
+    if (typeof raw.funModeEnabled === 'boolean') {
+      this.funModeEnabled = raw.funModeEnabled
+    }
+    if (
+      typeof raw.transcriptionLanguageId === 'string' &&
+      isValidTranscriptionLanguageId(raw.transcriptionLanguageId)
+    ) {
+      this.transcriptionLanguageId = raw.transcriptionLanguageId
+    }
+    if (
+      typeof raw.maxRecordingDuration === 'number' &&
+      isValidMaxRecordingDurationSeconds(raw.maxRecordingDuration)
+    ) {
+      this.maxRecordingDuration = raw.maxRecordingDuration
+    }
+    if (
+      typeof raw.whisperModelId === 'string' &&
+      isValidWhisperModelId(raw.whisperModelId)
+    ) {
+      this.whisperModelId = raw.whisperModelId
+    }
+    if (typeof raw.translateToEnglish === 'boolean') {
+      this.translateToEnglish = raw.translateToEnglish
+    }
+    if (
+      typeof raw.translateDefaultLanguageId === 'string' &&
+      isValidTranscriptionLanguageId(raw.translateDefaultLanguageId)
+    ) {
+      this.translateDefaultLanguageId = raw.translateDefaultLanguageId
+    } else {
+      this.translateDefaultLanguageId = 'auto'
+    }
+    if (raw.onboardingCompleted === true) this.onboardingCompleted = true
+    else if (raw.onboardingCompleted === false) this.onboardingCompleted = false
+    else this.onboardingCompleted = true
+    if (isValidRecordingIndicatorMode(raw.recordingIndicatorMode)) {
+      this.recordingIndicatorMode = raw.recordingIndicatorMode
+    }
+    if (
+      raw.recordingIndicatorPosition !== null &&
+      typeof raw.recordingIndicatorPosition === 'object' &&
+      raw.recordingIndicatorPosition !== undefined &&
+      Number.isFinite((raw.recordingIndicatorPosition as { x: unknown }).x) &&
+      Number.isFinite((raw.recordingIndicatorPosition as { y: unknown }).y)
+    ) {
+      this.recordingIndicatorPosition = {
+        x: Number((raw.recordingIndicatorPosition as { x: unknown }).x),
+        y: Number((raw.recordingIndicatorPosition as { y: unknown }).y),
+      }
+    } else if (raw.recordingIndicatorPosition === null) {
+      this.recordingIndicatorPosition = null
+    }
+    if (
+      this.shortcutHoldOnlyId !== null &&
+      this.shortcutHoldOnlyId === this.shortcutId
+    ) {
+      this.shortcutHoldOnlyId = null
+    }
+    if (typeof raw.streamMode === 'boolean') this.streamMode = raw.streamMode
+    if (
+      raw.streamTranscriptionMode === 'live' ||
+      raw.streamTranscriptionMode === 'vad'
+    ) {
+      this.streamTranscriptionMode = raw.streamTranscriptionMode
+    }
+    if (typeof raw.userDisplayName === 'string') {
+      this.userDisplayName = raw.userDisplayName.trim()
+    }
+    if (typeof raw.debugMode === 'boolean') {
+      this.debugMode = raw.debugMode
+      if (this.debugMode) enableDebug()
+    }
+
+    if (raw.formatting && typeof raw.formatting === 'object') {
+      const formatting = raw.formatting as Record<string, unknown>
+      if (typeof formatting.enabled === 'boolean') {
+        this.formatting.enabled = formatting.enabled
+      }
+      if (formatting.forceModeId === null) {
+        this.formatting.forceModeId = null
+      } else if (isValidFormattingModeId(formatting.forceModeId)) {
+        this.formatting.forceModeId = formatting.forceModeId
+      }
+      if (
+        formatting.enabledModes &&
+        typeof formatting.enabledModes === 'object'
+      ) {
+        const next = defaultEnabledModes()
+        for (const id of FORMATTING_MODE_ORDER) {
+          const value = (formatting.enabledModes as Record<string, unknown>)[id]
+          if (typeof value === 'boolean') next[id] = value
+        }
+        this.formatting.enabledModes = next
+      }
+      if (formatting.email && typeof formatting.email === 'object') {
+        const email = formatting.email as Record<string, unknown>
+        if (typeof email.includeSenderName === 'boolean') {
+          this.formatting.email.includeSenderName = email.includeSenderName
+        }
+        if (isValidEmailGreetingStyle(email.greetingStyle)) {
+          this.formatting.email.greetingStyle = email.greetingStyle
+        }
+        if (isValidEmailClosingStyle(email.closingStyle)) {
+          this.formatting.email.closingStyle = email.closingStyle
+        }
+        if (typeof email.customGreeting === 'string') {
+          this.formatting.email.customGreeting = email.customGreeting
+        }
+        if (typeof email.customClosing === 'string') {
+          this.formatting.email.customClosing = email.customClosing
+        }
+      }
+      if (formatting.imessage && typeof formatting.imessage === 'object') {
+        const imessage = formatting.imessage as Record<string, unknown>
+        if (isValidImessageTone(imessage.tone)) {
+          this.formatting.imessage.tone = imessage.tone
+        }
+        if (typeof imessage.allowEmoji === 'boolean') {
+          this.formatting.imessage.allowEmoji = imessage.allowEmoji
+        }
+        if (typeof imessage.lightweight === 'boolean') {
+          this.formatting.imessage.lightweight = imessage.lightweight
+        }
+      }
+      if (formatting.slack && typeof formatting.slack === 'object') {
+        const slack = formatting.slack as Record<string, unknown>
+        if (isValidSlackTone(slack.tone)) {
+          this.formatting.slack.tone = slack.tone
+        }
+        if (typeof slack.allowEmoji === 'boolean') {
+          this.formatting.slack.allowEmoji = slack.allowEmoji
+        }
+        if (typeof slack.useMarkdown === 'boolean') {
+          this.formatting.slack.useMarkdown = slack.useMarkdown
+        }
+        if (typeof slack.lightweight === 'boolean') {
+          this.formatting.slack.lightweight = slack.lightweight
+        }
+      }
+      if (formatting.document && typeof formatting.document === 'object') {
+        const document = formatting.document as Record<string, unknown>
+        if (isValidDocumentTone(document.tone)) {
+          this.formatting.document.tone = document.tone
+        }
+        if (isValidDocumentStructure(document.structure)) {
+          this.formatting.document.structure = document.structure
+        }
+        if (typeof document.lightweight === 'boolean') {
+          this.formatting.document.lightweight = document.lightweight
+        }
+      }
+    }
+
+    if (raw.audioDucking && typeof raw.audioDucking === 'object') {
+      const audioDucking = raw.audioDucking as Record<string, unknown>
+      if (
+        typeof audioDucking.level === 'number' &&
+        Number.isFinite(audioDucking.level) &&
+        audioDucking.level >= 0 &&
+        audioDucking.level <= 100
+      ) {
+        this.audioDucking.level = Math.round(audioDucking.level)
+      }
+      if (typeof audioDucking.includeHeadphones === 'boolean') {
+        this.audioDucking.includeHeadphones = audioDucking.includeHeadphones
+      }
+      if (typeof audioDucking.includeBuiltInSpeakers === 'boolean') {
+        this.audioDucking.includeBuiltInSpeakers =
+          audioDucking.includeBuiltInSpeakers
+      }
+    }
+  }
+
+  private parseDictionaryEntries(value: unknown): DictionaryEntry[] {
+    if (!Array.isArray(value)) return []
+    const seen = new Set<string>()
+    const parsed: DictionaryEntry[] = []
+    for (const entry of value) {
+      if (typeof entry === 'string') {
+        const text = entry.trim()
+        if (!text) continue
+        const key = normalizeDictionaryKey('fuzzy', text)
+        if (seen.has(key)) continue
+        seen.add(key)
+        parsed.push({ kind: 'fuzzy', text, source: 'manual' })
+        continue
+      }
+      if (!entry || typeof entry !== 'object') continue
+      const record = entry as Record<string, unknown>
+      const source =
+        record.source === 'auto' ? ('auto' as const) : ('manual' as const)
+      const kind =
+        record.kind === 'replacement'
+          ? ('replacement' as const)
+          : ('fuzzy' as const)
+      const textValue =
+        typeof record.text === 'string'
+          ? record.text
+          : typeof record.word === 'string'
+            ? record.word
+            : ''
+      const text = textValue.trim()
+      if (!text) continue
+      const from =
+        kind === 'replacement' && typeof record.from === 'string'
+          ? record.from.trim()
+          : undefined
+      if (kind === 'replacement' && !from) continue
+      const key = normalizeDictionaryKey(kind, text, from)
+      if (seen.has(key)) continue
+      seen.add(key)
+      parsed.push(
+        kind === 'replacement'
+          ? { kind, from, text, source }
+          : { kind, text, source }
+      )
+    }
+    return parsed
+  }
+
+  private applyDictionarySettings(raw: Record<string, unknown>): void {
+    if (Array.isArray(raw.entries)) {
+      this.dictionary.entries = this.parseDictionaryEntries(raw.entries)
+    }
+    if (typeof raw.autoLearn === 'boolean') {
+      this.dictionary.autoLearn = raw.autoLearn
+    }
+    if (Array.isArray(raw.candidates)) {
+      this.dictionary.candidates = parseDictionaryCandidates(raw.candidates)
+    }
+  }
+
+  private applyLegacySettings(raw: Record<string, unknown>): void {
+    this.applyPersistedMain(raw)
+
+    if (typeof raw.formattingEnabled === 'boolean') {
+      this.formatting.enabled = raw.formattingEnabled
+    } else if (typeof raw.formattingModeId === 'string') {
+      this.formatting.enabled = raw.formattingModeId !== 'none'
+    }
+    if (
+      raw.formattingEnabledModes &&
+      typeof raw.formattingEnabledModes === 'object'
+    ) {
+      const next = defaultEnabledModes()
+      for (const id of FORMATTING_MODE_ORDER) {
+        const value = (raw.formattingEnabledModes as Record<string, unknown>)[
+          id
+        ]
+        if (typeof value === 'boolean') next[id] = value
+      }
+      this.formatting.enabledModes = next
+    } else if (raw.formattingModeId === 'email') {
+      this.formatting.enabledModes = { ...defaultEnabledModes(), email: true }
+    }
+    if (raw.formattingForceModeId === null) {
+      this.formatting.forceModeId = null
+    } else if (isValidFormattingModeId(raw.formattingForceModeId)) {
+      this.formatting.forceModeId = raw.formattingForceModeId
+    }
+    if (typeof raw.formattingEmailIncludeSenderName === 'boolean') {
+      this.formatting.email.includeSenderName =
+        raw.formattingEmailIncludeSenderName
+    }
+    if (isValidEmailGreetingStyle(raw.formattingEmailGreetingStyle)) {
+      this.formatting.email.greetingStyle = raw.formattingEmailGreetingStyle
+    }
+    if (isValidEmailClosingStyle(raw.formattingEmailClosingStyle)) {
+      this.formatting.email.closingStyle = raw.formattingEmailClosingStyle
+    }
+    if (typeof raw.formattingEmailCustomGreeting === 'string') {
+      this.formatting.email.customGreeting = raw.formattingEmailCustomGreeting
+    }
+    if (typeof raw.formattingEmailCustomClosing === 'string') {
+      this.formatting.email.customClosing = raw.formattingEmailCustomClosing
+    }
+    if (isValidImessageTone(raw.formattingImessageTone)) {
+      this.formatting.imessage.tone = raw.formattingImessageTone
+    }
+    if (typeof raw.formattingImessageAllowEmoji === 'boolean') {
+      this.formatting.imessage.allowEmoji = raw.formattingImessageAllowEmoji
+    }
+    if (typeof raw.formattingImessageLightweight === 'boolean') {
+      this.formatting.imessage.lightweight = raw.formattingImessageLightweight
+    }
+    if (isValidSlackTone(raw.formattingSlackTone)) {
+      this.formatting.slack.tone = raw.formattingSlackTone
+    }
+    if (typeof raw.formattingSlackAllowEmoji === 'boolean') {
+      this.formatting.slack.allowEmoji = raw.formattingSlackAllowEmoji
+    }
+    if (typeof raw.formattingSlackUseMarkdown === 'boolean') {
+      this.formatting.slack.useMarkdown = raw.formattingSlackUseMarkdown
+    }
+    if (typeof raw.formattingSlackLightweight === 'boolean') {
+      this.formatting.slack.lightweight = raw.formattingSlackLightweight
+    }
+    if (isValidDocumentTone(raw.formattingDocumentTone)) {
+      this.formatting.document.tone = raw.formattingDocumentTone
+    }
+    if (isValidDocumentStructure(raw.formattingDocumentStructure)) {
+      this.formatting.document.structure = raw.formattingDocumentStructure
+    }
+    if (typeof raw.formattingDocumentLightweight === 'boolean') {
+      this.formatting.document.lightweight = raw.formattingDocumentLightweight
+    }
+    if (
+      typeof raw.audioDuckingLevel === 'number' &&
+      Number.isFinite(raw.audioDuckingLevel) &&
+      raw.audioDuckingLevel >= 0 &&
+      raw.audioDuckingLevel <= 100
+    ) {
+      this.audioDucking.level = Math.round(raw.audioDuckingLevel)
+    }
+    if (typeof raw.audioDuckingIncludeHeadphones === 'boolean') {
+      this.audioDucking.includeHeadphones = raw.audioDuckingIncludeHeadphones
+    }
+    if (typeof raw.audioDuckingIncludeBuiltInSpeakers === 'boolean') {
+      this.audioDucking.includeBuiltInSpeakers =
+        raw.audioDuckingIncludeBuiltInSpeakers
+    }
+    if (Array.isArray(raw.dictionaryEntries)) {
+      this.dictionary.entries = this.parseDictionaryEntries(
+        raw.dictionaryEntries
+      )
+    }
+    if (typeof raw.dictionaryAutoLearn === 'boolean') {
+      this.dictionary.autoLearn = raw.dictionaryAutoLearn
+    }
+  }
+
+  public async load() {
+    try {
+      const [hasMain, hasDictionary, hasLegacy] = await Promise.all([
+        Bun.file(MAIN_CONFIG_PATH).exists(),
+        Bun.file(DICTIONARY_CONFIG_PATH).exists(),
+        Bun.file(LEGACY_CONFIG_PATH).exists(),
+      ])
+
+      let migrated = false
+
+      if (hasMain) {
+        const raw = (await Bun.file(MAIN_CONFIG_PATH).json()) as Record<
+          string,
+          unknown
+        >
+        this.applyPersistedMain(raw)
+      }
+      if (hasDictionary) {
+        const raw = (await Bun.file(DICTIONARY_CONFIG_PATH).json()) as Record<
+          string,
+          unknown
+        >
+        this.applyDictionarySettings(raw)
+      }
+
+      if (hasLegacy && (!hasMain || !hasDictionary)) {
+        const raw = (await Bun.file(LEGACY_CONFIG_PATH).json()) as Record<
+          string,
+          unknown
+        >
+        this.applyLegacySettings(raw)
+        migrated = true
+      }
+
+      if (!hasMain && !hasDictionary && !hasLegacy) {
+        log('config', 'using default app config', {
+          shortcutId: this.shortcutId,
+          streamMode: this.streamMode,
+          streamTranscriptionMode: this.streamTranscriptionMode,
+        })
+        return
+      }
+
+      if (migrated) {
+        await this.saveAll()
+      }
+
+      log('config', 'loaded app config', {
+        shortcutId: this.shortcutId,
+        shortcutHoldOnlyId: this.shortcutHoldOnlyId ?? undefined,
+        streamMode: this.streamMode,
+        streamTranscriptionMode: this.streamTranscriptionMode,
+        translateToEnglish: this.translateToEnglish,
+        transcriptionLanguageId: this.transcriptionLanguageId,
+        formattingEnabled: this.formatting.enabled,
+        formattingForceModeId: this.formatting.forceModeId,
+      })
+    } catch {
+      log('config', 'using default app config', {
+        shortcutId: this.shortcutId,
+        streamMode: this.streamMode,
+        streamTranscriptionMode: this.streamTranscriptionMode,
+      })
+    }
+  }
+
+  public getSettings(): AppSettings {
+    const dictionaryEntries = this.dictionary.entries.map((entry) => ({
+      ...entry,
+    }))
+    const dictionaryCandidates = this.dictionary.candidates.map(
+      (candidate) => ({
+        ...candidate,
+      })
+    )
+    return {
+      shortcutId: this.shortcutId,
+      shortcutHoldOnlyId: this.shortcutHoldOnlyId,
+      maxRecordingDuration: this.maxRecordingDuration,
+      debugMode: this.debugMode,
+      funModeEnabled: this.funModeEnabled,
+      transcriptionLanguageId: this.transcriptionLanguageId,
+      whisperModelId: this.whisperModelId,
+      translateToEnglish: this.translateToEnglish,
+      translateDefaultLanguageId: this.translateDefaultLanguageId,
+      onboardingCompleted: this.onboardingCompleted,
+      recordingIndicatorMode: this.recordingIndicatorMode,
+      recordingIndicatorPosition: this.recordingIndicatorPosition,
+      streamMode: this.streamMode,
+      streamTranscriptionMode: this.streamTranscriptionMode,
+      userDisplayName: this.userDisplayName,
+      formatting: {
+        ...this.formatting,
+        enabledModes: { ...this.formatting.enabledModes },
+        email: { ...this.formatting.email },
+        imessage: { ...this.formatting.imessage },
+        slack: { ...this.formatting.slack },
+        document: { ...this.formatting.document },
+      },
+      audioDucking: { ...this.audioDucking },
+      dictionary: {
+        entries: dictionaryEntries,
+        autoLearn: this.dictionary.autoLearn,
+        candidates: dictionaryCandidates,
+      },
+    }
+  }
+
+  public getFormattingRuntimeSettings(): FormattingRuntimeSettings {
+    return {
+      enabled: this.formatting.enabled,
+      enabledModes: { ...this.formatting.enabledModes },
+      forceModeId: this.formatting.forceModeId,
+      transcriptionLanguageId: this.transcriptionLanguageId,
+      userDisplayName: this.userDisplayName,
+      email: { ...this.formatting.email },
+      imessage: { ...this.formatting.imessage },
+      slack: { ...this.formatting.slack },
+      document: { ...this.formatting.document },
+    }
+  }
+
+  public async updateGeneralSettings(
+    patch: GeneralSettingsPatch
+  ): Promise<boolean> {
+    if (
+      patch.shortcutId !== undefined &&
+      !VALID_SHORTCUT_IDS.has(patch.shortcutId)
+    ) {
+      return false
+    }
+    if (patch.shortcutHoldOnlyId !== undefined) {
+      if (
+        patch.shortcutHoldOnlyId !== null &&
+        !VALID_SHORTCUT_IDS.has(patch.shortcutHoldOnlyId)
+      ) {
+        return false
+      }
+      const shortcutId = patch.shortcutId ?? this.shortcutId
+      if (patch.shortcutHoldOnlyId === shortcutId) return false
+    }
+    if (
+      patch.recordingIndicatorMode !== undefined &&
+      !RECORDING_INDICATOR_MODES.has(patch.recordingIndicatorMode)
+    ) {
+      return false
+    }
+    if (patch.recordingIndicatorPosition !== undefined) {
+      const pos = patch.recordingIndicatorPosition
+      if (
+        pos !== null &&
+        (!Number.isFinite(pos.x) || !Number.isFinite(pos.y))
+      ) {
+        return false
+      }
+    }
+
+    if (patch.shortcutId !== undefined) this.shortcutId = patch.shortcutId
+    if (patch.shortcutHoldOnlyId !== undefined) {
+      this.shortcutHoldOnlyId = patch.shortcutHoldOnlyId
+    }
+    if (
+      this.shortcutHoldOnlyId !== null &&
+      this.shortcutHoldOnlyId === this.shortcutId
+    ) {
+      this.shortcutHoldOnlyId = null
+    }
+    if (patch.debugMode !== undefined) {
+      this.debugMode = patch.debugMode
+      if (patch.debugMode) enableDebug()
+      else disableDebug()
+    }
+    if (patch.funModeEnabled !== undefined) {
+      this.funModeEnabled = patch.funModeEnabled
+    }
+    if (patch.userDisplayName !== undefined) {
+      this.userDisplayName = patch.userDisplayName.trim()
+      if (this.userDisplayName) {
+        this.formatting.email.includeSenderName = true
+      }
+    }
+    if (patch.onboardingCompleted !== undefined) {
+      this.onboardingCompleted = patch.onboardingCompleted
+      if (this.onboardingCompleted) {
+        this.recordingIndicatorOnboardingPreviewMode = null
+      }
+    }
+    if (patch.recordingIndicatorMode !== undefined) {
+      this.recordingIndicatorMode = patch.recordingIndicatorMode
+    }
+    if (patch.recordingIndicatorPosition !== undefined) {
+      this.recordingIndicatorPosition = patch.recordingIndicatorPosition
+    }
+    await this.saveMain()
+    return true
+  }
+
+  public async updateTranscriptionSettings(
+    patch: TranscriptionSettingsPatch
+  ): Promise<boolean> {
+    if (
+      patch.transcriptionLanguageId !== undefined &&
+      !isValidTranscriptionLanguageId(patch.transcriptionLanguageId)
+    ) {
+      return false
+    }
+    if (
+      patch.maxRecordingDuration !== undefined &&
+      !isValidMaxRecordingDurationSeconds(patch.maxRecordingDuration)
+    ) {
+      return false
+    }
+    if (
+      patch.whisperModelId !== undefined &&
+      !isValidWhisperModelId(patch.whisperModelId)
+    ) {
+      return false
+    }
+    if (
+      patch.translateDefaultLanguageId !== undefined &&
+      !isValidTranscriptionLanguageId(patch.translateDefaultLanguageId)
+    ) {
+      return false
+    }
+    if (
+      patch.streamTranscriptionMode !== undefined &&
+      patch.streamTranscriptionMode !== 'live' &&
+      patch.streamTranscriptionMode !== 'vad'
+    ) {
+      return false
+    }
+
+    if (patch.transcriptionLanguageId !== undefined) {
+      this.transcriptionLanguageId = patch.transcriptionLanguageId
+    }
+    if (patch.maxRecordingDuration !== undefined) {
+      this.maxRecordingDuration = patch.maxRecordingDuration
+    }
+    if (patch.whisperModelId !== undefined) {
+      this.whisperModelId = patch.whisperModelId
+    }
+    if (patch.translateDefaultLanguageId !== undefined) {
+      this.translateDefaultLanguageId = patch.translateDefaultLanguageId
+    }
+    if (patch.translateToEnglish !== undefined) {
+      this.translateToEnglish = patch.translateToEnglish
+    }
+    if (patch.streamTranscriptionMode !== undefined) {
+      this.streamTranscriptionMode = patch.streamTranscriptionMode
+    }
+    if (patch.streamMode !== undefined) {
+      if (patch.streamMode) {
+        const readiness = getStreamModeReadiness(
+          this.whisperModelId,
+          this.transcriptionLanguageId,
+          (id) => modelManager.isModelAvailable(id)
+        )
+        if (readiness.kind !== 'ready') {
+          log('config', 'stream mode blocked', {
+            reason: readiness.kind,
+            whisperModelId: this.whisperModelId,
+            transcriptionLanguageId: this.transcriptionLanguageId,
+          })
+          return false
+        }
+      }
+      this.streamMode = patch.streamMode
+    }
+
+    await this.saveMain()
+    return true
+  }
+
+  public async updateFormattingSettings(
+    patch: FormattingSettingsPatch
+  ): Promise<boolean> {
+    if (patch.enabled !== undefined) this.formatting.enabled = patch.enabled
+    if (patch.enabledModes !== undefined) {
+      this.formatting.enabledModes = {
+        ...this.formatting.enabledModes,
+        ...Object.fromEntries(
+          Object.entries(patch.enabledModes).filter(
+            ([, value]) => typeof value === 'boolean'
+          )
+        ),
+      }
+    }
+    if (patch.forceModeId !== undefined) {
+      if (
+        patch.forceModeId !== null &&
+        !isValidFormattingModeId(patch.forceModeId)
+      ) {
+        return false
+      }
+      this.formatting.forceModeId = patch.forceModeId
+    }
+    if (patch.email !== undefined) {
+      if (
+        patch.email.greetingStyle !== undefined &&
+        !isValidEmailGreetingStyle(patch.email.greetingStyle)
+      ) {
+        return false
+      }
+      if (
+        patch.email.closingStyle !== undefined &&
+        !isValidEmailClosingStyle(patch.email.closingStyle)
+      ) {
+        return false
+      }
+      this.formatting.email = {
+        ...this.formatting.email,
+        ...patch.email,
+      }
+    }
+    if (patch.imessage !== undefined) {
+      if (
+        patch.imessage.tone !== undefined &&
+        !isValidImessageTone(patch.imessage.tone)
+      ) {
+        return false
+      }
+      this.formatting.imessage = {
+        ...this.formatting.imessage,
+        ...patch.imessage,
+      }
+    }
+    if (patch.slack !== undefined) {
+      if (
+        patch.slack.tone !== undefined &&
+        !isValidSlackTone(patch.slack.tone)
+      ) {
+        return false
+      }
+      this.formatting.slack = {
+        ...this.formatting.slack,
+        ...patch.slack,
+      }
+    }
+    if (patch.document !== undefined) {
+      if (
+        patch.document.tone !== undefined &&
+        !isValidDocumentTone(patch.document.tone)
+      ) {
+        return false
+      }
+      if (
+        patch.document.structure !== undefined &&
+        !isValidDocumentStructure(patch.document.structure)
+      ) {
+        return false
+      }
+      this.formatting.document = {
+        ...this.formatting.document,
+        ...patch.document,
+      }
+    }
+    await this.saveMain()
+    return true
+  }
+
+  public async updateAudioDuckingSettings(
+    patch: AudioDuckingSettingsPatch
+  ): Promise<boolean> {
+    if (
+      patch.level !== undefined &&
+      (!Number.isFinite(patch.level) || patch.level < 0 || patch.level > 100)
+    ) {
+      return false
+    }
+    this.audioDucking = {
+      ...this.audioDucking,
+      ...patch,
+      ...(patch.level !== undefined ? { level: Math.round(patch.level) } : {}),
+    }
+    await this.saveMain()
+    return true
+  }
+
+  public async updateDictionarySettings(
+    patch: DictionarySettingsPatch
+  ): Promise<boolean> {
+    if (patch.entries !== undefined) {
+      this.dictionary.entries = this.parseDictionaryEntries(patch.entries)
+    }
+    if (patch.autoLearn !== undefined) {
+      this.dictionary.autoLearn = patch.autoLearn
+    }
+    if (patch.candidates !== undefined) {
+      this.dictionary.candidates = parseDictionaryCandidates(patch.candidates)
+    }
+    await this.saveDictionary()
+    return true
+  }
+
   public resolveAudioDevice(devices: Record<string, string>): number {
     if (this.audioDeviceName !== null) {
       const entry = Object.entries(devices).find(
@@ -545,50 +1037,36 @@ export class AppConfig {
     return this.audioDevice
   }
 
-  /** @deprecated Use resolveAudioDevice(devices) instead. */
+  public async setAudioDevice(index: number, name?: string) {
+    this.audioDevice = index
+    if (name !== undefined) this.audioDeviceName = name
+    await this.saveMain()
+  }
+
   public getAudioDevice() {
     return this.audioDevice
   }
 
   public async setShortcutId(id: ShortcutId): Promise<boolean> {
-    if (!VALID_SHORTCUT_IDS.has(id)) return false
-    this.shortcutId = id
-    if (this.shortcutHoldOnlyId === id) this.shortcutHoldOnlyId = null
-    await this.save()
-    return true
+    return this.updateGeneralSettings({ shortcutId: id })
   }
 
   public async setShortcutHoldOnlyId(id: ShortcutId | null): Promise<boolean> {
-    if (id !== null) {
-      if (!VALID_SHORTCUT_IDS.has(id)) return false
-      if (id === this.shortcutId) return false
-    }
-    this.shortcutHoldOnlyId = id
-    await this.save()
-    return true
+    return this.updateGeneralSettings({ shortcutHoldOnlyId: id })
   }
 
   public async setTranscriptionLanguageId(id: string): Promise<boolean> {
-    if (!isValidTranscriptionLanguageId(id)) return false
-    this.transcriptionLanguageId = id
-    await this.save()
-    return true
+    return this.updateTranscriptionSettings({ transcriptionLanguageId: id })
   }
 
   public getTranscriptionLanguageId(): string {
     return this.transcriptionLanguageId
   }
 
-  /** Whisper `--language` value for normal transcription, or `null` when using auto-detect. */
   public getTranscriptionWhisperCode(): string | null {
     return whisperCodeForTranscriptionId(this.transcriptionLanguageId)
   }
 
-  /**
-   * Runtime Whisper `--language` value for the current mode.
-   * Translate mode needs a fixed source language, but normal transcription keeps
-   * its own setting and should never be rewritten just because translate toggled.
-   */
   public getRuntimeTranscriptionWhisperCode(): string | null {
     if (!this.translateToEnglish) {
       return this.getTranscriptionWhisperCode()
@@ -611,13 +1089,7 @@ export class AppConfig {
   }
 
   public async setDebugMode(enabled: boolean) {
-    this.debugMode = enabled
-    if (enabled) {
-      enableDebug()
-    } else {
-      disableDebug()
-    }
-    await this.save()
+    await this.updateGeneralSettings({ debugMode: enabled })
   }
 
   public getDebugMode(): boolean {
@@ -629,9 +1101,7 @@ export class AppConfig {
   }
 
   public async setFunModeEnabled(enabled: boolean): Promise<boolean> {
-    this.funModeEnabled = enabled
-    await this.save()
-    return true
+    return this.updateGeneralSettings({ funModeEnabled: enabled })
   }
 
   public getMaxRecordingDurationSeconds(): number {
@@ -641,10 +1111,7 @@ export class AppConfig {
   public async setMaxRecordingDurationSeconds(
     seconds: number
   ): Promise<boolean> {
-    if (!isValidMaxRecordingDurationSeconds(seconds)) return false
-    this.maxRecordingDuration = seconds
-    await this.save()
-    return true
+    return this.updateTranscriptionSettings({ maxRecordingDuration: seconds })
   }
 
   public getWhisperModelId(): string {
@@ -652,10 +1119,7 @@ export class AppConfig {
   }
 
   public async setWhisperModelId(id: string): Promise<boolean> {
-    if (!isValidWhisperModelId(id)) return false
-    this.whisperModelId = id
-    await this.save()
-    return true
+    return this.updateTranscriptionSettings({ whisperModelId: id })
   }
 
   public getTranslateToEnglish(): boolean {
@@ -663,14 +1127,9 @@ export class AppConfig {
   }
 
   public async setTranslateToEnglish(enabled: boolean): Promise<void> {
-    this.translateToEnglish = enabled
-    await this.save()
+    await this.updateTranscriptionSettings({ translateToEnglish: enabled })
   }
 
-  /**
-   * Enables translate and pins the active source language so the Ready screen
-   * picker reflects the spoken language while translation is active.
-   */
   public async setTranslateOn(sourceLanguageId: string): Promise<boolean> {
     if (
       !isValidTranscriptionLanguageId(sourceLanguageId) ||
@@ -680,15 +1139,14 @@ export class AppConfig {
     }
     this.transcriptionLanguageId = sourceLanguageId
     this.translateToEnglish = true
-    await this.save()
+    await this.saveMain()
     return true
   }
 
-  /** Disables translate and returns the Ready screen language picker to auto-detect. */
   public async setTranslateOff(): Promise<void> {
     this.translateToEnglish = false
     this.transcriptionLanguageId = 'auto'
-    await this.save()
+    await this.saveMain()
   }
 
   public getTranslateDefaultLanguageId(): string {
@@ -696,80 +1154,7 @@ export class AppConfig {
   }
 
   public async setTranslateDefaultLanguageId(id: string): Promise<boolean> {
-    if (!isValidTranscriptionLanguageId(id)) return false
-    this.translateDefaultLanguageId = id
-    await this.save()
-    return true
-  }
-
-  public getSettings(): AppSettings {
-    return {
-      shortcutId: this.shortcutId,
-      shortcutHoldOnlyId: this.shortcutHoldOnlyId,
-      maxRecordingDuration: this.maxRecordingDuration,
-      debugMode: this.debugMode,
-      funModeEnabled: this.funModeEnabled,
-      transcriptionLanguageId: this.transcriptionLanguageId,
-      whisperModelId: this.whisperModelId,
-      translateToEnglish: this.translateToEnglish,
-      translateDefaultLanguageId: this.translateDefaultLanguageId,
-      onboardingCompleted: this.onboardingCompleted,
-      recordingIndicatorMode: this.recordingIndicatorMode,
-      recordingIndicatorPosition: this.recordingIndicatorPosition,
-      streamMode: this.streamMode,
-      streamTranscriptionMode: this.streamTranscriptionMode,
-      userDisplayName: this.userDisplayName,
-      formattingEnabled: this.formattingEnabled,
-      formattingEnabledModes: { ...this.formattingEnabledModes },
-      formattingForceModeId: this.formattingForceModeId,
-      formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
-      formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
-      formattingEmailClosingStyle: this.formattingEmailClosingStyle,
-      formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
-      formattingEmailCustomClosing: this.formattingEmailCustomClosing,
-      formattingImessageTone: this.formattingImessageTone,
-      formattingImessageAllowEmoji: this.formattingImessageAllowEmoji,
-      formattingImessageLightweight: this.formattingImessageLightweight,
-      formattingSlackTone: this.formattingSlackTone,
-      formattingSlackAllowEmoji: this.formattingSlackAllowEmoji,
-      formattingSlackUseMarkdown: this.formattingSlackUseMarkdown,
-      formattingSlackLightweight: this.formattingSlackLightweight,
-      formattingDocumentTone: this.formattingDocumentTone,
-      formattingDocumentStructure: this.formattingDocumentStructure,
-      formattingDocumentLightweight: this.formattingDocumentLightweight,
-      audioDuckingLevel: this.audioDuckingLevel,
-      audioDuckingIncludeHeadphones: this.audioDuckingIncludeHeadphones,
-      audioDuckingIncludeBuiltInSpeakers:
-        this.audioDuckingIncludeBuiltInSpeakers,
-      formattingAvailable: this.formattingAvailable,
-      dictionaryEntries: this.dictionaryEntries.map((e) => ({ ...e })),
-      dictionaryAutoLearn: this.dictionaryAutoLearn,
-    }
-  }
-
-  public getFormattingRuntimeSettings(): FormattingRuntimeSettings {
-    return {
-      formattingEnabled: this.formattingEnabled,
-      formattingEnabledModes: { ...this.formattingEnabledModes },
-      formattingForceModeId: this.formattingForceModeId,
-      transcriptionLanguageId: this.transcriptionLanguageId,
-      userDisplayName: this.userDisplayName,
-      formattingEmailIncludeSenderName: this.formattingEmailIncludeSenderName,
-      formattingEmailGreetingStyle: this.formattingEmailGreetingStyle,
-      formattingEmailClosingStyle: this.formattingEmailClosingStyle,
-      formattingEmailCustomGreeting: this.formattingEmailCustomGreeting,
-      formattingEmailCustomClosing: this.formattingEmailCustomClosing,
-      formattingImessageTone: this.formattingImessageTone,
-      formattingImessageAllowEmoji: this.formattingImessageAllowEmoji,
-      formattingImessageLightweight: this.formattingImessageLightweight,
-      formattingSlackTone: this.formattingSlackTone,
-      formattingSlackAllowEmoji: this.formattingSlackAllowEmoji,
-      formattingSlackUseMarkdown: this.formattingSlackUseMarkdown,
-      formattingSlackLightweight: this.formattingSlackLightweight,
-      formattingDocumentTone: this.formattingDocumentTone,
-      formattingDocumentStructure: this.formattingDocumentStructure,
-      formattingDocumentLightweight: this.formattingDocumentLightweight,
-    }
+    return this.updateTranscriptionSettings({ translateDefaultLanguageId: id })
   }
 
   public getUserDisplayName(): string {
@@ -777,236 +1162,180 @@ export class AppConfig {
   }
 
   public async setUserDisplayName(userDisplayName: string): Promise<boolean> {
-    const normalized = userDisplayName.trim()
-    this.userDisplayName = normalized
-    if (normalized) {
-      this.formattingEmailIncludeSenderName = true
-    }
-    await this.save()
-    return true
+    return this.updateGeneralSettings({ userDisplayName })
   }
 
   public getFormattingEnabled(): boolean {
-    return this.formattingEnabled
+    return this.formatting.enabled
   }
 
   public async setFormattingEnabled(enabled: boolean): Promise<boolean> {
-    this.formattingEnabled = enabled
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ enabled })
   }
 
-  public getFormattingEnabledModes(): FormattingEnabledModes {
-    return { ...this.formattingEnabledModes }
+  public getFormattingEnabledModes(): FormattingSettings['enabledModes'] {
+    return { ...this.formatting.enabledModes }
   }
 
   public async setFormattingModeEnabled(
     modeId: FormattingModeId,
     enabled: boolean
   ): Promise<boolean> {
-    if (!isValidFormattingModeId(modeId)) return false
-    this.formattingEnabledModes = {
-      ...this.formattingEnabledModes,
-      [modeId]: enabled,
-    }
-    await this.save()
-    return true
+    return this.updateFormattingSettings({
+      enabledModes: { [modeId]: enabled },
+    })
   }
 
   public getFormattingForceModeId(): FormattingModeId | null {
-    return this.formattingForceModeId
+    return this.formatting.forceModeId
   }
 
   public async setFormattingForceModeId(
     modeId: FormattingModeId | null
   ): Promise<boolean> {
-    if (modeId !== null && !isValidFormattingModeId(modeId)) return false
-    this.formattingForceModeId = modeId
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ forceModeId: modeId })
   }
 
   public getFormattingEmailIncludeSenderName(): boolean {
-    return this.formattingEmailIncludeSenderName
+    return this.formatting.email.includeSenderName
   }
 
   public async setFormattingEmailIncludeSenderName(
     enabled: boolean
   ): Promise<boolean> {
-    this.formattingEmailIncludeSenderName = enabled
-    await this.save()
-    return true
+    return this.updateFormattingSettings({
+      email: { includeSenderName: enabled },
+    })
   }
 
-  public getFormattingEmailGreetingStyle(): FormattingEmailGreetingStyle {
-    return this.formattingEmailGreetingStyle
+  public getFormattingEmailGreetingStyle() {
+    return this.formatting.email.greetingStyle
   }
 
   public async setFormattingEmailGreetingStyle(
-    style: FormattingEmailGreetingStyle
+    style: FormattingSettings['email']['greetingStyle']
   ): Promise<boolean> {
-    if (!isValidEmailGreetingStyle(style)) return false
-    this.formattingEmailGreetingStyle = style
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ email: { greetingStyle: style } })
   }
 
-  public getFormattingEmailClosingStyle(): FormattingEmailClosingStyle {
-    return this.formattingEmailClosingStyle
+  public getFormattingEmailClosingStyle() {
+    return this.formatting.email.closingStyle
   }
 
   public async setFormattingEmailClosingStyle(
-    style: FormattingEmailClosingStyle
+    style: FormattingSettings['email']['closingStyle']
   ): Promise<boolean> {
-    if (!isValidEmailClosingStyle(style)) return false
-    this.formattingEmailClosingStyle = style
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ email: { closingStyle: style } })
   }
 
   public getFormattingEmailCustomGreeting(): string {
-    return this.formattingEmailCustomGreeting
+    return this.formatting.email.customGreeting
   }
 
   public async setFormattingEmailCustomGreeting(
     text: string
   ): Promise<boolean> {
-    this.formattingEmailCustomGreeting = text
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ email: { customGreeting: text } })
   }
 
   public getFormattingEmailCustomClosing(): string {
-    return this.formattingEmailCustomClosing
+    return this.formatting.email.customClosing
   }
 
   public async setFormattingEmailCustomClosing(text: string): Promise<boolean> {
-    this.formattingEmailCustomClosing = text
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ email: { customClosing: text } })
   }
 
   public async setFormattingImessageTone(
-    tone: FormattingImessageTone
+    tone: FormattingSettings['imessage']['tone']
   ): Promise<boolean> {
-    if (!isValidImessageTone(tone)) return false
-    this.formattingImessageTone = tone
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ imessage: { tone } })
   }
 
   public async setFormattingImessageAllowEmoji(
     enabled: boolean
   ): Promise<boolean> {
-    this.formattingImessageAllowEmoji = enabled
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ imessage: { allowEmoji: enabled } })
   }
 
   public async setFormattingImessageLightweight(
     enabled: boolean
   ): Promise<boolean> {
-    this.formattingImessageLightweight = enabled
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ imessage: { lightweight: enabled } })
   }
 
   public async setFormattingSlackTone(
-    tone: FormattingSlackTone
+    tone: FormattingSettings['slack']['tone']
   ): Promise<boolean> {
-    if (!isValidSlackTone(tone)) return false
-    this.formattingSlackTone = tone
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ slack: { tone } })
   }
 
   public async setFormattingSlackAllowEmoji(
     enabled: boolean
   ): Promise<boolean> {
-    this.formattingSlackAllowEmoji = enabled
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ slack: { allowEmoji: enabled } })
   }
 
   public async setFormattingSlackUseMarkdown(
     enabled: boolean
   ): Promise<boolean> {
-    this.formattingSlackUseMarkdown = enabled
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ slack: { useMarkdown: enabled } })
   }
 
   public async setFormattingSlackLightweight(
     enabled: boolean
   ): Promise<boolean> {
-    this.formattingSlackLightweight = enabled
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ slack: { lightweight: enabled } })
   }
 
   public async setFormattingDocumentTone(
-    tone: FormattingDocumentTone
+    tone: FormattingSettings['document']['tone']
   ): Promise<boolean> {
-    if (!isValidDocumentTone(tone)) return false
-    this.formattingDocumentTone = tone
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ document: { tone } })
   }
 
   public async setFormattingDocumentStructure(
-    structure: FormattingDocumentStructure
+    structure: FormattingSettings['document']['structure']
   ): Promise<boolean> {
-    if (!isValidDocumentStructure(structure)) return false
-    this.formattingDocumentStructure = structure
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ document: { structure } })
   }
 
   public async setFormattingDocumentLightweight(
     enabled: boolean
   ): Promise<boolean> {
-    this.formattingDocumentLightweight = enabled
-    await this.save()
-    return true
+    return this.updateFormattingSettings({ document: { lightweight: enabled } })
   }
 
   public getAudioDuckingLevel(): number {
-    return this.audioDuckingLevel
+    return this.audioDucking.level
   }
 
   public async setAudioDuckingLevel(level: number): Promise<boolean> {
-    if (!Number.isFinite(level) || level < 0 || level > 100) return false
-    this.audioDuckingLevel = Math.round(level)
-    await this.save()
-    return true
+    return this.updateAudioDuckingSettings({ level })
   }
 
   public getAudioDuckingIncludeHeadphones(): boolean {
-    return this.audioDuckingIncludeHeadphones
+    return this.audioDucking.includeHeadphones
   }
 
   public async setAudioDuckingIncludeHeadphones(
     enabled: boolean
   ): Promise<boolean> {
-    this.audioDuckingIncludeHeadphones = enabled
-    await this.save()
-    return true
+    return this.updateAudioDuckingSettings({ includeHeadphones: enabled })
   }
 
   public getAudioDuckingIncludeBuiltInSpeakers(): boolean {
-    return this.audioDuckingIncludeBuiltInSpeakers
+    return this.audioDucking.includeBuiltInSpeakers
   }
 
   public async setAudioDuckingIncludeBuiltInSpeakers(
     enabled: boolean
   ): Promise<boolean> {
-    this.audioDuckingIncludeBuiltInSpeakers = enabled
-    await this.save()
-    return true
+    return this.updateAudioDuckingSettings({ includeBuiltInSpeakers: enabled })
   }
 
   public getFormattingAvailable(): boolean {
-    return this.formattingAvailable
+    return this.formatting.available
   }
 
   public getStreamMode(): boolean {
@@ -1014,29 +1343,11 @@ export class AppConfig {
   }
 
   public async setStreamMode(enabled: boolean): Promise<boolean> {
-    if (enabled) {
-      const readiness = getStreamModeReadiness(
-        this.whisperModelId,
-        this.transcriptionLanguageId,
-        (id) => modelManager.isModelAvailable(id)
-      )
-      if (readiness.kind !== 'ready') {
-        log('config', 'stream mode blocked', {
-          reason: readiness.kind,
-          whisperModelId: this.whisperModelId,
-          transcriptionLanguageId: this.transcriptionLanguageId,
-        })
-        return false
-      }
-    }
-    const previous = this.streamMode
-    this.streamMode = enabled
     log('config', 'set stream mode', {
-      previous,
+      previous: this.streamMode,
       next: enabled,
     })
-    await this.save()
-    return true
+    return this.updateTranscriptionSettings({ streamMode: enabled })
   }
 
   public getStreamTranscriptionMode(): StreamTranscriptionMode {
@@ -1046,26 +1357,13 @@ export class AppConfig {
   public async setStreamTranscriptionMode(
     mode: StreamTranscriptionMode
   ): Promise<void> {
-    const previous = this.streamTranscriptionMode
-    this.streamTranscriptionMode = mode
-    log('config', 'set stream transcription mode', {
-      previous,
-      next: mode,
-    })
-    await this.save()
+    await this.updateTranscriptionSettings({ streamTranscriptionMode: mode })
   }
 
   public async setOnboardingCompleted(completed: boolean): Promise<void> {
-    this.onboardingCompleted = completed
-    if (completed) {
-      this.recordingIndicatorOnboardingPreviewMode = null
-    }
-    await this.save()
+    await this.updateGeneralSettings({ onboardingCompleted: completed })
   }
 
-  /**
-   * Drive the desktop indicator during onboarding (step 3). Does not write disk.
-   */
   public setRecordingIndicatorOnboardingPreview(
     active: boolean,
     mode?: RecordingIndicatorMode
@@ -1074,11 +1372,11 @@ export class AppConfig {
       this.recordingIndicatorOnboardingPreviewMode = null
       return
     }
-    const m =
+    const resolved =
       mode !== undefined && RECORDING_INDICATOR_MODES.has(mode)
         ? mode
         : this.recordingIndicatorMode
-    this.recordingIndicatorOnboardingPreviewMode = m
+    this.recordingIndicatorOnboardingPreviewMode = resolved
   }
 
   public getRecordingIndicatorOnboardingPreviewMode(): RecordingIndicatorMode | null {
@@ -1092,35 +1390,30 @@ export class AppConfig {
   public async setRecordingIndicatorMode(
     mode: RecordingIndicatorMode
   ): Promise<boolean> {
-    if (!RECORDING_INDICATOR_MODES.has(mode)) return false
-    this.recordingIndicatorMode = mode
-    await this.save()
-    return true
+    return this.updateGeneralSettings({ recordingIndicatorMode: mode })
   }
 
   public getRecordingIndicatorPosition(): { x: number; y: number } | null {
     return this.recordingIndicatorPosition
   }
 
-  /**
-   * Persists only indicator geometry; other keys in app-config.json are preserved
-   * via the same full-document write as every other setter.
-   */
   public async setRecordingIndicatorPosition(
     x: number,
     y: number
   ): Promise<void> {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return
-    this.recordingIndicatorPosition = { x, y }
-    await this.save()
+    await this.updateGeneralSettings({ recordingIndicatorPosition: { x, y } })
   }
 
   public getDictionaryEntries(): DictionaryEntry[] {
-    return this.dictionaryEntries.map((e) => ({ ...e }))
+    return this.dictionary.entries.map((entry) => ({ ...entry }))
+  }
+
+  public getDictionaryCandidates(): DictionaryCandidate[] {
+    return this.dictionary.candidates.map((candidate) => ({ ...candidate }))
   }
 
   public getDictionaryWords(): string[] {
-    return this.dictionaryEntries.map((e) => e.text)
+    return this.dictionary.entries.map((entry) => entry.text)
   }
 
   public async addDictionaryEntry(
@@ -1133,19 +1426,49 @@ export class AppConfig {
     if (entry.kind === 'replacement' && !from) return false
     const key = normalizeDictionaryKey(entry.kind, text, from)
     if (
-      this.dictionaryEntries.some(
-        (e) => normalizeDictionaryKey(e.kind, e.text, e.from) === key
+      this.dictionary.entries.some(
+        (candidate) =>
+          normalizeDictionaryKey(
+            candidate.kind,
+            candidate.text,
+            candidate.from
+          ) === key
       )
-    )
+    ) {
+      if (entry.kind === 'replacement') {
+        const normalizedFrom = from?.trim().toLowerCase()
+        this.dictionary.candidates = this.dictionary.candidates.filter(
+          (candidate) =>
+            !(
+              candidate.from.trim().toLowerCase() === normalizedFrom &&
+              candidate.to.trim().toLowerCase() === text.trim().toLowerCase()
+            )
+        )
+        await this.saveDictionary()
+      }
       return true
-    this.dictionaryEntries = [
-      ...this.dictionaryEntries,
+    }
+    const nextEntries = [
+      ...this.dictionary.entries,
       entry.kind === 'replacement'
-        ? { kind: 'replacement', from, text, source }
-        : { kind: 'fuzzy', text, source },
+        ? { kind: 'replacement' as const, from, text, source }
+        : { kind: 'fuzzy' as const, text, source },
     ]
-    await this.save()
-    return true
+    const nextCandidates =
+      entry.kind === 'replacement'
+        ? this.dictionary.candidates.filter(
+            (candidate) =>
+              !(
+                candidate.from.trim().toLowerCase() ===
+                  from?.trim().toLowerCase() &&
+                candidate.to.trim().toLowerCase() === text.trim().toLowerCase()
+              )
+          )
+        : this.dictionary.candidates
+    return this.updateDictionarySettings({
+      entries: nextEntries,
+      candidates: nextCandidates,
+    })
   }
 
   public async removeDictionaryEntry(
@@ -1156,22 +1479,82 @@ export class AppConfig {
       entry.text,
       entry.kind === 'replacement' ? entry.from : undefined
     )
-    const next = this.dictionaryEntries.filter(
-      (e) => normalizeDictionaryKey(e.kind, e.text, e.from) !== key
+    const nextEntries = this.dictionary.entries.filter(
+      (candidate) =>
+        normalizeDictionaryKey(
+          candidate.kind,
+          candidate.text,
+          candidate.from
+        ) !== key
     )
-    if (next.length === this.dictionaryEntries.length) return false
-    this.dictionaryEntries = next
-    await this.save()
-    return true
+    if (nextEntries.length === this.dictionary.entries.length) return false
+    return this.updateDictionarySettings({ entries: nextEntries })
+  }
+
+  public async removeDictionaryCandidate(
+    candidate: Pick<DictionaryCandidate, 'from' | 'to'>
+  ): Promise<boolean> {
+    const from = candidate.from.trim().toLowerCase()
+    const to = candidate.to.trim().toLowerCase()
+    const nextCandidates = this.dictionary.candidates.filter(
+      (entry) =>
+        !(
+          entry.from.trim().toLowerCase() === from &&
+          entry.to.trim().toLowerCase() === to
+        )
+    )
+    if (nextCandidates.length === this.dictionary.candidates.length) {
+      return false
+    }
+    return this.updateDictionarySettings({ candidates: nextCandidates })
+  }
+
+  public async stageAutoLearnCorrection(
+    original: string,
+    corrected: string
+  ): Promise<'ignored' | 'staged' | 'committed' | 'already-committed'> {
+    const result = stageDictionaryCandidate({
+      candidates: this.dictionary.candidates,
+      entries: this.dictionary.entries,
+      original,
+      corrected,
+    })
+
+    if (result.outcome === 'ignored') return result.outcome
+
+    if (result.outcome === 'committed' && result.committedEntry) {
+      this.dictionary.candidates = result.candidates
+      return (await this.addDictionaryEntry(result.committedEntry, 'auto'))
+        ? 'committed'
+        : 'ignored'
+    }
+
+    if (result.outcome === 'staged' || result.outcome === 'already-committed') {
+      this.dictionary.candidates = result.candidates
+      await this.saveDictionary()
+    }
+
+    return result.outcome
+  }
+
+  public async invalidateDictionaryCandidatesForText(
+    text: string
+  ): Promise<DictionaryCandidate[]> {
+    const result = getInvalidatedDictionaryCandidatesForText(
+      this.dictionary.candidates,
+      text
+    )
+    if (result.removed.length === 0) return []
+    this.dictionary.candidates = result.candidates
+    await this.saveDictionary()
+    return result.removed
   }
 
   public getDictionaryAutoLearn(): boolean {
-    return this.dictionaryAutoLearn
+    return this.dictionary.autoLearn
   }
 
   public async setDictionaryAutoLearn(enabled: boolean): Promise<boolean> {
-    this.dictionaryAutoLearn = enabled
-    await this.save()
-    return true
+    return this.updateDictionarySettings({ autoLearn: enabled })
   }
 }

@@ -1,9 +1,14 @@
 import { useCallback, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { AppSettings, DictionaryEntry } from "../../../../shared/types";
+import type {
+  AppSettings,
+  DictionaryCandidate,
+  DictionaryEntry,
+} from "../../../../shared/types";
 import {
   addDictionaryEntry,
   fetchSettings,
+  removeDictionaryCandidate,
   removeDictionaryEntry,
   setDictionaryAutoLearn,
 } from "../../../rpc";
@@ -28,6 +33,7 @@ function SparkleIcon() {
 
 export function SectionDictionary({ settings }: Props) {
   const queryClient = useQueryClient();
+  const dictionary = settings.dictionary;
   const [entryKind, setEntryKind] = useState<DictionaryEntry["kind"]>("fuzzy");
   const [inputValue, setInputValue] = useState("");
   const [replacementFromValue, setReplacementFromValue] = useState("");
@@ -55,11 +61,7 @@ export function SectionDictionary({ settings }: Props) {
         ? { kind: "replacement", from, text, source: "manual" }
         : { kind: "fuzzy", text, source: "manual" };
 
-    if (
-      settings.dictionaryEntries.some(
-        (e) => entryKey(e) === entryKey(nextEntry),
-      )
-    ) {
+    if (dictionary.entries.some((e) => entryKey(e) === entryKey(nextEntry))) {
       setInputValue("");
       setReplacementFromValue("");
       return;
@@ -69,7 +71,10 @@ export function SectionDictionary({ settings }: Props) {
       old
         ? {
             ...old,
-            dictionaryEntries: [...old.dictionaryEntries, nextEntry],
+            dictionary: {
+              ...old.dictionary,
+              entries: [...old.dictionary.entries, nextEntry],
+            },
           }
         : old,
     );
@@ -91,7 +96,7 @@ export function SectionDictionary({ settings }: Props) {
     inputValue,
     queryClient,
     replacementFromValue,
-    settings.dictionaryEntries,
+    dictionary.entries,
   ]);
 
   const handleRemove = useCallback(
@@ -100,9 +105,12 @@ export function SectionDictionary({ settings }: Props) {
         old
           ? {
               ...old,
-              dictionaryEntries: old.dictionaryEntries.filter(
-                (e) => entryKey(e) !== entryKey(entry),
-              ),
+              dictionary: {
+                ...old.dictionary,
+                entries: old.dictionary.entries.filter(
+                  (e) => entryKey(e) !== entryKey(entry),
+                ),
+              },
             }
           : old,
       );
@@ -121,16 +129,24 @@ export function SectionDictionary({ settings }: Props) {
   );
 
   const handleAutoLearnToggle = useCallback(async () => {
-    const next = !settings.dictionaryAutoLearn;
+    const next = !dictionary.autoLearn;
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, dictionaryAutoLearn: next } : old,
+      old
+        ? {
+            ...old,
+            dictionary: {
+              ...old.dictionary,
+              autoLearn: next,
+            },
+          }
+        : old,
     );
     const ok = await setDictionaryAutoLearn(next);
     if (!ok) {
       const fresh = await fetchSettings();
       queryClient.setQueryData(["settings"], fresh);
     }
-  }, [queryClient, settings.dictionaryAutoLearn]);
+  }, [dictionary.autoLearn, queryClient]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -139,8 +155,37 @@ export function SectionDictionary({ settings }: Props) {
     [handleAdd],
   );
 
-  const hasAutoEntries = settings.dictionaryEntries.some(
-    (e) => e.source === "auto",
+  const hasAutoEntries = dictionary.entries.some((e) => e.source === "auto");
+
+  const handleRemoveCandidate = useCallback(
+    async (candidate: DictionaryCandidate) => {
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old
+          ? {
+              ...old,
+              dictionary: {
+                ...old.dictionary,
+                candidates: old.dictionary.candidates.filter(
+                  (entry) =>
+                    !(
+                      entry.from.trim().toLowerCase() ===
+                        candidate.from.trim().toLowerCase() &&
+                      entry.to.trim().toLowerCase() ===
+                        candidate.to.trim().toLowerCase()
+                    ),
+                ),
+              },
+            }
+          : old,
+      );
+
+      const ok = await removeDictionaryCandidate(candidate);
+      if (!ok) {
+        const fresh = await fetchSettings();
+        queryClient.setQueryData(["settings"], fresh);
+      }
+    },
+    [queryClient],
   );
 
   return (
@@ -166,17 +211,18 @@ export function SectionDictionary({ settings }: Props) {
               Auto-learn corrections
             </span>
             <span className="mt-1 block text-[16px] leading-snug text-white/44">
-              When you manually fix a transcribed word, it's added here
-              automatically. Works in native macOS apps like Mail, Notes, Pages,
-              and TextEdit. Does not work in browsers or Electron-based apps
-              like Slack or VS Code.
+              Corrections are staged first and only learned after they happen
+              twice. If the same raw output shows up again and you leave it
+              unchanged, the pending candidate is discarded. Works in native
+              macOS apps like Mail, Notes, Pages, and TextEdit. Does not work in
+              browsers or Electron-based apps like Slack or VS Code.
             </span>
           </div>
           <button
             type="button"
             onClick={handleAutoLearnToggle}
             className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ${
-              settings.dictionaryAutoLearn
+              dictionary.autoLearn
                 ? "border-white/30 bg-white/18"
                 : "border-white/14 bg-white/7"
             }`}
@@ -184,7 +230,7 @@ export function SectionDictionary({ settings }: Props) {
           >
             <span
               className={`absolute top-0.5 h-5 w-5 rounded-full transition-all duration-200 ${
-                settings.dictionaryAutoLearn
+                dictionary.autoLearn
                   ? "left-[21px] bg-white/90"
                   : "left-0.5 bg-white/40"
               }`}
@@ -256,9 +302,62 @@ export function SectionDictionary({ settings }: Props) {
         </button>
       </div>
 
+      {dictionary.candidates.length > 0 && (
+        <div className="mb-6 overflow-hidden rounded-xl border border-amber-200/12 bg-amber-200/[0.04]">
+          <div className="border-b border-amber-200/10 px-5 py-4">
+            <div className="text-[18px] font-medium text-amber-50/88">
+              Pending auto-learn candidates
+            </div>
+            <div className="mt-1 text-[15px] leading-snug text-white/44">
+              These corrections need one more matching edit before they become
+              exact replacements.
+            </div>
+          </div>
+          <ul>
+            {dictionary.candidates.map((candidate, i) => (
+              <li
+                key={`${candidate.from}=>${candidate.to}`}
+                className={`flex items-center justify-between gap-4 px-5 py-4 ${
+                  i > 0 ? "border-t border-amber-200/10" : ""
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-[18px] font-medium text-amber-50/82">
+                    {candidate.from} {"\u2192"} {candidate.to}
+                  </div>
+                  <div className="mt-1 text-[13px] uppercase tracking-[0.12em] text-white/34">
+                    {candidate.corrections} of 2 confirmations
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCandidate(candidate)}
+                  aria-label={`Dismiss candidate ${candidate.from} to ${candidate.to}`}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/40 transition-colors duration-200 hover:border-white/18 hover:bg-white/8 hover:text-white/70"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Entries list */}
       <div className="overflow-hidden rounded-xl border border-white/11 bg-white/4">
-        {settings.dictionaryEntries.length === 0 ? (
+        {dictionary.entries.length === 0 ? (
           <div className="px-5 py-8 text-center text-[17px] text-white/34">
             No words added yet. Add a word above to get started.
           </div>
@@ -275,7 +374,7 @@ export function SectionDictionary({ settings }: Props) {
               </div>
             )}
             <ul>
-              {settings.dictionaryEntries.map((entry, i) => (
+              {dictionary.entries.map((entry, i) => (
                 <li
                   key={entryKey(entry)}
                   className={`flex items-center justify-between gap-4 px-5 py-4 ${
