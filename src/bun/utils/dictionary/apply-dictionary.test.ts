@@ -125,8 +125,6 @@ describe('extractCorrections', () => {
       'please launch Open Claw now',
       'please launch OpenClaw now'
     )
-    expect(result).toEqual([
-      { original: 'Open Claw', corrected: 'OpenClaw' },
-    ])
+    expect(result).toEqual([{ original: 'Open Claw', corrected: 'OpenClaw' }])
   })
 })
