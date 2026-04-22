@@ -26,6 +26,50 @@ describe('applyDictionary', () => {
       ])
     ).toBe('OpenClaw is ready.')
   })
+
+  test('returns string when called without opts', () => {
+    const result = applyDictionary('hello', [])
+    expect(typeof result).toBe('string')
+  })
+
+  test('returns { text, appliedEntries } when trackApplied: true and a replacement matches', () => {
+    const entry = {
+      kind: 'replacement' as const,
+      from: 'BTW',
+      text: 'by the way',
+      source: 'manual' as const,
+    }
+    const result = applyDictionary('BTW, thanks.', [entry], {
+      trackApplied: true,
+    })
+    expect(result.text).toBe('by the way, thanks.')
+    expect(result.appliedEntries).toEqual([entry])
+  })
+
+  test('returns { text, appliedEntries } when trackApplied: true and a fuzzy entry matches', () => {
+    const entry = {
+      kind: 'fuzzy' as const,
+      text: 'OpenClaw',
+      source: 'auto' as const,
+    }
+    const result = applyDictionary('Open Claw is ready.', [entry], {
+      trackApplied: true,
+    })
+    expect(result.text).toBe('OpenClaw is ready.')
+    expect(result.appliedEntries).toEqual([entry])
+  })
+
+  test('returns empty appliedEntries when trackApplied: true but nothing matches', () => {
+    const result = applyDictionary(
+      'nothing here',
+      [{ kind: 'fuzzy', text: 'OpenClaw', source: 'auto' }],
+      {
+        trackApplied: true,
+      }
+    )
+    expect(result.text).toBe('nothing here')
+    expect(result.appliedEntries).toEqual([])
+  })
 })
 
 describe('ratio scores', () => {

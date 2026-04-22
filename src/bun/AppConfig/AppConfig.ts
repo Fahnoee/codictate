@@ -198,6 +198,7 @@ export class AppConfig {
   private formatting: FormattingSettings
   private audioDucking: AudioDuckingSettings
   private dictionary: DictionarySettings
+  private _recentlyAppliedEntries: DictionaryEntry[] = []
   private recordingIndicatorOnboardingPreviewMode: RecordingIndicatorMode | null =
     null
 
@@ -513,10 +514,34 @@ export class AppConfig {
       const key = normalizeDictionaryKey(kind, text, from)
       if (seen.has(key)) continue
       seen.add(key)
+      const confidence =
+        typeof record.confidence === 'number' &&
+        Number.isFinite(record.confidence)
+          ? record.confidence
+          : undefined
+      const timesApplied =
+        typeof record.timesApplied === 'number' &&
+        Number.isFinite(record.timesApplied)
+          ? record.timesApplied
+          : undefined
+      const timesAccepted =
+        typeof record.timesAccepted === 'number' &&
+        Number.isFinite(record.timesAccepted)
+          ? record.timesAccepted
+          : undefined
+      const timesReverted =
+        typeof record.timesReverted === 'number' &&
+        Number.isFinite(record.timesReverted)
+          ? record.timesReverted
+          : undefined
+      const confidenceFields =
+        confidence !== undefined
+          ? { confidence, timesApplied, timesAccepted, timesReverted }
+          : {}
       parsed.push(
         kind === 'replacement'
-          ? { kind, from, text, source }
-          : { kind, text, source }
+          ? { kind, from, text, source, ...confidenceFields }
+          : { kind, text, source, ...confidenceFields }
       )
     }
     return parsed
@@ -1509,10 +1534,86 @@ export class AppConfig {
     return this.updateDictionarySettings({ candidates: nextCandidates })
   }
 
+  public notifyAppliedEntries(entries: DictionaryEntry[]): void {
+    this._recentlyAppliedEntries = entries
+  }
+
+  public async acceptPreviouslyAppliedEntries(): Promise<void> {
+    if (this._recentlyAppliedEntries.length === 0) return
+    let changed = false
+    for (const applied of this._recentlyAppliedEntries) {
+      if (applied.confidence === undefined) continue
+      const idx = this.dictionary.entries.findIndex(
+        (e) =>
+          e.kind === applied.kind &&
+          e.text === applied.text &&
+          e.from === applied.from
+      )
+      if (idx === -1) continue
+      const entry = this.dictionary.entries[idx]
+      this.dictionary.entries[idx] = {
+        ...entry,
+        confidence: (entry.confidence ?? 1) + 1,
+        timesAccepted: (entry.timesAccepted ?? 0) + 1,
+      }
+      changed = true
+    }
+    this._recentlyAppliedEntries = []
+    if (changed) await this.saveDictionary()
+  }
+
+  private async _decrementEntryConfidence(
+    applied: DictionaryEntry
+  ): Promise<void> {
+    const idx = this.dictionary.entries.findIndex(
+      (e) =>
+        e.kind === applied.kind &&
+        e.text === applied.text &&
+        e.from === applied.from
+    )
+    if (idx === -1) return
+    const entry = this.dictionary.entries[idx]
+    if (entry.confidence === undefined) return
+    const nextConfidence = entry.confidence - 1
+    if (nextConfidence <= 0) {
+      this.dictionary.entries = this.dictionary.entries.filter(
+        (_, i) => i !== idx
+      )
+    } else {
+      this.dictionary.entries[idx] = {
+        ...entry,
+        confidence: nextConfidence,
+        timesReverted: (entry.timesReverted ?? 0) + 1,
+      }
+    }
+    await this.saveDictionary()
+  }
+
   public async stageAutoLearnCorrection(
     original: string,
     corrected: string
-  ): Promise<'ignored' | 'staged' | 'committed' | 'already-committed'> {
+  ): Promise<
+    'ignored' | 'staged' | 'committed' | 'already-committed' | 'reverted'
+  > {
+    const revertedEntry = this._recentlyAppliedEntries.find(
+      (e) =>
+        e.confidence !== undefined &&
+        e.text.toLowerCase() === original.toLowerCase() &&
+        corrected.toLowerCase() !== original.toLowerCase()
+    )
+    if (revertedEntry) {
+      this._recentlyAppliedEntries = this._recentlyAppliedEntries.filter(
+        (e) =>
+          !(
+            e.kind === revertedEntry.kind &&
+            e.text === revertedEntry.text &&
+            e.from === revertedEntry.from
+          )
+      )
+      await this._decrementEntryConfidence(revertedEntry)
+      return 'reverted'
+    }
+
     const result = stageDictionaryCandidate({
       candidates: this.dictionary.candidates,
       entries: this.dictionary.entries,

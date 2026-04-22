@@ -4,7 +4,7 @@ import type {
 } from '../../../shared/types'
 import { ratio } from './apply-dictionary'
 
-export const AUTO_LEARN_COMMIT_THRESHOLD = 2
+export const AUTO_LEARN_COMMIT_THRESHOLD = 1
 
 // Single-word corrections with high character similarity are variants of the
 // same proper noun (e.g. "Electrobon" → "Electrobun") and benefit from fuzzy
@@ -149,8 +149,23 @@ export function stageDictionaryCandidate(params: {
   if (nextCount >= AUTO_LEARN_COMMIT_THRESHOLD) {
     const committedEntry: Omit<DictionaryEntry, 'source'> =
       kind === 'fuzzy'
-        ? { kind: 'fuzzy', text: corrected }
-        : { kind: 'replacement', from: original, text: corrected }
+        ? {
+            kind: 'fuzzy',
+            text: corrected,
+            confidence: 1,
+            timesApplied: 0,
+            timesAccepted: 0,
+            timesReverted: 0,
+          }
+        : {
+            kind: 'replacement',
+            from: original,
+            text: corrected,
+            confidence: 1,
+            timesApplied: 0,
+            timesAccepted: 0,
+            timesReverted: 0,
+          }
     return {
       candidates: withoutSameOriginal,
       committedEntry,

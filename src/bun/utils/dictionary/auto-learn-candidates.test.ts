@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  AUTO_LEARN_COMMIT_THRESHOLD,
   invalidateDictionaryCandidatesForText,
   parseDictionaryCandidates,
   stageDictionaryCandidate,
@@ -19,30 +18,9 @@ describe('parseDictionaryCandidates', () => {
 })
 
 describe('stageDictionaryCandidate', () => {
-  test('stages the first correction hit', () => {
+  test('commits phonetically distant pair immediately as exact replacement', () => {
     const result = stageDictionaryCandidate({
       candidates: [],
-      entries: [],
-      original: 'Alice',
-      corrected: 'Aliz',
-    })
-
-    expect(result.outcome).toBe('staged')
-    expect(result.committedEntry).toBeNull()
-    expect(result.candidates).toEqual([
-      { from: 'Alice', to: 'Aliz', corrections: 1 },
-    ])
-  })
-
-  test('commits phonetically distant pair as exact replacement', () => {
-    const result = stageDictionaryCandidate({
-      candidates: [
-        {
-          from: 'Alice',
-          to: 'Aliz',
-          corrections: AUTO_LEARN_COMMIT_THRESHOLD - 1,
-        },
-      ],
       entries: [],
       original: 'Alice',
       corrected: 'Aliz',
@@ -53,19 +31,17 @@ describe('stageDictionaryCandidate', () => {
       kind: 'replacement',
       from: 'Alice',
       text: 'Aliz',
+      confidence: 1,
+      timesApplied: 0,
+      timesAccepted: 0,
+      timesReverted: 0,
     })
     expect(result.candidates).toEqual([])
   })
 
-  test('commits near-homophone pair as fuzzy entry', () => {
+  test('commits near-homophone pair immediately as fuzzy entry', () => {
     const result = stageDictionaryCandidate({
-      candidates: [
-        {
-          from: 'Electrobon',
-          to: 'Electrobun',
-          corrections: AUTO_LEARN_COMMIT_THRESHOLD - 1,
-        },
-      ],
+      candidates: [],
       entries: [],
       original: 'Electrobon',
       corrected: 'Electrobun',
@@ -75,19 +51,17 @@ describe('stageDictionaryCandidate', () => {
     expect(result.committedEntry).toEqual({
       kind: 'fuzzy',
       text: 'Electrobun',
+      confidence: 1,
+      timesApplied: 0,
+      timesAccepted: 0,
+      timesReverted: 0,
     })
     expect(result.candidates).toEqual([])
   })
 
-  test('commits split-word compound corrections as fuzzy entries', () => {
+  test('commits split-word compound corrections immediately as fuzzy entries', () => {
     const result = stageDictionaryCandidate({
-      candidates: [
-        {
-          from: 'Open Claw',
-          to: 'OpenClaw',
-          corrections: AUTO_LEARN_COMMIT_THRESHOLD - 1,
-        },
-      ],
+      candidates: [],
       entries: [],
       original: 'Open Claw',
       corrected: 'OpenClaw',
@@ -97,19 +71,17 @@ describe('stageDictionaryCandidate', () => {
     expect(result.committedEntry).toEqual({
       kind: 'fuzzy',
       text: 'OpenClaw',
+      confidence: 1,
+      timesApplied: 0,
+      timesAccepted: 0,
+      timesReverted: 0,
     })
     expect(result.candidates).toEqual([])
   })
 
   test('does not re-commit if fuzzy entry for corrected term already exists', () => {
     const result = stageDictionaryCandidate({
-      candidates: [
-        {
-          from: 'Electrobon',
-          to: 'Electrobun',
-          corrections: AUTO_LEARN_COMMIT_THRESHOLD - 1,
-        },
-      ],
+      candidates: [],
       entries: [{ kind: 'fuzzy', text: 'Electrobun', source: 'manual' }],
       original: 'Electrobon',
       corrected: 'Electrobun',
@@ -119,7 +91,23 @@ describe('stageDictionaryCandidate', () => {
     expect(result.committedEntry).toBeNull()
   })
 
-  test('replaces a conflicting candidate for the same original phrase', () => {
+  test('old persisted candidate with corrections below threshold is still staged', () => {
+    // Candidates from before the threshold change (corrections: 0 isn't valid,
+    // but corrections: 1 with threshold=1 now commits on the next hit).
+    // This test documents that an existing candidate gets replaced/committed
+    // when the same pair is seen again.
+    const result = stageDictionaryCandidate({
+      candidates: [{ from: 'Alice', to: 'Aliz', corrections: 1 }],
+      entries: [],
+      original: 'Alice',
+      corrected: 'Aliz',
+    })
+
+    expect(result.outcome).toBe('committed')
+    expect(result.candidates).toEqual([])
+  })
+
+  test('replaces a conflicting candidate for the same original phrase and commits immediately', () => {
     const result = stageDictionaryCandidate({
       candidates: [{ from: 'Alice', to: 'Elise', corrections: 1 }],
       entries: [],
@@ -127,10 +115,8 @@ describe('stageDictionaryCandidate', () => {
       corrected: 'Aliz',
     })
 
-    expect(result.outcome).toBe('staged')
-    expect(result.candidates).toEqual([
-      { from: 'Alice', to: 'Aliz', corrections: 1 },
-    ])
+    expect(result.outcome).toBe('committed')
+    expect(result.candidates).toEqual([])
   })
 })
 

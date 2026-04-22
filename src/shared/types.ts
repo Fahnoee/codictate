@@ -89,6 +89,11 @@ export interface DictionaryEntry {
   from?: string
   /** 'manual' = user typed it in settings; 'auto' = learned from a post-paste correction */
   source: 'manual' | 'auto'
+  /** Confidence score for auto-learned entries. undefined = legacy/manual entry (not subject to auto-removal). */
+  confidence?: number
+  timesApplied?: number
+  timesAccepted?: number
+  timesReverted?: number
 }
 
 export interface DictionaryCandidate {

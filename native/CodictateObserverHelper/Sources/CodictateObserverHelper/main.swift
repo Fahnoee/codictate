@@ -77,7 +77,7 @@ func finishObservation() {
   guard
     AXUIElementCopyAttributeValue(
       element, kAXValueAttribute as CFString, &valRef) == .success,
-    let snapshotAfter = valRef as? String
+    let snapshotAfter = (valRef as? String) ?? (valRef as? NSAttributedString)?.string
   else { return }
 
   var payload = [
@@ -141,7 +141,7 @@ func startObservation(targetText: String?) {
   var valRef: CFTypeRef?
   guard
     AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valRef) == .success,
-    let snapshot = valRef as? String
+    let snapshot = (valRef as? String) ?? (valRef as? NSAttributedString)?.string
   else {
     // Element doesn't expose text value — browser/Electron/unsupported app
     emit(["type": "unsupported"])

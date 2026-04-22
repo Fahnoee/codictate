@@ -405,6 +405,16 @@ export function SectionDictionary({ settings }: Props) {
                         <SparkleIcon />
                       </span>
                     )}
+                    {entry.source === "auto" &&
+                      entry.confidence !== undefined &&
+                      entry.confidence < 3 && (
+                        <span
+                          className="shrink-0 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[11px] uppercase tracking-[0.1em] text-amber-300/70"
+                          title={`Provisional — accepted ${entry.timesAccepted ?? 0} time${(entry.timesAccepted ?? 0) !== 1 ? "s" : ""} without revert`}
+                        >
+                          provisional
+                        </span>
+                      )}
                     <div className="min-w-0">
                       {entry.kind === "replacement" ? (
                         <div
@@ -469,7 +479,8 @@ export function SectionDictionary({ settings }: Props) {
               Pending auto-learn
             </div>
             <div className="mt-1 text-[15px] leading-snug text-white/44">
-              One more matching correction will add these automatically.
+              These were pending before auto-learn was updated. They won't be
+              applied automatically.
             </div>
           </div>
           <ul>

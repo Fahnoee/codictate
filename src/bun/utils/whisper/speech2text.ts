@@ -235,15 +235,25 @@ export const speech2text = async (
   modelId: string,
   translateToEnglish: boolean,
   formattingSettings: FormattingRuntimeSettings,
-  dictionaryEntries: DictionaryEntry[] = []
+  dictionaryEntries: DictionaryEntry[] = [],
+  onBeforeTranscription?: () => Promise<void>,
+  onAppliedEntries?: (entries: DictionaryEntry[]) => void
 ) => {
+  if (onBeforeTranscription) await onBeforeTranscription()
+
   let transcript = await transcribe(
     whisperLanguageCode,
     modelId,
     translateToEnglish
   )
   if (dictionaryEntries.length > 0) {
-    transcript = applyDictionary(transcript, dictionaryEntries)
+    const result = applyDictionary(transcript, dictionaryEntries, {
+      trackApplied: true,
+    })
+    transcript = result.text
+    if (onAppliedEntries && result.appliedEntries.length > 0) {
+      onAppliedEntries(result.appliedEntries)
+    }
   }
   const formatterRequest = await buildFormatterRequest(
     transcript,

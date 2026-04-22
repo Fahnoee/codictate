@@ -54,11 +54,30 @@ function splitPunct(token: string): [string, string, string] {
   return [lead, core, trail]
 }
 
+export interface ApplyDictionaryOpts {
+  trackApplied: true
+}
+
 export function applyDictionary(
   text: string,
   entries: DictionaryEntry[]
-): string {
-  if (entries.length === 0) return text
+): string
+export function applyDictionary(
+  text: string,
+  entries: DictionaryEntry[],
+  opts: ApplyDictionaryOpts
+): { text: string; appliedEntries: DictionaryEntry[] }
+export function applyDictionary(
+  text: string,
+  entries: DictionaryEntry[],
+  opts?: ApplyDictionaryOpts
+): string | { text: string; appliedEntries: DictionaryEntry[] } {
+  const tracked = opts?.trackApplied === true
+  const appliedEntries: DictionaryEntry[] = []
+
+  if (entries.length === 0) {
+    return tracked ? { text, appliedEntries } : text
+  }
 
   const tokens = text.split(/(\s+)/)
   const wordIdxs: number[] = []
@@ -87,12 +106,12 @@ export function applyDictionary(
         tokens[idxs[j]] = ''
       }
       wordIdxs.splice(wi + 1, n - 1)
+      if (tracked) appliedEntries.push(entry)
     }
   }
 
-  for (const { text: entry } of entries.filter(
-    (item) => item.kind === 'fuzzy'
-  )) {
+  for (const fuzzyEntry of entries.filter((item) => item.kind === 'fuzzy')) {
+    const entry = fuzzyEntry.text
     const entryLower = entry.toLowerCase()
     const entryWords = entryLower.split(/\s+/)
     const isMultiWord = entryWords.length > 1
@@ -119,6 +138,7 @@ export function applyDictionary(
               tokens[idx + 1] = ''
               tokens[idx2] = ''
               wordIdxs.splice(wi + 1, 1)
+              if (tracked) appliedEntries.push(fuzzyEntry)
             }
           }
           continue
@@ -126,6 +146,7 @@ export function applyDictionary(
 
         if (ratio(core.toLowerCase(), entryLower) >= THRESHOLD) {
           tokens[idx] = lead + entry + trail
+          if (tracked) appliedEntries.push(fuzzyEntry)
           continue
         }
 
@@ -143,6 +164,7 @@ export function applyDictionary(
             tokens[idx + 1] = ''
             tokens[idx2] = ''
             wordIdxs.splice(wi + 1, 1)
+            if (tracked) appliedEntries.push(fuzzyEntry)
           }
         }
       }
@@ -162,12 +184,14 @@ export function applyDictionary(
             tokens[idxs[j]] = ''
           }
           wordIdxs.splice(wi + 1, n - 1)
+          if (tracked) appliedEntries.push(fuzzyEntry)
         }
       }
     }
   }
 
-  return tokens.join('')
+  const result = tokens.join('')
+  return tracked ? { text: result, appliedEntries } : result
 }
 
 // ── Auto-learning: extract correction candidates from a before/after diff ──
