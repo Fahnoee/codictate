@@ -301,6 +301,9 @@ export type WebviewRPCType = {
       triggerPermissionPrompt: { pane: SettingsPane }
       triggerUpdateCheck: {}
       triggerApplyUpdate: {}
+      windowMinimize: {}
+      windowToggleMaximize: {}
+      windowClose: {}
       copyDebugLog: {}
       downloadWhisperModel: { modelId: string }
       cancelModelDownload: { modelId: string }

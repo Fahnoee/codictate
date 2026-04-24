@@ -38,6 +38,7 @@ import {
   UnderlinedDictationTerm,
 } from "../Common/DictationShortcutStartHint";
 import { InstantTooltip } from "../Common/InstantTooltip";
+import { WindowTitleBar } from "../Common/WindowTitleBar";
 import {
   WordmarkCodictate,
   wordmarkCodictateTypographyClass,
@@ -311,7 +312,7 @@ export function ReadyScreen({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none overflow-hidden">
-      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 h-7 hover:bg-white/10 transition-colors duration-200" />
+      <WindowTitleBar platform={settings?.capabilities.platform} />
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}

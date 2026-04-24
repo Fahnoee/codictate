@@ -225,6 +225,20 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         },
         triggerUpdateCheck: () => deps.onTriggerUpdateCheck?.(),
         triggerApplyUpdate: () => deps.onApplyUpdate?.(),
+        windowMinimize: () => {
+          mainWindow?.minimize()
+        },
+        windowToggleMaximize: () => {
+          if (!mainWindow) return
+          if (mainWindow.isMaximized()) {
+            mainWindow.unmaximize()
+          } else {
+            mainWindow.maximize()
+          }
+        },
+        windowClose: () => {
+          mainWindow?.close()
+        },
         copyDebugLog: () => {
           copyLogToClipboard().catch(console.error)
         },

@@ -135,6 +135,18 @@ export function triggerApplyUpdate(): void {
   rpc.send.triggerApplyUpdate({})
 }
 
+export function windowMinimize(): void {
+  rpc.send.windowMinimize({})
+}
+
+export function windowToggleMaximize(): void {
+  rpc.send.windowToggleMaximize({})
+}
+
+export function windowClose(): void {
+  rpc.send.windowClose({})
+}
+
 export async function setDebugMode(enabled: boolean): Promise<boolean> {
   return rpc.request.updateGeneralSettings({ patch: { debugMode: enabled } })
 }
