@@ -27,17 +27,24 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
-    GetWindowRect, HC_ACTION, HHOOK, HTCAPTION, HWND_TOPMOST, KBDLLHOOKSTRUCT, LWA_COLORKEY, MSG,
-    PostMessageW, PostQuitMessage, PostThreadMessageW, RegisterClassW, SW_HIDE, SW_SHOW,
-    SWP_NOACTIVATE, SetLayeredWindowAttributes, SetWindowPos, SetWindowsHookExW, ShowWindow,
-    TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_CLOSE, WM_DESTROY, WM_KEYDOWN,
-    WM_KEYUP, WM_MOVE, WM_NCHITTEST, WM_PAINT, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    GetWindowRect, HC_ACTION, HHOOK, HTCAPTION, HWND_TOPMOST, KBDLLHOOKSTRUCT, KillTimer,
+    LWA_COLORKEY, MSG, PostMessageW, PostQuitMessage, PostThreadMessageW, RegisterClassW, SW_HIDE,
+    SW_SHOW, SWP_NOACTIVATE, SetLayeredWindowAttributes, SetTimer, SetWindowPos, SetWindowsHookExW,
+    ShowWindow, TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_CLOSE, WM_DESTROY,
+    WM_KEYDOWN, WM_KEYUP, WM_MOVE, WM_NCHITTEST, WM_PAINT, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_POPUP,
 };
 
 static HOOK_STATE: OnceLock<Arc<Mutex<HookState>>> = OnceLock::new();
 static INDICATOR_STATE: OnceLock<Arc<Mutex<IndicatorState>>> = OnceLock::new();
+static INDICATOR_ANIMATION: OnceLock<Mutex<IndicatorAnimation>> = OnceLock::new();
 static OUTPUT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+const INDICATOR_TIMER_ID: usize = 1;
+const INDICATOR_FRAME_MS: u32 = 33;
+const INDICATOR_MAX_ORB_SIZE: f32 = 56.0;
+const INDICATOR_READY_SCALE: f32 = 38.0 / INDICATOR_MAX_ORB_SIZE;
 
 #[derive(Debug, Clone, Deserialize)]
 struct SwallowRule {
@@ -179,6 +186,22 @@ struct IndicatorState {
     frame: IndicatorFrame,
     status: IndicatorStatus,
     quit: bool,
+}
+
+struct IndicatorAnimation {
+    animation_time: f32,
+    current_scale: f32,
+    last_tick: Instant,
+}
+
+impl Default for IndicatorAnimation {
+    fn default() -> Self {
+        Self {
+            animation_time: 0.0,
+            current_scale: INDICATOR_READY_SCALE,
+            last_tick: Instant::now(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -978,9 +1001,21 @@ fn draw_bar(hdc: HDC, rect: RECT, color: u32, radius: i32) {
     }
 }
 
-fn draw_ready_bars(hdc: HDC, orb_rect: RECT, active: bool) {
+fn interpolate(progress: f32, values: &[f32]) -> f32 {
+    if values.len() < 2 {
+        return values.first().copied().unwrap_or(1.0);
+    }
+
+    let segment_count = values.len() - 1;
+    let scaled = progress.clamp(0.0, 0.999_999) * segment_count as f32;
+    let index = scaled.floor() as usize;
+    let local = scaled - index as f32;
+    values[index] + (values[index + 1] - values[index]) * local
+}
+
+fn draw_ready_bars(hdc: HDC, orb_rect: RECT, active: bool, animation_time: f32) {
     let width = (orb_rect.right - orb_rect.left).max(1) as f32;
-    let scale = width / 56.0;
+    let scale = width / INDICATOR_MAX_ORB_SIZE;
     let row_height = (16.0 * scale).round() as i32;
     let bar_width = (3.0 * scale).round().max(1.0) as i32;
     let gap = (2.0 * scale).round().max(1.0) as i32;
@@ -990,7 +1025,14 @@ fn draw_ready_bars(hdc: HDC, orb_rect: RECT, active: bool) {
     let bases = [0.45_f32, 0.75, 1.0, 0.7, 0.5];
 
     for (index, base) in bases.iter().enumerate() {
-        let height = ((row_height as f32) * base).round().max(2.0) as i32;
+        let scale_y = if active {
+            let duration = 0.58 + index as f32 * 0.06;
+            let progress = ((animation_time + index as f32 * 0.09) / duration).rem_euclid(1.0);
+            interpolate(progress, &[*base, base * 0.35 + 0.12, base + 0.18, *base])
+        } else {
+            *base
+        };
+        let height = ((row_height as f32) * scale_y).round().max(2.0) as i32;
         let x = origin_x + index as i32 * (bar_width + gap);
         let y = origin_y + row_height - height;
         let color = if active {
@@ -1020,19 +1062,20 @@ fn draw_ready_bars(hdc: HDC, orb_rect: RECT, active: bool) {
     }
 }
 
-fn draw_transcribing_bars(hdc: HDC, orb_rect: RECT) {
+fn draw_transcribing_bars(hdc: HDC, orb_rect: RECT, animation_time: f32) {
     let width = (orb_rect.right - orb_rect.left).max(1) as f32;
-    let scale = width / 56.0;
+    let scale = width / INDICATOR_MAX_ORB_SIZE;
     let row_height = (16.0 * scale).round() as i32;
     let bar_width = (3.0 * scale).round().max(1.0) as i32;
     let gap = (2.0 * scale).round().max(1.0) as i32;
     let total_width = bar_width * 3 + gap * 2;
     let origin_x = (orb_rect.left + orb_rect.right - total_width) / 2;
     let origin_y = (orb_rect.top + orb_rect.bottom - row_height) / 2;
-    let bases = [0.35_f32, 1.0, 0.35];
 
-    for (index, base) in bases.iter().enumerate() {
-        let height = ((row_height as f32) * base).round().max(2.0) as i32;
+    for index in 0..3 {
+        let progress = ((animation_time + index as f32 * 0.14) / 0.85).rem_euclid(1.0);
+        let scale_y = interpolate(progress, &[0.28, 1.0, 0.28]);
+        let height = ((row_height as f32) * scale_y).round().max(2.0) as i32;
         let x = origin_x + index as i32 * (bar_width + gap);
         let y = origin_y + row_height - height;
         draw_bar(
@@ -1049,12 +1092,14 @@ fn draw_transcribing_bars(hdc: HDC, orb_rect: RECT) {
     }
 }
 
-fn draw_indicator_content(hdc: HDC, status: IndicatorStatus, bounds: RECT) {
-    let max_orb_size = 56;
-    let display_size = match status {
-        IndicatorStatus::Ready => 38,
-        IndicatorStatus::Recording | IndicatorStatus::Transcribing => max_orb_size,
-    };
+fn draw_indicator_content(
+    hdc: HDC,
+    status: IndicatorStatus,
+    bounds: RECT,
+    animation_time: f32,
+    current_scale: f32,
+) {
+    let display_size = (INDICATOR_MAX_ORB_SIZE * current_scale).round() as i32;
     let orb_rect = RECT {
         left: (bounds.left + bounds.right - display_size) / 2,
         top: (bounds.top + bounds.bottom - display_size) / 2,
@@ -1072,9 +1117,9 @@ fn draw_indicator_content(hdc: HDC, status: IndicatorStatus, bounds: RECT) {
     draw_filled_ellipse(hdc, orb_rect, indicator_color(status), outline, 1);
 
     match status {
-        IndicatorStatus::Ready => draw_ready_bars(hdc, orb_rect, false),
-        IndicatorStatus::Recording => draw_ready_bars(hdc, orb_rect, true),
-        IndicatorStatus::Transcribing => draw_transcribing_bars(hdc, orb_rect),
+        IndicatorStatus::Ready => draw_ready_bars(hdc, orb_rect, false, animation_time),
+        IndicatorStatus::Recording => draw_ready_bars(hdc, orb_rect, true, animation_time),
+        IndicatorStatus::Transcribing => draw_transcribing_bars(hdc, orb_rect, animation_time),
     }
 }
 
@@ -1099,9 +1144,44 @@ unsafe extern "system" fn indicator_proc(
                 .and_then(|state| state.lock().ok().map(|state| state.status))
                 .unwrap_or_default();
 
-            draw_indicator_content(hdc, status, rect);
+            let (animation_time, current_scale) = INDICATOR_ANIMATION
+                .get()
+                .and_then(|animation| {
+                    animation
+                        .lock()
+                        .ok()
+                        .map(|animation| (animation.animation_time, animation.current_scale))
+                })
+                .unwrap_or((0.0, INDICATOR_READY_SCALE));
+
+            draw_indicator_content(hdc, status, rect, animation_time, current_scale);
             unsafe { EndPaint(hwnd, &paint) };
             0
+        }
+        WM_TIMER => {
+            if wparam == INDICATOR_TIMER_ID {
+                let status = INDICATOR_STATE
+                    .get()
+                    .and_then(|state| state.lock().ok().map(|state| state.status))
+                    .unwrap_or_default();
+                if let Some(animation) = INDICATOR_ANIMATION.get() {
+                    if let Ok(mut animation) = animation.lock() {
+                        let now = Instant::now();
+                        let delta = now.duration_since(animation.last_tick).as_secs_f32();
+                        animation.last_tick = now;
+                        animation.animation_time += delta;
+                        let target_scale = match status {
+                            IndicatorStatus::Ready => INDICATOR_READY_SCALE,
+                            IndicatorStatus::Recording | IndicatorStatus::Transcribing => 1.0,
+                        };
+                        let speed = (delta * 14.0).min(1.0);
+                        animation.current_scale += (target_scale - animation.current_scale) * speed;
+                    }
+                }
+                unsafe { InvalidateRect(hwnd, std::ptr::null(), 0) };
+                return 0;
+            }
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
         WM_NCHITTEST => HTCAPTION as LRESULT,
         WM_MOVE => {
@@ -1120,6 +1200,7 @@ unsafe extern "system" fn indicator_proc(
             unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
         WM_DESTROY => {
+            unsafe { KillTimer(hwnd, INDICATOR_TIMER_ID) };
             unsafe { PostQuitMessage(0) };
             0
         }
@@ -1131,6 +1212,12 @@ fn apply_indicator_state(hwnd: HWND, state: &IndicatorState) {
     unsafe {
         InvalidateRect(hwnd, std::ptr::null(), 1);
         if state.visible {
+            if let Some(animation) = INDICATOR_ANIMATION.get() {
+                if let Ok(mut animation) = animation.lock() {
+                    animation.last_tick = Instant::now();
+                }
+            }
+            SetTimer(hwnd, INDICATOR_TIMER_ID, INDICATOR_FRAME_MS, None);
             SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
@@ -1143,6 +1230,7 @@ fn apply_indicator_state(hwnd: HWND, state: &IndicatorState) {
             ShowWindow(hwnd, SW_SHOW);
             UpdateWindow(hwnd);
         } else {
+            KillTimer(hwnd, INDICATOR_TIMER_ID);
             ShowWindow(hwnd, SW_HIDE);
         }
     }
@@ -1224,6 +1312,7 @@ fn spawn_indicator_command_thread(
 fn handle_indicator() -> ExitCode {
     let shared = Arc::new(Mutex::new(IndicatorState::default()));
     let _ = INDICATOR_STATE.set(shared.clone());
+    let _ = INDICATOR_ANIMATION.set(Mutex::new(IndicatorAnimation::default()));
     let class_name = to_wide("CodictateWindowsIndicator");
     let instance = unsafe { GetModuleHandleW(std::ptr::null()) };
     let wc = WNDCLASSW {
