@@ -56,7 +56,6 @@ import {
   LEGACY_CONFIG_PATH,
   MAIN_CONFIG_PATH,
   getPlatformCapabilities,
-  getPlatformRuntime,
 } from '../platform/runtime'
 
 const CONFIG_DIR = APP_DATA_DIR
@@ -346,20 +345,10 @@ export class AppConfig {
       Number.isFinite((raw.recordingIndicatorPosition as { x: unknown }).x) &&
       Number.isFinite((raw.recordingIndicatorPosition as { y: unknown }).y)
     ) {
-      const position = {
+      this.recordingIndicatorPosition = {
         x: Number((raw.recordingIndicatorPosition as { x: unknown }).x),
         y: Number((raw.recordingIndicatorPosition as { y: unknown }).y),
       }
-      // Early Windows indicator builds could persist test/top-left positions
-      // before default placement and DPI handling were aligned with macOS.
-      const isStaleWindowsIndicatorPosition =
-        getPlatformRuntime() === 'windows' &&
-        position.x >= 0 &&
-        position.x <= 160 &&
-        position.y >= 0 &&
-        position.y <= 160
-      this.recordingIndicatorPosition =
-        isStaleWindowsIndicatorPosition ? null : position
     } else if (raw.recordingIndicatorPosition === null) {
       this.recordingIndicatorPosition = null
     }
