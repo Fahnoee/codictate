@@ -25,13 +25,13 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_RMENU, VK_RSHIFT, VK_SPACE,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    GetClientRect, GetMessageW, GetWindowRect, HC_ACTION, HHOOK, HTCAPTION, HWND_TOPMOST,
-    KBDLLHOOKSTRUCT, LWA_COLORKEY, MSG, PostQuitMessage, PostThreadMessageW, RegisterClassW,
-    SW_HIDE, SW_SHOW, SWP_NOACTIVATE, SetLayeredWindowAttributes, SetWindowPos, SetWindowsHookExW,
-    ShowWindow, TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_DESTROY,
-    WM_KEYDOWN, WM_KEYUP, WM_MOVE, WM_NCHITTEST, WM_PAINT, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
-    WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    CallNextHookEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
+    GetWindowRect, HC_ACTION, HHOOK, HTCAPTION, HWND_TOPMOST, KBDLLHOOKSTRUCT, LWA_COLORKEY, MSG,
+    PostMessageW, PostQuitMessage, PostThreadMessageW, RegisterClassW, SW_HIDE, SW_SHOW,
+    SWP_NOACTIVATE, SetLayeredWindowAttributes, SetWindowPos, SetWindowsHookExW, ShowWindow,
+    TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_CLOSE, WM_DESTROY, WM_KEYDOWN,
+    WM_KEYUP, WM_MOVE, WM_NCHITTEST, WM_PAINT, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
+    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 static HOOK_STATE: OnceLock<Arc<Mutex<HookState>>> = OnceLock::new();
@@ -172,7 +172,7 @@ impl Default for IndicatorFrame {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 struct IndicatorState {
     visible: bool,
     frame: IndicatorFrame,
@@ -925,8 +925,6 @@ fn handle_keyboard_hook() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-const INDICATOR_MESSAGE: u32 = WM_APP + 1;
-
 fn to_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
@@ -1026,13 +1024,12 @@ fn apply_indicator_state(hwnd: HWND, state: &IndicatorState) {
     }
 }
 
-fn handle_indicator() -> ExitCode {
-    let shared = Arc::new(Mutex::new(IndicatorState::default()));
-    let _ = INDICATOR_STATE.set(shared.clone());
-    let indicator_thread_id = unsafe { GetCurrentThreadId() };
-    let command_state = shared.clone();
-
-    let command_thread = thread::spawn(move || {
+fn spawn_indicator_command_thread(
+    hwnd_value: isize,
+    command_state: Arc<Mutex<IndicatorState>>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let hwnd = hwnd_value as HWND;
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let Ok(line) = line else {
@@ -1053,6 +1050,8 @@ fn handle_indicator() -> ExitCode {
                 }
             };
 
+            let mut should_exit = false;
+            let mut snapshot = None;
             if let Ok(mut state) = command_state.lock() {
                 match command {
                     IndicatorCommand::Show {
@@ -1073,19 +1072,34 @@ fn handle_indicator() -> ExitCode {
                     }
                     IndicatorCommand::Hide => state.visible = false,
                     IndicatorCommand::Status { status } => state.status = status,
-                    IndicatorCommand::Quit => state.quit = true,
+                    IndicatorCommand::Quit => {
+                        state.quit = true;
+                        should_exit = true;
+                    }
                 }
+                snapshot = Some(*state);
             }
 
-            let _ = unsafe { PostThreadMessageW(indicator_thread_id, INDICATOR_MESSAGE, 0, 0) };
+            if let Some(state) = snapshot {
+                apply_indicator_state(hwnd, &state);
+            }
+
+            if should_exit {
+                let _ = unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0) };
+                return;
+            }
         }
 
         if let Ok(mut state) = command_state.lock() {
             state.quit = true;
         }
-        let _ = unsafe { PostThreadMessageW(indicator_thread_id, INDICATOR_MESSAGE, 0, 0) };
-    });
+        let _ = unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0) };
+    })
+}
 
+fn handle_indicator() -> ExitCode {
+    let shared = Arc::new(Mutex::new(IndicatorState::default()));
+    let _ = INDICATOR_STATE.set(shared.clone());
     let class_name = to_wide("CodictateWindowsIndicator");
     let instance = unsafe { GetModuleHandleW(std::ptr::null()) };
     let wc = WNDCLASSW {
@@ -1132,6 +1146,8 @@ fn handle_indicator() -> ExitCode {
         ShowWindow(hwnd, SW_HIDE);
     }
 
+    let command_thread = spawn_indicator_command_thread(hwnd as isize, shared.clone());
+
     let _ = emit_json(json!({
         "status": "started",
         "platform": "windows",
@@ -1143,18 +1159,6 @@ fn handle_indicator() -> ExitCode {
         let result = unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) };
         if result <= 0 {
             break;
-        }
-
-        if message.message == INDICATOR_MESSAGE {
-            let should_quit = shared.lock().map(|state| state.quit).unwrap_or(true);
-            if should_quit {
-                unsafe { DestroyWindow(hwnd) };
-                break;
-            }
-            if let Ok(state) = shared.lock() {
-                apply_indicator_state(hwnd, &state);
-            }
-            continue;
         }
 
         unsafe {
