@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
     BLACK_BRUSH, BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint,
-    FillRect, GetStockObject, HDC, InvalidateRect, PAINTSTRUCT, PS_SOLID, SelectObject,
+    FillRect, GetStockObject, HDC, InvalidateRect, PAINTSTRUCT, PS_SOLID, RoundRect, SelectObject,
     UpdateWindow,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -936,23 +936,15 @@ fn rgb(r: u8, g: u8, b: u8) -> u32 {
 
 fn indicator_color(status: IndicatorStatus) -> u32 {
     match status {
-        IndicatorStatus::Ready => rgb(148, 163, 184),
-        IndicatorStatus::Recording => rgb(248, 72, 86),
-        IndicatorStatus::Transcribing => rgb(78, 166, 255),
+        IndicatorStatus::Ready => rgb(30, 32, 38),
+        IndicatorStatus::Recording => rgb(44, 26, 30),
+        IndicatorStatus::Transcribing => rgb(43, 31, 20),
     }
 }
 
-fn fill_rect(hdc: HDC, rect: RECT, color: u32) {
-    let brush = unsafe { CreateSolidBrush(color) };
-    unsafe {
-        FillRect(hdc, &rect, brush as _);
-        DeleteObject(brush as _);
-    }
-}
-
-fn draw_filled_ellipse(hdc: HDC, rect: RECT, fill: u32, outline: u32) {
+fn draw_filled_ellipse(hdc: HDC, rect: RECT, fill: u32, outline: u32, pen_width: i32) {
     let brush = unsafe { CreateSolidBrush(fill) };
-    let pen = unsafe { CreatePen(PS_SOLID, 2, outline) };
+    let pen = unsafe { CreatePen(PS_SOLID, pen_width, outline) };
     unsafe {
         let old_brush = SelectObject(hdc, brush as _);
         let old_pen = SelectObject(hdc, pen as _);
@@ -964,47 +956,125 @@ fn draw_filled_ellipse(hdc: HDC, rect: RECT, fill: u32, outline: u32) {
     }
 }
 
-fn draw_indicator_mark(hdc: HDC, status: IndicatorStatus, rect: RECT) {
-    match status {
-        IndicatorStatus::Ready => {
-            draw_filled_ellipse(hdc, rect, rgb(30, 36, 46), rgb(86, 98, 118));
-            let center = RECT {
-                left: rect.left + 19,
-                top: rect.top + 19,
-                right: rect.right - 19,
-                bottom: rect.bottom - 19,
-            };
-            draw_filled_ellipse(hdc, center, rgb(148, 163, 184), rgb(185, 196, 211));
-        }
-        IndicatorStatus::Recording => {
-            draw_filled_ellipse(hdc, rect, rgb(45, 20, 28), rgb(117, 38, 50));
-            let center = RECT {
-                left: rect.left + 16,
-                top: rect.top + 16,
-                right: rect.right - 16,
-                bottom: rect.bottom - 16,
-            };
-            draw_filled_ellipse(hdc, center, rgb(248, 72, 86), rgb(255, 154, 164));
-        }
-        IndicatorStatus::Transcribing => {
-            draw_filled_ellipse(hdc, rect, rgb(16, 31, 50), rgb(44, 93, 142));
-            let color = rgb(190, 224, 255);
-            let bars = [16, 24, 32, 22, 14];
-            for (i, height) in bars.iter().enumerate() {
-                let x = rect.left + 14 + (i as i32 * 7);
-                let mid = (rect.top + rect.bottom) / 2;
-                fill_rect(
-                    hdc,
-                    RECT {
-                        left: x,
-                        top: mid - (height / 2),
-                        right: x + 4,
-                        bottom: mid + (height / 2),
-                    },
-                    color,
-                );
+fn draw_bar(hdc: HDC, rect: RECT, color: u32, radius: i32) {
+    let brush = unsafe { CreateSolidBrush(color) };
+    let pen = unsafe { CreatePen(PS_SOLID, 1, color) };
+    unsafe {
+        let old_brush = SelectObject(hdc, brush as _);
+        let old_pen = SelectObject(hdc, pen as _);
+        RoundRect(
+            hdc,
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            radius,
+            radius,
+        );
+        SelectObject(hdc, old_pen);
+        SelectObject(hdc, old_brush);
+        DeleteObject(pen as _);
+        DeleteObject(brush as _);
+    }
+}
+
+fn draw_ready_bars(hdc: HDC, orb_rect: RECT, active: bool) {
+    let width = (orb_rect.right - orb_rect.left).max(1) as f32;
+    let scale = width / 56.0;
+    let row_height = (16.0 * scale).round() as i32;
+    let bar_width = (3.0 * scale).round().max(1.0) as i32;
+    let gap = (2.0 * scale).round().max(1.0) as i32;
+    let total_width = bar_width * 5 + gap * 4;
+    let origin_x = (orb_rect.left + orb_rect.right - total_width) / 2;
+    let origin_y = (orb_rect.top + orb_rect.bottom - row_height) / 2;
+    let bases = [0.45_f32, 0.75, 1.0, 0.7, 0.5];
+
+    for (index, base) in bases.iter().enumerate() {
+        let height = ((row_height as f32) * base).round().max(2.0) as i32;
+        let x = origin_x + index as i32 * (bar_width + gap);
+        let y = origin_y + row_height - height;
+        let color = if active {
+            match index {
+                0 | 4 => rgb(198, 68, 76),
+                1 | 3 => rgb(224, 78, 88),
+                _ => rgb(248, 86, 96),
             }
-        }
+        } else {
+            match index {
+                0 | 4 => rgb(126, 132, 142),
+                1 | 3 => rgb(146, 152, 162),
+                _ => rgb(178, 184, 194),
+            }
+        };
+        draw_bar(
+            hdc,
+            RECT {
+                left: x,
+                top: y,
+                right: x + bar_width,
+                bottom: origin_y + row_height,
+            },
+            color,
+            bar_width,
+        );
+    }
+}
+
+fn draw_transcribing_bars(hdc: HDC, orb_rect: RECT) {
+    let width = (orb_rect.right - orb_rect.left).max(1) as f32;
+    let scale = width / 56.0;
+    let row_height = (16.0 * scale).round() as i32;
+    let bar_width = (3.0 * scale).round().max(1.0) as i32;
+    let gap = (2.0 * scale).round().max(1.0) as i32;
+    let total_width = bar_width * 3 + gap * 2;
+    let origin_x = (orb_rect.left + orb_rect.right - total_width) / 2;
+    let origin_y = (orb_rect.top + orb_rect.bottom - row_height) / 2;
+    let bases = [0.35_f32, 1.0, 0.35];
+
+    for (index, base) in bases.iter().enumerate() {
+        let height = ((row_height as f32) * base).round().max(2.0) as i32;
+        let x = origin_x + index as i32 * (bar_width + gap);
+        let y = origin_y + row_height - height;
+        draw_bar(
+            hdc,
+            RECT {
+                left: x,
+                top: y,
+                right: x + bar_width,
+                bottom: origin_y + row_height,
+            },
+            rgb(218, 139, 62),
+            bar_width,
+        );
+    }
+}
+
+fn draw_indicator_content(hdc: HDC, status: IndicatorStatus, bounds: RECT) {
+    let max_orb_size = 56;
+    let display_size = match status {
+        IndicatorStatus::Ready => 38,
+        IndicatorStatus::Recording | IndicatorStatus::Transcribing => max_orb_size,
+    };
+    let orb_rect = RECT {
+        left: (bounds.left + bounds.right - display_size) / 2,
+        top: (bounds.top + bounds.bottom - display_size) / 2,
+        right: (bounds.left + bounds.right + display_size) / 2,
+        bottom: (bounds.top + bounds.bottom + display_size) / 2,
+    };
+
+    let outline = match status {
+        IndicatorStatus::Ready => rgb(38, 41, 48),
+        IndicatorStatus::Recording => rgb(58, 39, 43),
+        IndicatorStatus::Transcribing => rgb(66, 45, 26),
+    };
+
+    draw_filled_ellipse(hdc, orb_rect, rgb(2, 3, 5), rgb(15, 17, 22), 1);
+    draw_filled_ellipse(hdc, orb_rect, indicator_color(status), outline, 1);
+
+    match status {
+        IndicatorStatus::Ready => draw_ready_bars(hdc, orb_rect, false),
+        IndicatorStatus::Recording => draw_ready_bars(hdc, orb_rect, true),
+        IndicatorStatus::Transcribing => draw_transcribing_bars(hdc, orb_rect),
     }
 }
 
@@ -1029,21 +1099,7 @@ unsafe extern "system" fn indicator_proc(
                 .and_then(|state| state.lock().ok().map(|state| state.status))
                 .unwrap_or_default();
 
-            let pad = 7;
-            let outer = RECT {
-                left: rect.left + pad,
-                top: rect.top + pad,
-                right: rect.right - pad,
-                bottom: rect.bottom - pad,
-            };
-            draw_filled_ellipse(hdc, outer, rgb(10, 13, 18), indicator_color(status));
-            let inner = RECT {
-                left: outer.left + 7,
-                top: outer.top + 7,
-                right: outer.right - 7,
-                bottom: outer.bottom - 7,
-            };
-            draw_indicator_mark(hdc, status, inner);
+            draw_indicator_content(hdc, status, rect);
             unsafe { EndPaint(hwnd, &paint) };
             0
         }
