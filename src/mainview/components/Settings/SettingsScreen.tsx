@@ -38,6 +38,7 @@ import { SectionUi } from "./Sections/SectionUi";
 import { SectionGeneral } from "./Sections/SectionGeneral";
 import { SectionFun } from "./Sections/SectionFun";
 import { SectionDictionary } from "./Sections/SectionDictionary";
+import { WindowTitleBar } from "../Common/WindowTitleBar";
 
 export type SettingsCategory =
   | "transcription"
@@ -550,7 +551,7 @@ export function SettingsScreen({
 
   return (
     <div className="flex h-screen overflow-hidden bg-codictate-page text-white select-none">
-      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 z-50 h-7 hover:bg-white/10 transition-colors duration-200" />
+      <WindowTitleBar platform={settings.capabilities.platform} />
 
       {/* Sidebar */}
       <div className="flex w-[248px] shrink-0 flex-col border-r border-white/10 bg-white/2 px-3 pb-6 pt-10">

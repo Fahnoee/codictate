@@ -1,7 +1,7 @@
 {
   "name": "codictate",
   "version": "0.0.9",
-  "description": "Local, private voice dictation (currently only for macOS).",
+  "description": "Local, private voice dictation for macOS and Windows.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

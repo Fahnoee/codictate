@@ -43,6 +43,7 @@ import { LanguagePicker } from "../Settings/LanguagePicker";
 import { RecordingOrb } from "../Ready/RecordingOrb";
 import { DictationShortcutStartHint } from "../Common/DictationShortcutStartHint";
 import { Kbd } from "../Common/Kbd";
+import { WindowTitleBar } from "../Common/WindowTitleBar";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
@@ -319,7 +320,7 @@ export function ProductOnboardingScreen({
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center justify-center overflow-y-auto bg-codictate-page px-6 py-10 text-white select-none sm:px-8 lg:px-12">
-      <div className="electrobun-webkit-app-region-drag absolute top-0 left-0 right-0 z-50 h-7 hover:bg-white/10 transition-colors duration-200" />
+      <WindowTitleBar platform={settings.capabilities.platform} />
       <div className="mx-auto flex w-full max-w-[820px] flex-col items-center">
         <motion.div
           initial={{ opacity: 0, y: 12 }}

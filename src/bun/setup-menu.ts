@@ -1,5 +1,6 @@
 import Electrobun, { ApplicationMenu, BrowserWindow } from 'electrobun/bun'
 import { AppConfig } from './AppConfig/AppConfig'
+import { getPlatformRuntime } from './platform/runtime'
 import {
   buildDeviceMenuItems,
   handleDeviceAction,
@@ -18,6 +19,14 @@ export const setupApplicationMenu = (
     selectedDevice: number
   ) => void
 } => {
+  if (getPlatformRuntime() === 'windows') {
+    ApplicationMenu.setApplicationMenu([])
+    return {
+      rebuildDeviceMenu: () => {},
+      updateDeviceList: () => {},
+    }
+  }
+
   let currentDevices = devices
 
   const buildFullMenu = (selectedDevice: number) => [

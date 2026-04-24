@@ -1,5 +1,6 @@
 import type { AppStatus } from '../../../shared/types'
 import { getPlatform } from '../../platform'
+import { getPlatformRuntime } from '../../platform/runtime'
 
 type MoveEvent = { type: 'move'; x?: number; y?: number }
 
@@ -32,7 +33,10 @@ export function createNativeIndicatorHelper(
   const helperPath = getPlatform().findWindowHelperBinary()
   if (!helperPath) return null
 
-  const proc = Bun.spawn([helperPath], {
+  const args =
+    getPlatformRuntime() === 'windows' ? [helperPath, 'indicator'] : [helperPath]
+
+  const proc = Bun.spawn(args, {
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'inherit',

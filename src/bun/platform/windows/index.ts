@@ -1,10 +1,8 @@
 /**
  * Windows platform implementation.
  *
- * CONTRIBUTING: To add Windows support, implement the native helper binaries
- * listed below and update the `find*Binary` methods to resolve them.
- * Each helper must speak the same line-delimited JSON protocol on stdin/stdout
- * as the macOS Swift equivalents — see src/bun/platform/types.ts.
+ * CONTRIBUTING: Windows keyboard, paste, device listing, and mic recording are
+ * handled by the shared CodictateWindowsHelper Rust binary.
  *
  * Suggested tech stack:
  *   KeyListener   — C# (RegisterHotKey + low-level keyboard hook + SendInput) or Rust (rdev)
@@ -13,9 +11,25 @@
  *   ObserverHelper — UI Automation (IUIAutomation) for text observation
  */
 
+import { existsSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import type { PlatformProvider, PermissionType } from '../types'
+
+const WINDOWS_HELPER_CANDIDATE_PATHS = [
+  join(import.meta.dir, '../native-helpers/CodictateWindowsHelper.exe'),
+  join(
+    process.cwd(),
+    'native/CodictateWindowsHelper/target/release/CodictateWindowsHelper.exe'
+  ),
+]
+
+function resolveWindowsHelperBinary(): string | null {
+  for (const candidate of WINDOWS_HELPER_CANDIDATE_PATHS) {
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
 
 export class WindowsPlatformProvider implements PlatformProvider {
   getDataDir(): string {
@@ -50,26 +64,26 @@ export class WindowsPlatformProvider implements PlatformProvider {
     return false
   }
 
-  // ── Unimplemented native helpers ──────────────────────────────────────────
-
   findKeyListenerBinary(): string {
-    throw new Error(
-      '[Windows] KeyListener is not yet implemented.\n' +
-        'Contribute a binary at native/windows/KeyListener.exe that speaks the same\n' +
-        'JSON/stdio protocol as the macOS Swift version — see src/bun/platform/types.ts'
-    )
+    const found = resolveWindowsHelperBinary()
+    if (!found)
+      throw new Error(
+        'CodictateWindowsHelper not found. Run `bun run build:native:windows-helper` so native/CodictateWindowsHelper/target/release/CodictateWindowsHelper.exe exists, then rebuild.'
+      )
+    return found
   }
 
   async findMicRecorderBinary(): Promise<string> {
-    throw new Error(
-      '[Windows] MicRecorder is not yet implemented.\n' +
-        'Contribute a binary at native/windows/MicRecorder.exe that records WAV via\n' +
-        'WASAPI and speaks the same CLI protocol as the macOS Swift version.'
-    )
+    const found = resolveWindowsHelperBinary()
+    if (!found)
+      throw new Error(
+        'CodictateWindowsHelper not found. Run `bun run build:native:windows-helper` so native/CodictateWindowsHelper/target/release/CodictateWindowsHelper.exe exists, then rebuild.'
+      )
+    return found
   }
 
   findWindowHelperBinary(): string | null {
-    return null
+    return resolveWindowsHelperBinary()
   }
 
   findObserverHelperBinary(): string | null {
