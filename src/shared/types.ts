@@ -150,6 +150,15 @@ export type DevAppPreviewRoute = 'permissions' | 'onboarding' | 'ready'
 /** Floating recording / activity chip on the desktop (separate transparent window). */
 export type RecordingIndicatorMode = 'off' | 'always' | 'when-active'
 export type StreamTranscriptionMode = 'vad' | 'live'
+export type WindowResizeEdge =
+  | 'top'
+  | 'right'
+  | 'bottom'
+  | 'left'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-right'
+  | 'bottom-left'
 
 export type ShortcutId =
   | 'option-space'
@@ -304,6 +313,9 @@ export type WebviewRPCType = {
       windowMinimize: {}
       windowToggleMaximize: {}
       windowClose: {}
+      windowResizeStart: { edge: WindowResizeEdge; screenX: number; screenY: number }
+      windowResizeMove: { screenX: number; screenY: number }
+      windowResizeEnd: {}
       copyDebugLog: {}
       downloadWhisperModel: { modelId: string }
       cancelModelDownload: { modelId: string }

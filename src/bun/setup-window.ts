@@ -13,6 +13,7 @@ import type {
   SettingsPane,
   TranscriptionSettingsPatch,
   UpdateCheckState,
+  WindowResizeEdge,
 } from '../shared/types'
 import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
@@ -88,6 +89,43 @@ export interface WindowHandle {
 }
 
 export function setupWindow(deps: WindowDeps): WindowHandle {
+  let resizeSession:
+    | {
+        edge: WindowResizeEdge
+        startX: number
+        startY: number
+        frame: { x: number; y: number; width: number; height: number }
+      }
+    | null = null
+
+  function applyWindowResize(screenX: number, screenY: number) {
+    if (!mainWindow || !resizeSession) return
+    const dx = screenX - resizeSession.startX
+    const dy = screenY - resizeSession.startY
+    const minWidth = 720
+    const minHeight = 520
+    let { x, y, width, height } = resizeSession.frame
+
+    if (resizeSession.edge.includes('right')) {
+      width = Math.max(minWidth, resizeSession.frame.width + dx)
+    }
+    if (resizeSession.edge.includes('bottom')) {
+      height = Math.max(minHeight, resizeSession.frame.height + dy)
+    }
+    if (resizeSession.edge.includes('left')) {
+      const nextWidth = Math.max(minWidth, resizeSession.frame.width - dx)
+      x = resizeSession.frame.x + (resizeSession.frame.width - nextWidth)
+      width = nextWidth
+    }
+    if (resizeSession.edge.includes('top')) {
+      const nextHeight = Math.max(minHeight, resizeSession.frame.height - dy)
+      y = resizeSession.frame.y + (resizeSession.frame.height - nextHeight)
+      height = nextHeight
+    }
+
+    mainWindow.setFrame(Math.round(x), Math.round(y), Math.round(width), Math.round(height))
+  }
+
   const rpc = BrowserView.defineRPC<WebviewRPCType>({
     handlers: {
       requests: {
@@ -239,6 +277,21 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         },
         windowClose: () => {
           mainWindow?.close()
+        },
+        windowResizeStart: ({ edge, screenX, screenY }) => {
+          if (!mainWindow || mainWindow.isMaximized()) return
+          resizeSession = {
+            edge,
+            startX: screenX,
+            startY: screenY,
+            frame: mainWindow.getFrame(),
+          }
+        },
+        windowResizeMove: ({ screenX, screenY }) => {
+          applyWindowResize(screenX, screenY)
+        },
+        windowResizeEnd: () => {
+          resizeSession = null
         },
         copyDebugLog: () => {
           copyLogToClipboard().catch(console.error)

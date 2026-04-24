@@ -13,6 +13,7 @@ import type {
   UpdateCheckState,
   RecordingIndicatorMode,
   AppStatus,
+  WindowResizeEdge,
 } from '../shared/types'
 import { appEvents } from './app-events'
 import { SPEECH_MODELS } from '../shared/speech-models'
@@ -145,6 +146,25 @@ export function windowToggleMaximize(): void {
 
 export function windowClose(): void {
   rpc.send.windowClose({})
+}
+
+export function windowResizeStart(params: {
+  edge: WindowResizeEdge
+  screenX: number
+  screenY: number
+}): void {
+  rpc.send.windowResizeStart(params)
+}
+
+export function windowResizeMove(params: {
+  screenX: number
+  screenY: number
+}): void {
+  rpc.send.windowResizeMove(params)
+}
+
+export function windowResizeEnd(): void {
+  rpc.send.windowResizeEnd({})
 }
 
 export async function setDebugMode(enabled: boolean): Promise<boolean> {
