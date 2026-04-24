@@ -485,13 +485,16 @@ export function ReadyScreen({
 
         <AnimatePresence>
           {micName ? (
-            <motion.div
+            <motion.button
+              type="button"
               key="mic"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
               transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-              className="pointer-events-none flex items-center gap-1.5 justify-center justify-self-center max-w-[200px]"
+              onClick={() => onOpenSettings("audio")}
+              className="pointer-events-auto flex items-center gap-1.5 justify-center justify-self-center max-w-[240px] rounded-lg px-2 py-1 text-left transition-colors duration-200 hover:bg-white/7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/14 cursor-pointer"
+              aria-label="Open audio settings"
             >
               <svg
                 width="10"
@@ -521,7 +524,7 @@ export function ReadyScreen({
               <span className="text-[17px] text-white/50 font-sans truncate">
                 {micName}
               </span>
-            </motion.div>
+            </motion.button>
           ) : (
             <div className="justify-self-center" />
           )}
