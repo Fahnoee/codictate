@@ -1,6 +1,6 @@
 import { mkdirSync } from 'fs'
-import { homedir } from 'os'
 import { join } from 'path'
+import { getPlatform } from '../platform'
 import {
   DEFAULT_MAX_RECORDING_DURATION_SECONDS,
   isValidMaxRecordingDurationSeconds,
@@ -53,12 +53,7 @@ import {
   stageDictionaryCandidate,
 } from '../utils/dictionary/auto-learn-candidates'
 
-const CONFIG_DIR = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'codictate'
-)
+const CONFIG_DIR = getPlatform().getDataDir()
 const MAIN_CONFIG_PATH = join(CONFIG_DIR, 'main-config.json')
 const DICTIONARY_CONFIG_PATH = join(CONFIG_DIR, 'dictionary-config.json')
 const LEGACY_CONFIG_PATH = join(CONFIG_DIR, 'app-config.json')
@@ -763,6 +758,7 @@ export class AppConfig {
         autoLearn: this.dictionary.autoLearn,
         candidates: dictionaryCandidates,
       },
+      modelAvailability: modelManager.getAvailabilityMap(),
     }
   }
 

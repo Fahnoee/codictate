@@ -1,4 +1,5 @@
 import { BrowserView, BrowserWindow } from 'electrobun/bun'
+import { getPlatform } from './platform'
 import type {
   WebviewRPCType,
   AppSettings,
@@ -17,17 +18,8 @@ import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
 import { modelManager } from './utils/whisper/model-manager'
 import { isTranslateCapableModelId } from '../shared/whisper-models'
-
-const SYSTEM_PREFS_URLS: Record<SettingsPane, string> = {
-  inputMonitoring:
-    'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
-  microphone:
-    'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
-  accessibility:
-    'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
-  documents:
-    'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders',
-}
+import { DEFAULT_STREAM_CAPABLE_MODEL_ID } from '../shared/speech-models'
+import { warmupParakeet } from './utils/whisper/speech2text'
 
 interface WindowDeps {
   url: string
@@ -166,6 +158,9 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
           ) {
             deps.onStreamModeChanged?.()
           }
+          if (patch.whisperModelId === DEFAULT_STREAM_CAPABLE_MODEL_ID) {
+            void warmupParakeet()
+          }
           return true
         },
         setAudioDevice: async ({ index }) => {
@@ -222,7 +217,8 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
       messages: {
         logBun: ({ msg }) => console.log('Bun Log:', msg),
         openSystemPreferences: ({ pane }) => {
-          Bun.spawn(['open', SYSTEM_PREFS_URLS[pane]])
+          const url = getPlatform().getPermissionSettingsUrl(pane)
+          if (url) getPlatform().openUrl(url)
         },
         triggerPermissionPrompt: ({ pane }) => {
           deps.onTriggerPermissionPrompt?.(pane)
@@ -243,9 +239,12 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
                   error,
                 })
                 if (done && !error) {
-                  rpc.send.updateModelAvailability({ modelId, available: true })
+                  rpc.send.updateSettings(deps.appConfig.getSettings())
                   if (isTranslateCapableModelId(modelId)) {
                     deps.onTranslateChanged?.()
+                  }
+                  if (modelId === DEFAULT_STREAM_CAPABLE_MODEL_ID) {
+                    void warmupParakeet()
                   }
                 }
               } catch {
@@ -260,7 +259,7 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
         deleteWhisperModel: ({ modelId }) => {
           const deleted = modelManager.deleteModel(modelId)
           if (deleted) {
-            rpc.send.updateModelAvailability({ modelId, available: false })
+            rpc.send.updateSettings(deps.appConfig.getSettings())
             if (isTranslateCapableModelId(modelId)) {
               deps.onTranslateChanged?.()
             }

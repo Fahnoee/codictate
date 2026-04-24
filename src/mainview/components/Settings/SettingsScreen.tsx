@@ -245,18 +245,15 @@ export function SettingsScreen({
   const logoClickCountRef = useRef(0);
   const logoClickResetTimerRef = useRef<number | null>(null);
 
-  // Model availability: seed from query cache (populated at startup by pushInitialState),
-  // falling back to bundled-only defaults for models not yet reported.
+  // Model availability: seeded from settings (always up-to-date on fetch),
+  // then kept in sync via modelAvailability events for incremental changes.
   const [modelAvailability, setModelAvailability] = useState<
     Record<string, boolean>
   >(() => {
-    const cached = queryClient.getQueryData<Record<string, boolean>>([
-      "modelAvailability",
-    ]);
     const defaults = Object.fromEntries(
       SPEECH_MODELS.map((m) => [m.id, m.bundled ?? false]),
     );
-    return cached ? { ...defaults, ...cached } : defaults;
+    return { ...defaults, ...settings.modelAvailability };
   });
   const [downloadProgress, setDownloadProgress] = useState<
     Record<string, number>
@@ -272,6 +269,15 @@ export function SettingsScreen({
       setModelAvailability((prev) => ({ ...prev, [modelId]: available }));
     });
   }, []);
+
+  useEffect(() => {
+    if (settings.modelAvailability) {
+      setModelAvailability((prev) => ({
+        ...prev,
+        ...settings.modelAvailability,
+      }));
+    }
+  }, [settings.modelAvailability]);
 
   useEffect(() => {
     const unsub = appEvents.on(

@@ -1,5 +1,5 @@
-import { homedir } from 'os'
 import { join, dirname } from 'path'
+import { getPlatform } from '../../platform'
 import {
   mkdirSync,
   existsSync,
@@ -20,13 +20,7 @@ import {
 import { whisperModelDownloadUrl } from '../../../shared/whisper-models'
 import { log } from '../logger'
 
-const MODELS_DIR = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'codictate',
-  'models'
-)
+const MODELS_DIR = join(getPlatform().getDataDir(), 'models')
 
 const BUNDLED_MODEL_PATH = join(
   import.meta.dir,

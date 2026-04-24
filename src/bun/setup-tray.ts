@@ -9,6 +9,7 @@ import {
   buildTranscriptionLanguageMenuItems,
   handleTranscriptionLanguageAction,
 } from './utils/transcription-language-actions'
+import { buildModelMenuItems, handleModelAction } from './utils/model-actions'
 import { modelManager } from './utils/whisper/model-manager'
 import {
   getStreamModeReadiness,
@@ -40,6 +41,7 @@ export type TrayHandlers = {
   syncTranslateState: () => void
   syncStreamModeState: () => void
   syncFormattingModeState: () => void
+  syncModelState: () => void
 }
 
 // Resolves to app/images/MacTrayIcon.png in the bundle.
@@ -62,7 +64,9 @@ export const setupTray = (
   /** After tray toggles stream mode — sync webview. */
   onStreamModeToggled?: () => void,
   /** After tray changes formatting mode — sync webview. */
-  onFormattingModeChanged?: () => void
+  onFormattingModeChanged?: () => void,
+  /** After tray changes the transcription model — sync webview. */
+  onModelChanged?: () => void
 ): TrayHandlers => {
   const tray = new Tray({
     image: trayIconPath,
@@ -219,6 +223,11 @@ export const setupTray = (
       label: 'Microphone',
       submenu: buildDeviceMenuItems(currentDevices, selectedDevice),
     },
+    {
+      type: 'normal' as const,
+      label: `Model: ${buildModelMenuItems(appConfig.getWhisperModelId()).find((m) => m.checked)?.label ?? appConfig.getWhisperModelId()}`,
+      submenu: buildModelMenuItems(appConfig.getWhisperModelId()),
+    },
     speechModelLocksTranscriptionLanguage(appConfig.getWhisperModelId())
       ? {
           type: 'normal' as const,
@@ -276,6 +285,10 @@ export const setupTray = (
     handleTranscriptionLanguageAction(event.data.action, appConfig, () => {
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
       onTranscriptionLanguageChanged?.()
+    })
+    handleModelAction(event.data.action, appConfig, () => {
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+      onModelChanged?.()
     })
     if (event.data.action === 'toggle-stream-mode') {
       void (async () => {
@@ -409,6 +422,9 @@ export const setupTray = (
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
     syncFormattingModeState: () => {
+      tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
+    },
+    syncModelState: () => {
       tray.setMenu(buildMenu(appConfig.resolveAudioDevice(currentDevices)))
     },
   }

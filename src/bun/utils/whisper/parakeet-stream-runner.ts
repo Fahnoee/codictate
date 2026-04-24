@@ -4,9 +4,8 @@
 // Live-mode tracing: set CODICTATE_LIVE_DEBUG=1 in the environment before starting
 // Codictate; stderr lines tagged stream [live][debug] are forwarded below as parakeet stderr.
 
-import { join } from 'node:path'
-import { existsSync } from 'node:fs'
 import type { StreamTranscriptionMode } from '../../../shared/types'
+import { getPlatform } from '../../platform'
 import { modelManager } from './model-manager'
 import { log } from '../logger'
 import { duckDelayAfterStartChimeMs } from '../sound/play-sound'
@@ -33,17 +32,8 @@ export type ParakeetStreamStartOptions = {
 
 const PARAKEET_MODEL_ID = 'parakeet-tdt-0.6b-v3'
 
-function resolveParakeetHelperBinary(): string {
-  return join(import.meta.dir, '../native-helpers/CodictateParakeetHelper')
-}
-
 export function assertParakeetStreamRuntimeReady(): void {
-  const binary = resolveParakeetHelperBinary()
-  if (!existsSync(binary)) {
-    throw new Error(
-      'CodictateParakeetHelper is missing. Run pre-build / build:native to build the Parakeet helper.'
-    )
-  }
+  getPlatform().findParakeetHelperBinary()
   if (!modelManager.isModelAvailable(PARAKEET_MODEL_ID)) {
     throw new Error(
       'Parakeet model is not installed. Download Parakeet TDT v3 in Settings to use stream mode.'
@@ -57,7 +47,7 @@ export async function startParakeetStream(
   options?: ParakeetStreamStartOptions
 ): Promise<StreamSession> {
   assertParakeetStreamRuntimeReady()
-  const binary = resolveParakeetHelperBinary()
+  const binary = getPlatform().findParakeetHelperBinary()
   const modelDir = modelManager.getParakeetInstallDir(PARAKEET_MODEL_ID)
   const modeArg = streamTranscriptionMode === 'vad' ? 'vad' : 'live'
   const args = [binary, 'stream', modeArg, modelDir]

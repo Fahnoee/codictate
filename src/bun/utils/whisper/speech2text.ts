@@ -7,13 +7,16 @@ import { applyFormatting } from '../formatting/apply-formatting'
 import { buildFormatterRequest } from '../formatting/resolve-formatting-request'
 import { join } from 'node:path'
 import { log } from '../logger'
+import { getPlatform } from '../../platform'
 import type {
   DictionaryEntry,
   FormattingRuntimeSettings,
 } from '../../../shared/types'
 import { applyDictionary } from '../dictionary/apply-dictionary'
 
-export const RECORDING_PATH = '/tmp/codictate-recording.wav'
+export const RECORDING_PATH = getPlatform().getTempPath(
+  'codictate-recording.wav'
+)
 
 /**
  * Whisper often splits or mishears the product name — normalize before paste.
@@ -26,6 +29,8 @@ const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
   [/\bkodi\s+dicate\b/gi, 'Codictate'],
   [/\bkodi\s+tat\b/gi, 'Codictate'],
   [/\bkodik\s+tat\b/gi, 'Codictate'],
+  [/\bkodik\s+tet\b/gi, 'Codictate'],
+  [/\bkodiktet\b/gi, 'Codictate'],
   [/\bkodig\s+tate\b/gi, 'Codictate'],
   [/\bkodigtate\b/gi, 'Codictate'],
   [/\bkodig\s+tet\b/gi, 'Codictate'],
@@ -54,6 +59,8 @@ const BRAND_TRANSCRIPT_FIXES: [RegExp, string][] = [
   [/\bkodic\s+tate\b/gi, 'Codictate'],
   [/\bkodictate\b/gi, 'Codictate'],
   [/\bcodictate\b/gi, 'Codictate'],
+  [/\bCodigTate\b/gi, 'Codictate'],
+  [/\bCodig\s+Tate\b/gi, 'Codictate'],
 ]
 
 export function fixBrandMishearings(text: string): string {
@@ -170,10 +177,7 @@ export const transcribe = async (
 }
 
 async function transcribeParakeet(modelId: string): Promise<string> {
-  const helper = join(
-    import.meta.dir,
-    '../native-helpers/CodictateParakeetHelper'
-  )
+  const helper = getPlatform().findParakeetHelperBinary()
   const modelDir = modelManager.getParakeetInstallDir(modelId)
 
   log('parakeet', 'spawning CodictateParakeetHelper transcribe', {
@@ -228,6 +232,61 @@ async function transcribeParakeet(modelId: string): Promise<string> {
   })
 
   return transcript
+}
+
+function createSilentWav(): Uint8Array {
+  const sampleRate = 16000
+  const numSamples = Math.floor(sampleRate * 0.5)
+  const dataSize = numSamples * 2
+  const buf = new Uint8Array(44 + dataSize)
+  const view = new DataView(buf.buffer)
+  buf[0] = 0x52
+  buf[1] = 0x49
+  buf[2] = 0x46
+  buf[3] = 0x46 // RIFF
+  view.setUint32(4, 36 + dataSize, true)
+  buf[8] = 0x57
+  buf[9] = 0x41
+  buf[10] = 0x56
+  buf[11] = 0x45 // WAVE
+  buf[12] = 0x66
+  buf[13] = 0x6d
+  buf[14] = 0x74
+  buf[15] = 0x20 // fmt
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true) // PCM
+  view.setUint16(22, 1, true) // mono
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  buf[36] = 0x64
+  buf[37] = 0x61
+  buf[38] = 0x74
+  buf[39] = 0x61 // data
+  view.setUint32(40, dataSize, true)
+  return buf
+}
+
+export async function warmupParakeet(): Promise<void> {
+  const PARAKEET_MODEL_ID = 'parakeet-tdt-0.6b-v3'
+  if (!modelManager.isModelAvailable(PARAKEET_MODEL_ID)) return
+  try {
+    const helper = getPlatform().findParakeetHelperBinary()
+    const modelDir = modelManager.getParakeetInstallDir(PARAKEET_MODEL_ID)
+    const warmupPath = getPlatform().getTempPath('codictate-warmup.wav')
+    await Bun.write(warmupPath, createSilentWav())
+    log('parakeet', 'starting Core ML warmup')
+    const proc = Bun.spawn([helper, 'transcribe', warmupPath, modelDir], {
+      stdout: 'ignore',
+      stderr: 'ignore',
+      env: { ...process.env, LC_ALL: 'en_US.UTF-8', LANG: 'en_US.UTF-8' },
+    })
+    await proc.exited
+    log('parakeet', 'Core ML warmup complete', { exitCode: proc.exitCode })
+  } catch (err) {
+    log('parakeet', 'Core ML warmup error', { err: String(err) })
+  }
 }
 
 export const speech2text = async (

@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import type {
@@ -11,12 +11,17 @@ import {
   getWhisperModel,
   parakeetSupportsTranscriptionLanguageId,
 } from "../../../../shared/whisper-models";
-import { PARAKEET_FIRST_RUN_STREAM_HELPER } from "../../../../shared/speech-models";
+import {
+  PARAKEET_FIRST_RUN_STREAM_HELPER,
+  coerceTranscriptionLanguageIdForModel,
+} from "../../../../shared/speech-models";
 import {
   fetchSettings,
   setStreamMode,
   setStreamTranscriptionMode,
   setTranslateDefaultLanguage,
+  setTranscriptionLanguage,
+  setWhisperModel,
   downloadWhisperModel,
 } from "../../../rpc";
 import { LanguagePicker } from "../LanguagePicker";
@@ -43,6 +48,12 @@ export function SectionModes({
   onCancelDownload,
 }: Props) {
   const queryClient = useQueryClient();
+  const [showSwitchToParakeet, setShowSwitchToParakeet] = useState(false);
+
+  const isParakeetInstalled =
+    modelAvailability[DEFAULT_STREAM_CAPABLE_MODEL_ID] ?? false;
+  const isParakeetSelected =
+    settings.whisperModelId === DEFAULT_STREAM_CAPABLE_MODEL_ID;
 
   const handleTranslateDefaultLanguageChange = useCallback(
     async (languageId: string) => {
@@ -61,15 +72,66 @@ export function SectionModes({
   );
 
   const handleStreamModeToggle = useCallback(async () => {
-    const newValue = !settings.streamMode;
+    if (settings.streamMode) {
+      queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+        old ? { ...old, streamMode: false } : old,
+      );
+      const ok = await setStreamMode(false);
+      if (!ok) {
+        queryClient.setQueryData(["settings"], await fetchSettings());
+      }
+      return;
+    }
+    if (!isParakeetInstalled) {
+      // Download prompt below explains what to do
+      return;
+    }
+    if (!isParakeetSelected) {
+      setShowSwitchToParakeet(true);
+      return;
+    }
+    setShowSwitchToParakeet(false);
     queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
-      old ? { ...old, streamMode: newValue } : old,
+      old ? { ...old, streamMode: true } : old,
     );
-    const ok = await setStreamMode(newValue);
+    const ok = await setStreamMode(true);
     if (!ok) {
       queryClient.setQueryData(["settings"], await fetchSettings());
     }
-  }, [settings.streamMode, queryClient]);
+  }, [
+    settings.streamMode,
+    isParakeetInstalled,
+    isParakeetSelected,
+    queryClient,
+  ]);
+
+  const handleSwitchToParakeetAndEnableStream = useCallback(async () => {
+    setShowSwitchToParakeet(false);
+    const nextLang = coerceTranscriptionLanguageIdForModel(
+      DEFAULT_STREAM_CAPABLE_MODEL_ID,
+      settings.transcriptionLanguageId,
+    );
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old
+        ? {
+            ...old,
+            whisperModelId: DEFAULT_STREAM_CAPABLE_MODEL_ID,
+            transcriptionLanguageId: nextLang,
+          }
+        : old,
+    );
+    await setWhisperModel(DEFAULT_STREAM_CAPABLE_MODEL_ID);
+    if (nextLang !== settings.transcriptionLanguageId) {
+      await setTranscriptionLanguage(nextLang);
+    }
+    queryClient.setQueryData(["settings"], (old: AppSettings | undefined) =>
+      old ? { ...old, streamMode: true } : old,
+    );
+    const ok = await setStreamMode(true);
+    if (!ok) {
+      queryClient.setQueryData(["settings"], await fetchSettings());
+    }
+  }, [queryClient, settings.transcriptionLanguageId]);
 
   const handleStreamTranscriptionModeChange = useCallback(
     async (mode: StreamTranscriptionMode) => {
@@ -202,11 +264,12 @@ export function SectionModes({
             </div>
             <button
               onClick={handleStreamModeToggle}
+              disabled={!settings.streamMode && !isParakeetInstalled}
               className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer border ${
                 settings.streamMode
                   ? "bg-blue-500/30 border-blue-400/30"
                   : "bg-white/7 border-white/14"
-              }`}
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
               aria-label="Toggle stream mode"
             >
               <span
@@ -248,6 +311,44 @@ export function SectionModes({
             </button>
           </div>
         )}
+        <AnimatePresence>
+          {showSwitchToParakeet && (
+            <motion.div
+              key="switch-parakeet-prompt"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/8 px-4 py-3">
+                <p className="text-[17px] text-white/70 leading-snug">
+                  Stream mode requires{" "}
+                  <strong className="text-white/85 font-medium">
+                    Parakeet TDT v3
+                  </strong>{" "}
+                  as your transcription model.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSwitchToParakeetAndEnableStream()}
+                    className="px-3 py-2 rounded-lg text-[17px] font-medium border border-amber-400/35 bg-amber-500/15 hover:bg-amber-500/25 text-amber-100/90 transition-colors cursor-pointer"
+                  >
+                    Switch to Parakeet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSwitchToParakeet(false)}
+                    className="px-3 py-2 rounded-lg text-[17px] font-medium border border-white/12 hover:border-white/22 bg-white/4 hover:bg-white/8 text-white/44 hover:text-white/64 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {settings.streamMode &&
           !parakeetSupportsTranscriptionLanguageId(
             settings.transcriptionLanguageId,

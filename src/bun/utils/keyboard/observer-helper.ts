@@ -1,5 +1,5 @@
-import { join } from 'node:path'
 import { log } from '../logger'
+import { getPlatform } from '../../platform'
 import { extractCorrections } from '../dictionary/apply-dictionary'
 import type { DictionaryEntry } from '../../../shared/types'
 
@@ -101,16 +101,23 @@ export function startObserverHelper(
   isAutoLearnEnabled: () => boolean,
   _getDictionaryEntries: () => DictionaryEntry[]
 ) {
-  const binaryPath = join(
-    import.meta.dir,
-    '../native-helpers/CodictateObserverHelper'
-  )
+  const binaryPath = getPlatform().findObserverHelperBinary()
+  if (!binaryPath) {
+    log(
+      'observer',
+      'CodictateObserverHelper not available on this platform — auto-learn disabled'
+    )
+    return
+  }
 
   let proc: ReturnType<typeof Bun.spawn>
   try {
     proc = Bun.spawn([binaryPath], { stdout: 'pipe', stdin: 'pipe' })
   } catch {
-    log('observer', 'CodictateObserverHelper not found — auto-learn disabled')
+    log(
+      'observer',
+      'CodictateObserverHelper failed to spawn — auto-learn disabled'
+    )
     return
   }
 

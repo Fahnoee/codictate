@@ -43,6 +43,15 @@ const rpc = Electroview.defineRPC<WebviewRPCType>({
       },
       updateSettings: (data: AppSettings) => {
         queryClient.setQueryData(['settings'], data)
+        if (data.modelAvailability) {
+          queryClient.setQueryData(
+            ['modelAvailability'],
+            (old: Record<string, boolean> | undefined) => ({
+              ...old,
+              ...data.modelAvailability,
+            })
+          )
+        }
         appEvents.emit('settings', data)
       },
       openSettingsScreen: () => {

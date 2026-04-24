@@ -205,6 +205,7 @@ export interface AppSettings {
   formatting: FormattingSettings
   audioDucking: AudioDuckingSettings
   dictionary: DictionarySettings
+  modelAvailability: Record<string, boolean>
 }
 
 export interface PermissionState {

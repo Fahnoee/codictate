@@ -1,26 +1,7 @@
-import { existsSync } from 'fs'
-import { join } from 'path'
 import type { AppStatus } from '../../../shared/types'
+import { getPlatform } from '../../platform'
 
 type MoveEvent = { type: 'move'; x?: number; y?: number }
-
-const CANDIDATE_PATHS = [
-  join(import.meta.dir, '../native-helpers/CodictateWindowHelper'),
-  join(process.cwd(), 'vendors/window-helper/CodictateWindowHelper'),
-]
-
-function findHelperPath(): string | null {
-  for (const path of CANDIDATE_PATHS) {
-    if (existsSync(path)) {
-      return path
-    }
-  }
-  console.log(
-    '[Codictate] CodictateWindowHelper not found — native indicator helper unavailable.\n' +
-      '  Run `bun run build:native` to compile the native helper.'
-  )
-  return null
-}
 
 function statusToWire(
   status: AppStatus
@@ -48,7 +29,7 @@ export type NativeIndicatorHelper = {
 export function createNativeIndicatorHelper(
   onMove?: (x: number, y: number) => void
 ): NativeIndicatorHelper | null {
-  const helperPath = findHelperPath()
+  const helperPath = getPlatform().findWindowHelperBinary()
   if (!helperPath) return null
 
   const proc = Bun.spawn([helperPath], {

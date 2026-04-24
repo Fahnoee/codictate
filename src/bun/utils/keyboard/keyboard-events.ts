@@ -1,5 +1,5 @@
-import { join } from 'node:path'
 import type { ShortcutId } from '../../../shared/types'
+import { getPlatform } from '../../platform'
 import {
   bindNativePasteboardWriter,
   unbindNativePasteboardWriter,
@@ -324,7 +324,7 @@ export function startKeyboardListener(
   swallowRules: KeyEvent[] = [],
   onPermissions?: (status: PermissionStatus) => void
 ) {
-  const binaryPath = join(import.meta.dir, '../native-helpers/KeyListener')
+  const binaryPath = getPlatform().findKeyListenerBinary()
   const proc = Bun.spawn([binaryPath], { stdout: 'pipe', stdin: 'pipe' })
   let procAlive = true
 

@@ -322,6 +322,7 @@ trayHandlers = setupTray(
   pushSettingsToWebview,
   pushSettingsToWebview,
   pushSettingsToWebview,
+  pushSettingsToWebview,
   pushSettingsToWebview
 )
 
