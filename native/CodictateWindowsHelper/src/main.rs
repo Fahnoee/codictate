@@ -14,8 +14,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    BLACK_BRUSH, BeginPaint, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect,
-    GetStockObject, InvalidateRect, PAINTSTRUCT, SelectObject, UpdateWindow,
+    BLACK_BRUSH, BeginPaint, CreatePen, CreateSolidBrush, DeleteObject, Ellipse, EndPaint,
+    FillRect, GetStockObject, HDC, InvalidateRect, PAINTSTRUCT, PS_SOLID, SelectObject,
+    UpdateWindow,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
@@ -937,7 +938,73 @@ fn indicator_color(status: IndicatorStatus) -> u32 {
     match status {
         IndicatorStatus::Ready => rgb(148, 163, 184),
         IndicatorStatus::Recording => rgb(248, 72, 86),
-        IndicatorStatus::Transcribing => rgb(74, 163, 255),
+        IndicatorStatus::Transcribing => rgb(78, 166, 255),
+    }
+}
+
+fn fill_rect(hdc: HDC, rect: RECT, color: u32) {
+    let brush = unsafe { CreateSolidBrush(color) };
+    unsafe {
+        FillRect(hdc, &rect, brush as _);
+        DeleteObject(brush as _);
+    }
+}
+
+fn draw_filled_ellipse(hdc: HDC, rect: RECT, fill: u32, outline: u32) {
+    let brush = unsafe { CreateSolidBrush(fill) };
+    let pen = unsafe { CreatePen(PS_SOLID, 2, outline) };
+    unsafe {
+        let old_brush = SelectObject(hdc, brush as _);
+        let old_pen = SelectObject(hdc, pen as _);
+        Ellipse(hdc, rect.left, rect.top, rect.right, rect.bottom);
+        SelectObject(hdc, old_pen);
+        SelectObject(hdc, old_brush);
+        DeleteObject(pen as _);
+        DeleteObject(brush as _);
+    }
+}
+
+fn draw_indicator_mark(hdc: HDC, status: IndicatorStatus, rect: RECT) {
+    match status {
+        IndicatorStatus::Ready => {
+            draw_filled_ellipse(hdc, rect, rgb(30, 36, 46), rgb(86, 98, 118));
+            let center = RECT {
+                left: rect.left + 19,
+                top: rect.top + 19,
+                right: rect.right - 19,
+                bottom: rect.bottom - 19,
+            };
+            draw_filled_ellipse(hdc, center, rgb(148, 163, 184), rgb(185, 196, 211));
+        }
+        IndicatorStatus::Recording => {
+            draw_filled_ellipse(hdc, rect, rgb(45, 20, 28), rgb(117, 38, 50));
+            let center = RECT {
+                left: rect.left + 16,
+                top: rect.top + 16,
+                right: rect.right - 16,
+                bottom: rect.bottom - 16,
+            };
+            draw_filled_ellipse(hdc, center, rgb(248, 72, 86), rgb(255, 154, 164));
+        }
+        IndicatorStatus::Transcribing => {
+            draw_filled_ellipse(hdc, rect, rgb(16, 31, 50), rgb(44, 93, 142));
+            let color = rgb(190, 224, 255);
+            let bars = [16, 24, 32, 22, 14];
+            for (i, height) in bars.iter().enumerate() {
+                let x = rect.left + 14 + (i as i32 * 7);
+                let mid = (rect.top + rect.bottom) / 2;
+                fill_rect(
+                    hdc,
+                    RECT {
+                        left: x,
+                        top: mid - (height / 2),
+                        right: x + 4,
+                        bottom: mid + (height / 2),
+                    },
+                    color,
+                );
+            }
+        }
     }
 }
 
@@ -962,21 +1029,22 @@ unsafe extern "system" fn indicator_proc(
                 .and_then(|state| state.lock().ok().map(|state| state.status))
                 .unwrap_or_default();
 
-            let brush = unsafe { CreateSolidBrush(indicator_color(status)) };
-            let pad = 9;
-            unsafe {
-                let old_brush = SelectObject(hdc, brush as _);
-                Ellipse(
-                    hdc,
-                    rect.left + pad,
-                    rect.top + pad,
-                    rect.right - pad,
-                    rect.bottom - pad,
-                );
-                SelectObject(hdc, old_brush);
-                DeleteObject(brush as _);
-                EndPaint(hwnd, &paint);
-            }
+            let pad = 7;
+            let outer = RECT {
+                left: rect.left + pad,
+                top: rect.top + pad,
+                right: rect.right - pad,
+                bottom: rect.bottom - pad,
+            };
+            draw_filled_ellipse(hdc, outer, rgb(10, 13, 18), indicator_color(status));
+            let inner = RECT {
+                left: outer.left + 7,
+                top: outer.top + 7,
+                right: outer.right - 7,
+                bottom: outer.bottom - 7,
+            };
+            draw_indicator_mark(hdc, status, inner);
+            unsafe { EndPaint(hwnd, &paint) };
             0
         }
         WM_NCHITTEST => HTCAPTION as LRESULT,
