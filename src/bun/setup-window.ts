@@ -20,6 +20,7 @@ import { modelManager } from './utils/whisper/model-manager'
 import { isTranslateCapableModelId } from '../shared/whisper-models'
 import { DEFAULT_STREAM_CAPABLE_MODEL_ID } from '../shared/speech-models'
 import { warmupParakeet } from './utils/whisper/speech2text'
+import { getPlatformRuntime } from './platform/runtime'
 
 interface WindowDeps {
   url: string
@@ -284,11 +285,13 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
   })
 
   function createMainWindow() {
+    const titleBarStyle =
+      getPlatformRuntime() === 'windows' ? 'hidden' : 'hiddenInset'
     const win = new BrowserWindow({
       title: 'Codictate',
       url: deps.url,
       frame: { width: 900, height: 700, x: 200, y: 200 },
-      titleBarStyle: 'hiddenInset' as const,
+      titleBarStyle,
       rpc,
     })
     return win
