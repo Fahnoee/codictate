@@ -3,10 +3,10 @@
 
   # Codictate
 
-  **Local-first dictation for macOS: hit your shortcut, speak, and Codictate drops the text where your cursor is—on your machine, not in the cloud.**
+  **Local-first dictation for macOS and Windows: hit your shortcut, speak, and Codictate drops the text where your cursor is - on your machine, not in the cloud.**
 </div>
 
-Codictate puts your words wherever your cursor is with a local-first dictation workflow built for macOS. No copy-pasting, no account, no cloud processing of your voice.
+Codictate puts your words wherever your cursor is with a local-first dictation workflow for macOS and Windows. No copy-pasting, no account, no cloud processing of your voice.
 
 **Website:** [codictate.app](https://codictate.app)
 
@@ -22,12 +22,13 @@ I'm saving toward an **Apple Developer Program** membership so the app can be **
 
 - Fully local transcription with Whisper
 - Global shortcut workflow for dictation into any app
+- Floating recording indicator on macOS and Windows
 - No account, no login, no analytics
-- Optimized for Apple Silicon Macs
+- Stream mode and Apple Intelligence formatting are currently macOS-only
 
 ## Download
 
-Visit **[codictate.app](https://codictate.app)** for the project site, then grab the latest `.dmg` from [**Releases**](https://github.com/EmilLykke/codictate/releases).
+Visit **[codictate.app](https://codictate.app)** for the project site, then grab the latest macOS or Windows build from [**Releases**](https://github.com/EmilLykke/codictate/releases).
 
 | Channel | Description |
 |---------|-------------|
@@ -36,11 +37,11 @@ Visit **[codictate.app](https://codictate.app)** for the project site, then grab
 
 ## Installation
 
-First time installing? See the **[step-by-step installation guide](docs/INSTALL.md)** with screenshots for every step.
+First time installing on macOS? See the **[step-by-step installation guide](docs/INSTALL.md)** with screenshots for every step.
 
 Using **[AeroSpace](https://github.com/nikitabobko/AeroSpace)**? See **[docs/AEROSPACE.md](docs/AEROSPACE.md)** for an optional rule snippet if you want to keep separate AeroSpace rules for the main Codictate window and the floating recording HUD.
 
-The short version:
+The macOS short version:
 
 1. Download the `.dmg` from [Releases](https://github.com/EmilLykke/codictate/releases)
 2. Drag **Codictate** to your Applications folder
@@ -51,6 +52,7 @@ The short version:
 
 - macOS 13 or later
 - Apple Silicon (M1 or later)
+- Windows 10 or later for Windows builds
 - No internet connection required after install
 
 ## Privacy
@@ -86,6 +88,7 @@ bun run dev:hmr
 - [gh CLI](https://cli.github.com) for releases
 - [cmake](https://cmake.org) for building `whisper-cli`
 - Xcode Command Line Tools for Swift compilation
+- Rust toolchain for `native/CodictateWindowsHelper` on Windows
 
 ## Building
 
@@ -93,6 +96,10 @@ bun run dev:hmr
 bun run build:canary
 bun run build:stable
 bun run build:all
+
+# Windows dev/build helper
+bun run build:native:windows-helper
+bun run start:windows
 ```
 
 Unsigned local builds do not require a `.env` file.
