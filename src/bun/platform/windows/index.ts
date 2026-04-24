@@ -83,7 +83,7 @@ export class WindowsPlatformProvider implements PlatformProvider {
   }
 
   findWindowHelperBinary(): string | null {
-    return null
+    return resolveWindowsHelperBinary()
   }
 
   findObserverHelperBinary(): string | null {

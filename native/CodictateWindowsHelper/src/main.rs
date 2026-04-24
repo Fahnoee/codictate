@@ -12,7 +12,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
-use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows_sys::Win32::Graphics::Gdi::{
+    BLACK_BRUSH, BeginPaint, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect,
+    GetStockObject, InvalidateRect, PAINTSTRUCT, SelectObject, UpdateWindow,
+};
+use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
@@ -20,12 +25,17 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_RMENU, VK_RSHIFT, VK_SPACE,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG,
-    PostThreadMessageW, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL,
-    WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+    GetClientRect, GetMessageW, GetWindowRect, HC_ACTION, HHOOK, HTCAPTION, HWND_TOPMOST,
+    KBDLLHOOKSTRUCT, LWA_COLORKEY, MSG, PostQuitMessage, PostThreadMessageW, RegisterClassW,
+    SW_HIDE, SW_SHOW, SWP_NOACTIVATE, SetLayeredWindowAttributes, SetWindowPos, SetWindowsHookExW,
+    ShowWindow, TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_DESTROY,
+    WM_KEYDOWN, WM_KEYUP, WM_MOVE, WM_NCHITTEST, WM_PAINT, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 static HOOK_STATE: OnceLock<Arc<Mutex<HookState>>> = OnceLock::new();
+static INDICATOR_STATE: OnceLock<Arc<Mutex<IndicatorState>>> = OnceLock::new();
 static OUTPUT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Deserialize)]
@@ -68,6 +78,39 @@ enum KeyboardHookCommand {
     RequestMicrophone,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum IndicatorStatus {
+    Ready,
+    Recording,
+    Transcribing,
+}
+
+impl Default for IndicatorStatus {
+    fn default() -> Self {
+        Self::Ready
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "command")]
+enum IndicatorCommand {
+    #[serde(rename = "show")]
+    Show {
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        status: IndicatorStatus,
+    },
+    #[serde(rename = "hide")]
+    Hide,
+    #[serde(rename = "status")]
+    Status { status: IndicatorStatus },
+    #[serde(rename = "quit")]
+    Quit,
+}
+
 #[derive(Clone, Copy, Default)]
 struct ModifierState {
     left_alt: bool,
@@ -108,6 +151,33 @@ struct HookState {
     swallow_rules: Vec<SwallowRule>,
     active_combo: Option<ActiveCombo>,
     pressed_keys: HashSet<i32>,
+}
+
+#[derive(Clone, Copy)]
+struct IndicatorFrame {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
+
+impl Default for IndicatorFrame {
+    fn default() -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            width: 72,
+            height: 72,
+        }
+    }
+}
+
+#[derive(Default)]
+struct IndicatorState {
+    visible: bool,
+    frame: IndicatorFrame,
+    status: IndicatorStatus,
+    quit: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -855,6 +925,248 @@ fn handle_keyboard_hook() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+const INDICATOR_MESSAGE: u32 = WM_APP + 1;
+
+fn to_wide(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn rgb(r: u8, g: u8, b: u8) -> u32 {
+    (r as u32) | ((g as u32) << 8) | ((b as u32) << 16)
+}
+
+fn indicator_color(status: IndicatorStatus) -> u32 {
+    match status {
+        IndicatorStatus::Ready => rgb(148, 163, 184),
+        IndicatorStatus::Recording => rgb(248, 72, 86),
+        IndicatorStatus::Transcribing => rgb(74, 163, 255),
+    }
+}
+
+unsafe extern "system" fn indicator_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WM_PAINT => {
+            let mut paint = PAINTSTRUCT::default();
+            let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
+            let mut rect = RECT::default();
+            unsafe {
+                GetClientRect(hwnd, &mut rect);
+                FillRect(hdc, &rect, GetStockObject(BLACK_BRUSH) as _);
+            }
+
+            let status = INDICATOR_STATE
+                .get()
+                .and_then(|state| state.lock().ok().map(|state| state.status))
+                .unwrap_or_default();
+
+            let brush = unsafe { CreateSolidBrush(indicator_color(status)) };
+            let pad = 9;
+            unsafe {
+                let old_brush = SelectObject(hdc, brush as _);
+                Ellipse(
+                    hdc,
+                    rect.left + pad,
+                    rect.top + pad,
+                    rect.right - pad,
+                    rect.bottom - pad,
+                );
+                SelectObject(hdc, old_brush);
+                DeleteObject(brush as _);
+                EndPaint(hwnd, &paint);
+            }
+            0
+        }
+        WM_NCHITTEST => HTCAPTION as LRESULT,
+        WM_MOVE => {
+            let visible = INDICATOR_STATE
+                .get()
+                .and_then(|state| state.lock().ok().map(|state| state.visible))
+                .unwrap_or(false);
+            let mut rect = RECT::default();
+            if visible && unsafe { GetWindowRect(hwnd, &mut rect) } != 0 {
+                let _ = emit_json(json!({
+                    "type": "move",
+                    "x": rect.left,
+                    "y": rect.top,
+                }));
+            }
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        WM_DESTROY => {
+            unsafe { PostQuitMessage(0) };
+            0
+        }
+        _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+fn apply_indicator_state(hwnd: HWND, state: &IndicatorState) {
+    unsafe {
+        InvalidateRect(hwnd, std::ptr::null(), 1);
+        if state.visible {
+            SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                state.frame.x,
+                state.frame.y,
+                state.frame.width,
+                state.frame.height,
+                SWP_NOACTIVATE,
+            );
+            ShowWindow(hwnd, SW_SHOW);
+            UpdateWindow(hwnd);
+        } else {
+            ShowWindow(hwnd, SW_HIDE);
+        }
+    }
+}
+
+fn handle_indicator() -> ExitCode {
+    let shared = Arc::new(Mutex::new(IndicatorState::default()));
+    let _ = INDICATOR_STATE.set(shared.clone());
+    let indicator_thread_id = unsafe { GetCurrentThreadId() };
+    let command_state = shared.clone();
+
+    let command_thread = thread::spawn(move || {
+        let stdin = io::stdin();
+        for line in stdin.lock().lines() {
+            let Ok(line) = line else {
+                break;
+            };
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let command = match serde_json::from_str::<IndicatorCommand>(trimmed) {
+                Ok(command) => command,
+                Err(err) => {
+                    let _ = emit_json(json!({
+                        "status": "error",
+                        "message": format!("Invalid indicator command: {err}"),
+                    }));
+                    continue;
+                }
+            };
+
+            if let Ok(mut state) = command_state.lock() {
+                match command {
+                    IndicatorCommand::Show {
+                        x,
+                        y,
+                        width,
+                        height,
+                        status,
+                    } => {
+                        state.visible = true;
+                        state.frame = IndicatorFrame {
+                            x,
+                            y,
+                            width: width.max(24),
+                            height: height.max(24),
+                        };
+                        state.status = status;
+                    }
+                    IndicatorCommand::Hide => state.visible = false,
+                    IndicatorCommand::Status { status } => state.status = status,
+                    IndicatorCommand::Quit => state.quit = true,
+                }
+            }
+
+            let _ = unsafe { PostThreadMessageW(indicator_thread_id, INDICATOR_MESSAGE, 0, 0) };
+        }
+
+        if let Ok(mut state) = command_state.lock() {
+            state.quit = true;
+        }
+        let _ = unsafe { PostThreadMessageW(indicator_thread_id, INDICATOR_MESSAGE, 0, 0) };
+    });
+
+    let class_name = to_wide("CodictateWindowsIndicator");
+    let instance = unsafe { GetModuleHandleW(std::ptr::null()) };
+    let wc = WNDCLASSW {
+        style: 0,
+        lpfnWndProc: Some(indicator_proc),
+        cbClsExtra: 0,
+        cbWndExtra: 0,
+        hInstance: instance,
+        hIcon: std::ptr::null_mut(),
+        hCursor: std::ptr::null_mut(),
+        hbrBackground: unsafe { GetStockObject(BLACK_BRUSH) as _ },
+        lpszMenuName: std::ptr::null(),
+        lpszClassName: class_name.as_ptr(),
+    };
+    unsafe { RegisterClassW(&wc) };
+
+    let hwnd = unsafe {
+        CreateWindowExW(
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
+            class_name.as_ptr(),
+            class_name.as_ptr(),
+            WS_POPUP,
+            0,
+            0,
+            72,
+            72,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            instance,
+            std::ptr::null_mut(),
+        )
+    };
+
+    if hwnd.is_null() {
+        let _ = emit_json(json!({
+            "status": "error",
+            "message": "CreateWindowExW failed for Windows indicator.",
+        }));
+        return ExitCode::from(1);
+    }
+
+    unsafe {
+        SetLayeredWindowAttributes(hwnd, rgb(0, 0, 0), 0, LWA_COLORKEY);
+        ShowWindow(hwnd, SW_HIDE);
+    }
+
+    let _ = emit_json(json!({
+        "status": "started",
+        "platform": "windows",
+        "kind": "indicator",
+    }));
+
+    let mut message = MSG::default();
+    loop {
+        let result = unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) };
+        if result <= 0 {
+            break;
+        }
+
+        if message.message == INDICATOR_MESSAGE {
+            let should_quit = shared.lock().map(|state| state.quit).unwrap_or(true);
+            if should_quit {
+                unsafe { DestroyWindow(hwnd) };
+                break;
+            }
+            if let Ok(state) = shared.lock() {
+                apply_indicator_state(hwnd, &state);
+            }
+            continue;
+        }
+
+        unsafe {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    }
+
+    let _ = command_thread.join();
+    ExitCode::SUCCESS
+}
+
 fn print_help() {
     println!("CodictateWindowsHelper");
     println!();
@@ -862,6 +1174,7 @@ fn print_help() {
     println!("Implemented:");
     println!("  --list-devices");
     println!("  --mic-authorization");
+    println!("  indicator");
     println!("  keyboard-hook");
     println!("  record <path> <deviceIndex> <maxSeconds>");
     println!();
@@ -879,6 +1192,7 @@ fn main() -> ExitCode {
         }
         Some("--list-devices") => handle_list_devices(),
         Some("--mic-authorization") => handle_mic_authorization(),
+        Some("indicator") => handle_indicator(),
         Some("keyboard-hook") => handle_keyboard_hook(),
         Some("record") => handle_record(&args),
         Some(command) => {

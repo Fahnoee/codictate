@@ -35,7 +35,7 @@ export function getPlatformCapabilities(): PlatformCapabilities {
         supportsStreamMode: false,
         supportsFormatting: false,
         supportsCorrectionObserver: false,
-        supportsNativeIndicator: false,
+        supportsNativeIndicator: true,
       }
     case 'linux':
       return {
