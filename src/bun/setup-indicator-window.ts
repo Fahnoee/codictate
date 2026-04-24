@@ -47,7 +47,7 @@ function indicatorShouldBeVisible(
   return status === 'recording' || status === 'transcribing'
 }
 
-function bottomRightFrame(display?: Display): {
+function bottomCenterFrame(display?: Display): {
   x: number
   y: number
   width: number
@@ -56,9 +56,25 @@ function bottomRightFrame(display?: Display): {
   const targetDisplay = display ?? Screen.getPrimaryDisplay()
   const { bounds } = targetDisplay
   const margin = 16
-  const x = Math.round(bounds.x + bounds.width - INDICATOR_FRAME_PX - margin)
+  const x = Math.round(bounds.x + (bounds.width - INDICATOR_FRAME_PX) / 2)
   const y = Math.round(bounds.y + bounds.height - INDICATOR_FRAME_PX - margin)
   return { x, y, width: INDICATOR_FRAME_PX, height: INDICATOR_FRAME_PX }
+}
+
+function isStaleWindowsTopLeftPosition(
+  settings: AppSettings,
+  x: number,
+  y: number
+): boolean {
+  if (settings.capabilities.platform !== 'windows') return false
+  const displays = Screen.getAllDisplays()
+  for (const display of displays) {
+    const b = display.bounds
+    if (x >= b.x && y >= b.y && x <= b.x + 160 && y <= b.y + 160) {
+      return true
+    }
+  }
+  return false
 }
 
 export function setupIndicatorWindow(deps: {
@@ -168,15 +184,20 @@ export function setupIndicatorWindow(deps: {
     width: number
     height: number
   } {
+    const settings = deps.getSettings()
     const saved = deps.getRecordingIndicatorPosition()
-    if (saved === null) return bottomRightFrame(resolvePreferredDisplay())
+    if (saved === null) return bottomCenterFrame(resolvePreferredDisplay())
     const { x, y } = saved
     if (
       !Number.isFinite(x) ||
       !Number.isFinite(y) ||
       !intersectsAnyDisplay(x, y, INDICATOR_FRAME_PX, INDICATOR_FRAME_PX)
     ) {
-      return bottomRightFrame(resolvePreferredDisplay())
+      return bottomCenterFrame(resolvePreferredDisplay())
+    }
+
+    if (isStaleWindowsTopLeftPosition(settings, x, y)) {
+      return bottomCenterFrame(resolvePreferredDisplay())
     }
 
     const rounded = {
