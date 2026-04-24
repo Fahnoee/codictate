@@ -3,8 +3,8 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, SampleRate, StreamConfig};
 use serde::Deserialize;
 use serde_json::json;
-use std::env;
 use std::collections::HashSet;
+use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
@@ -15,14 +15,14 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
-    KEYEVENTF_KEYUP, VK_BACK, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_MENU,
-    VK_RETURN, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_SPACE,
+    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
+    VK_BACK, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_MENU, VK_RCONTROL, VK_RETURN,
+    VK_RMENU, VK_RSHIFT, VK_SPACE,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT,
-    MSG, PostThreadMessageW, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx,
-    WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, DispatchMessageW, GetMessageW, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG,
+    PostThreadMessageW, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL,
+    WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 static HOOK_STATE: OnceLock<Arc<Mutex<HookState>>> = OnceLock::new();
@@ -281,11 +281,7 @@ fn combo_still_held(combo: ActiveCombo, modifiers: ModifierState) -> bool {
     }
 }
 
-unsafe extern "system" fn keyboard_proc(
-    code: i32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
+unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code != HC_ACTION as i32 {
         return unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) };
     }
@@ -420,7 +416,9 @@ fn list_input_devices_json() -> Result<String, String> {
 
     let mut out = serde_json::Map::new();
     for (index, device) in devices.enumerate() {
-        let name = device.name().unwrap_or_else(|_| format!("Input device {index}"));
+        let name = device
+            .name()
+            .unwrap_or_else(|_| format!("Input device {index}"));
         out.insert(index.to_string(), serde_json::Value::String(name));
     }
 
@@ -468,9 +466,13 @@ fn pick_record_config(device: &cpal::Device) -> Result<(StreamConfig, SampleForm
 fn finalize_writer(
     writer: Arc<Mutex<Option<hound::WavWriter<std::io::BufWriter<File>>>>>,
 ) -> Result<(), String> {
-    let mut guard = writer.lock().map_err(|_| "writer lock poisoned".to_string())?;
+    let mut guard = writer
+        .lock()
+        .map_err(|_| "writer lock poisoned".to_string())?;
     if let Some(writer) = guard.take() {
-        writer.finalize().map_err(|err| format!("finalize failed: {err}"))?;
+        writer
+            .finalize()
+            .map_err(|err| format!("finalize failed: {err}"))?;
     }
     Ok(())
 }
@@ -533,10 +535,7 @@ fn write_frames_u16(
         return;
     };
     for frame in data.chunks(channels) {
-        let sum: i64 = frame
-            .iter()
-            .map(|sample| *sample as i64 - 32_768)
-            .sum();
+        let sum: i64 = frame.iter().map(|sample| *sample as i64 - 32_768).sum();
         let mono = (sum / channels as i64) as i16;
         let _ = writer.write_sample(mono);
     }
@@ -569,7 +568,7 @@ fn record_to_wav(path: &str, device_index: usize, max_seconds: u64) -> Result<()
     let stop_flag = Arc::new(AtomicBool::new(false));
     let command_stop = stop_flag.clone();
 
-    let stdin_thread = thread::spawn(move || {
+    let _stdin_thread = thread::spawn(move || {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let Ok(line) = line else {
@@ -585,7 +584,10 @@ fn record_to_wav(path: &str, device_index: usize, max_seconds: u64) -> Result<()
     });
 
     let err_fn = |err| {
-        let _ = writeln!(io::stderr().lock(), "CodictateWindowsHelper record stream error: {err}");
+        let _ = writeln!(
+            io::stderr().lock(),
+            "CodictateWindowsHelper record stream error: {err}"
+        );
     };
 
     let channels = config.channels as usize;
@@ -635,7 +637,6 @@ fn record_to_wav(path: &str, device_index: usize, max_seconds: u64) -> Result<()
 
     drop(stream);
     stop_flag.store(true, Ordering::SeqCst);
-    let _ = stdin_thread.join();
     finalize_writer(writer)
 }
 
@@ -696,7 +697,7 @@ fn handle_record(args: &[String]) -> ExitCode {
 fn handle_keyboard_hook() -> ExitCode {
     let stdin = io::stdin();
     let mut clipboard = Clipboard::new().ok();
-    let microphone = false;
+    let microphone = default_input_available();
     let accessibility = true;
 
     let shared = Arc::new(Mutex::new(HookState {
@@ -825,9 +826,8 @@ fn handle_keyboard_hook() -> ExitCode {
         return ExitCode::from(1);
     }
 
-    let hook = unsafe {
-        SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), std::ptr::null_mut(), 0)
-    };
+    let hook =
+        unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), std::ptr::null_mut(), 0) };
     if hook.is_null() {
         let _ = emit_json(json!({
             "status": "error",
@@ -882,9 +882,7 @@ fn main() -> ExitCode {
         Some("keyboard-hook") => handle_keyboard_hook(),
         Some("record") => handle_record(&args),
         Some(command) => {
-            eprintln!(
-                "CodictateWindowsHelper: command '{command}' is not implemented yet."
-            );
+            eprintln!("CodictateWindowsHelper: command '{command}' is not implemented yet.");
             ExitCode::from(1)
         }
     }
