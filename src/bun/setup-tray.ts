@@ -23,6 +23,7 @@ import {
   isValidFormattingModeId,
   type FormattingModeId,
 } from '../shared/formatting-modes'
+import { getPlatformRuntime } from './platform/runtime'
 
 export type TrayHandlers = {
   setTrayIdle: () => void
@@ -44,9 +45,10 @@ export type TrayHandlers = {
   syncModelState: () => void
 }
 
-// Resolves to app/images/MacTrayIcon.png in the bundle.
-// import.meta.dir at runtime is the bun/ directory of the bundle.
-const trayIconPath = join(import.meta.dir, '../images/MacTrayIcon.svg')
+const trayIconPath =
+  getPlatformRuntime() === 'windows'
+    ? join(import.meta.dir, '../images/TrayIcon.ico')
+    : join(import.meta.dir, '../images/MacTrayIcon.svg')
 
 export const setupTray = (
   getOrCreateWindow: (onAction?: () => void) => BrowserWindow,
@@ -73,7 +75,7 @@ export const setupTray = (
     // template: true renders the icon as a macOS template image — it
     // automatically inverts for light/dark mode. Requires a black + transparent
     // PNG. Set to false if the icon uses colours.
-    template: true,
+    template: getPlatformRuntime() !== 'windows',
     width: 16,
     height: 16,
   })
