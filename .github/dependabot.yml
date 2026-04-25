@@ -3,5 +3,5 @@ updates:
   - package-ecosystem: "npm"   # or pip, cargo, etc.
     directory: "/"
     schedule:
-      interval: "weekly"       # don't get flooded with daily PRs
+      interval: "monthly"       # don't get flooded with daily PRs
     open-pull-requests-limit: 5
