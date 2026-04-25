@@ -88,9 +88,11 @@ export default {
     },
     linux: {
       bundleCEF: false,
+      icon: "src/assets/images/MacDocIcon.png",
     },
     win: {
       bundleCEF: false,
+      icon: "src/assets/images/MacDocIcon.png",
     },
   },
   release: {
