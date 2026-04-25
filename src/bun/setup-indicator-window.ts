@@ -47,17 +47,17 @@ function indicatorShouldBeVisible(
   return status === 'recording' || status === 'transcribing'
 }
 
-function bottomRightFrame(display?: Display): {
+function bottomCenterFrame(display?: Display): {
   x: number
   y: number
   width: number
   height: number
 } {
   const targetDisplay = display ?? Screen.getPrimaryDisplay()
-  const { bounds } = targetDisplay
+  const area = targetDisplay.workArea ?? targetDisplay.bounds
   const margin = 16
-  const x = Math.round(bounds.x + bounds.width - INDICATOR_FRAME_PX - margin)
-  const y = Math.round(bounds.y + bounds.height - INDICATOR_FRAME_PX - margin)
+  const x = Math.round(area.x + (area.width - INDICATOR_FRAME_PX) / 2)
+  const y = Math.round(area.y + area.height - INDICATOR_FRAME_PX - margin)
   return { x, y, width: INDICATOR_FRAME_PX, height: INDICATOR_FRAME_PX }
 }
 
@@ -162,21 +162,39 @@ export function setupIndicatorWindow(deps: {
     return getCursorDisplay() ?? Screen.getPrimaryDisplay()
   }
 
+  function defaultIndicatorFrameForSettings(): {
+    x: number
+    y: number
+    width: number
+    height: number
+  } {
+    const settings = deps.getSettings()
+    if (settings.capabilities.platform === 'windows') {
+      return bottomCenterFrame(Screen.getPrimaryDisplay())
+    }
+    return bottomCenterFrame(resolvePreferredDisplay())
+  }
+
   function resolveInitialIndicatorFrame(): {
     x: number
     y: number
     width: number
     height: number
   } {
+    const settings = deps.getSettings()
+    if (settings.capabilities.platform === 'windows') {
+      return defaultIndicatorFrameForSettings()
+    }
+
     const saved = deps.getRecordingIndicatorPosition()
-    if (saved === null) return bottomRightFrame(resolvePreferredDisplay())
+    if (saved === null) return defaultIndicatorFrameForSettings()
     const { x, y } = saved
     if (
       !Number.isFinite(x) ||
       !Number.isFinite(y) ||
       !intersectsAnyDisplay(x, y, INDICATOR_FRAME_PX, INDICATOR_FRAME_PX)
     ) {
-      return bottomRightFrame(resolvePreferredDisplay())
+      return defaultIndicatorFrameForSettings()
     }
 
     const rounded = {
