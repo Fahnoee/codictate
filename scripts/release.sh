@@ -1,15 +1,15 @@
 #!/bin/bash
 # Codictate release script
 #
-# Handles versioning, committing, and pushing the git tag.
-# Building and publishing to GitHub Releases is handled entirely by the
-# CI workflow (.github/workflows/release.yml) which triggers automatically
-# when this script pushes the tag.
+# Without --local: bumps version, commits, tags, pushes. CI builds both platforms.
+# With --local:    same, plus creates the draft release, builds macOS locally,
+#                  and uploads macOS artifacts. CI detects them and only builds Windows.
 #
 # Usage:
-#   bun run release:canary    → increment canaryBuild, tag, push
-#   bun run release:stable    → tag current baseVersion, push, bump for next cycle
-#   bun run release           → both channels
+#   bun run release:canary           → tag + push, CI does everything
+#   bun run release:canary --local   → tag + push + build Mac + upload, CI does Windows
+#   bun run release:stable [--local]
+#   bun run release        [--local]
 
 set -e
 
@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="${PROJECT_DIR}/electrobun.config.ts"
 VERSION_FILE="${PROJECT_DIR}/version.json"
+ARTIFACT_DIR="${PROJECT_DIR}/artifacts"
 
 # ── Validate ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ fi
 # ── Args ──────────────────────────────────────────────────────────────────────
 
 CHANNEL=""
+LOCAL=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,8 +38,12 @@ while [ $# -gt 0 ]; do
       CHANNEL="$1"
       shift
       ;;
+    --local|-l)
+      LOCAL=true
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [stable|canary|both]"
+      echo "Usage: $0 [stable|canary|both] [--local]"
       exit 0
       ;;
     *)
@@ -49,15 +55,28 @@ done
 
 [ -z "$CHANNEL" ] && CHANNEL="both"
 
+if $LOCAL && ! command -v gh &> /dev/null; then
+  echo "Error: gh CLI required for --local. Install with: brew install gh"
+  exit 1
+fi
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+resolve_repo() {
+  local url
+  url="$(git -C "${PROJECT_DIR}" remote get-url origin 2>/dev/null || true)"
+  url="${url#git@github.com:}"
+  url="${url#https://github.com/}"
+  url="${url%.git}"
+  echo "${url}"
+}
 
 read_version_field() {
   python3 -c "import json; print(json.load(open('${VERSION_FILE}'))['$1'])"
 }
 
 save_version() {
-  local base="$1"
-  local canary="$2"
+  local base="$1" canary="$2"
   python3 -c "
 import json
 with open('${VERSION_FILE}', 'w') as f:
@@ -91,7 +110,40 @@ push_tag() {
   fi
 }
 
-# ── Per-channel tag ───────────────────────────────────────────────────────────
+create_draft_release() {
+  local tag="$1" ch="$2" full_version="$3" repo="$4"
+  local prerelease_flag=""
+  [ "$ch" = "canary" ] && prerelease_flag="--prerelease"
+
+  if gh release view "${tag}" --repo "${repo}" > /dev/null 2>&1; then
+    echo "Draft release already exists: ${tag}"
+  else
+    gh release create "${tag}" \
+      --repo "${repo}" \
+      --title "${tag}" \
+      --notes "Codictate ${full_version}" \
+      --draft \
+      --verify-tag \
+      ${prerelease_flag}
+    echo "Created draft release: ${tag}"
+  fi
+}
+
+upload_local_artifacts() {
+  local tag="$1" ch="$2" repo="$3"
+  local files=()
+  for f in "${ARTIFACT_DIR}/${ch}-"*; do
+    [ -f "$f" ] && files+=("$f")
+  done
+  if [ ${#files[@]} -eq 0 ]; then
+    echo "Error: no artifacts found in ${ARTIFACT_DIR}/${ch}-*"
+    exit 1
+  fi
+  gh release upload "${tag}" "${files[@]}" --clobber --repo "${repo}"
+  echo "Uploaded ${#files[@]} macOS artifact(s) to ${tag}."
+}
+
+# ── Per-channel tag (+ optional local build) ──────────────────────────────────
 
 tag_channel() {
   local CH="$1"
@@ -131,7 +183,18 @@ tag_channel() {
   git push origin HEAD
   push_tag "${TAG}"
 
-  echo "${TAG} pushed — GitHub Actions will build and publish automatically."
+  if $LOCAL; then
+    local REPO
+    REPO=$(resolve_repo)
+    create_draft_release "${TAG}" "${CH}" "${FULL_VERSION}" "${REPO}"
+    echo "Building macOS locally..."
+    bun run "build:${CH}"
+    upload_local_artifacts "${TAG}" "${CH}" "${REPO}"
+    echo ""
+    echo "macOS done. GitHub Actions will build Windows and publish ${TAG} automatically."
+  else
+    echo "${TAG} pushed — GitHub Actions will build both platforms and publish."
+  fi
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

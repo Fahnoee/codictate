@@ -24,6 +24,7 @@
     "release:canary": "scripts/release.sh canary",
     "release:stable": "scripts/release.sh stable",
     "release:bridge-migration": "bash scripts/release-bridge-migration.sh",
+    "release:local": "scripts/release.sh --local",
     "build:stable": "bun run build:native && vite build && CODICTATE_CHANNEL=stable electrobun build --env=stable",
     "build:canary": "bun run build:native && vite build && CODICTATE_CHANNEL=canary electrobun build --env=canary",
     "build:native": "src/scripts/build-swift.sh",

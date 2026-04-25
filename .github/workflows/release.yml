@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       channel: ${{ steps.detect.outputs.channel }}
+      mac_exists: ${{ steps.check-mac.outputs.mac_exists }}
 
     steps:
       - name: Detect channel from tag
@@ -25,13 +26,15 @@ jobs:
             echo "channel=stable" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create draft release
+      - name: Create draft release (skip if already exists)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
           CHANNEL="${{ steps.detect.outputs.channel }}"
-          if [ "$CHANNEL" = "canary" ]; then
+          if gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "Release already exists: $TAG"
+          elif [ "$CHANNEL" = "canary" ]; then
             gh release create "$TAG" \
               --repo "${{ github.repository }}" \
               --title "$TAG" \
@@ -48,9 +51,26 @@ jobs:
               --verify-tag
           fi
 
+      - name: Check for existing macOS artifacts
+        id: check-mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          CHANNEL="${{ steps.detect.outputs.channel }}"
+          # Check if any asset for this channel contains "macos" in its name
+          if gh release view "$TAG" --repo "${{ github.repository }}" --json assets \
+              --jq ".assets[].name" 2>/dev/null | grep -q "^${CHANNEL}-.*macos"; then
+            echo "mac_exists=true" >> "$GITHUB_OUTPUT"
+            echo "macOS artifacts already uploaded — CI will skip macOS build."
+          else
+            echo "mac_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── macOS build ───────────────────────────────────────────────────────────────
   build-macos:
     needs: create-release
+    if: needs.create-release.outputs.mac_exists != 'true'
     runs-on: macos-latest
 
     steps:
@@ -170,6 +190,10 @@ jobs:
   # ── Publish once both builds are done ─────────────────────────────────────────
   publish:
     needs: [build-macos, build-windows]
+    if: |
+      always() &&
+      needs.build-windows.result == 'success' &&
+      (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped')
     runs-on: ubuntu-latest
 
     steps:

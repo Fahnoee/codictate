@@ -1,25 +1,25 @@
 # Releasing
 
-Releases are built entirely by CI. The local script only handles versioning and pushing the tag.
-
 ## How it works
 
-1. Run `bun run release:canary` or `bun run release:stable` locally
+1. Run a release command locally (see below)
 2. The script bumps the version, commits, and pushes a git tag
 3. The tag triggers `.github/workflows/release.yml`, which:
-   - Builds macOS and Windows in parallel
-   - Uploads artifacts to a draft GitHub Release
-   - Publishes the release once both builds succeed
-
-You do not need to build anything locally.
+   - Creates a draft GitHub Release (skipped if already exists)
+   - Builds macOS and Windows in parallel (skips macOS if already uploaded)
+   - Publishes the release once both builds are done
 
 ## Commands
 
 ```bash
-bun run release:canary   # v0.0.34-canary.1
-bun run release:stable   # v0.0.34 (then bumps to v0.0.35 for next cycle)
-bun run release          # both channels at the same version
+bun run release:canary          # v0.0.34-canary.1, CI builds both platforms
+bun run release:canary --local  # same, but build Mac locally + upload; CI only builds Windows
+bun run release:stable          # v0.0.34, CI builds both platforms
+bun run release:stable --local  # same, but build Mac locally + upload; CI only builds Windows
+bun run release                 # both channels at the same version
 ```
+
+`--local` is useful when you want faster Mac turnaround (no CI queue). The Mac and Windows artifacts always land in the same GitHub Release.
 
 ## Channels
 
