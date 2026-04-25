@@ -126,6 +126,21 @@ create_draft_release() {
 
   if gh release view "${tag}" --repo "${repo}" > /dev/null 2>&1; then
     echo "Draft release already exists: ${tag}"
+    return
+  fi
+
+  if $LOCAL; then
+    # Tag hasn't been pushed yet — use --target <sha> so GitHub creates a
+    # lightweight tag placeholder. We force-push our annotated tag after upload.
+    local target_sha
+    target_sha=$(git -C "${PROJECT_DIR}" rev-parse HEAD)
+    gh release create "${tag}" \
+      --repo "${repo}" \
+      --title "${tag}" \
+      --notes "${notes}" \
+      --draft \
+      --target "${target_sha}" \
+      ${prerelease_flag}
   else
     gh release create "${tag}" \
       --repo "${repo}" \
@@ -134,8 +149,8 @@ create_draft_release() {
       --draft \
       --verify-tag \
       ${prerelease_flag}
-    echo "Created draft release: ${tag}"
   fi
+  echo "Created draft release: ${tag}"
 }
 
 upload_local_artifacts() {
@@ -190,18 +205,24 @@ tag_channel() {
   git commit -m "release: ${TAG}"
   git tag -a "${TAG}" -m "${MESSAGE:-release: ${TAG}}"
   git push origin HEAD
-  push_tag "${TAG}"
 
   if $LOCAL; then
     local REPO
     REPO=$(resolve_repo)
+    # Create the draft release before building (tag pushed after upload).
     create_draft_release "${TAG}" "${CH}" "${FULL_VERSION}" "${REPO}"
     echo "Building macOS locally..."
     bun run "build:${CH}"
     upload_local_artifacts "${TAG}" "${CH}" "${REPO}"
+    # Push the annotated tag last — CI starts only after Mac artifacts are present.
+    # GitHub already created a lightweight placeholder tag via --target; force-push
+    # replaces it with our annotated one.
+    git -C "${PROJECT_DIR}" push --force origin "refs/tags/${TAG}"
+    echo "Pushed tag: ${TAG}"
     echo ""
     echo "macOS done. GitHub Actions will build Windows and publish ${TAG} automatically."
   else
+    push_tag "${TAG}"
     echo "${TAG} pushed — GitHub Actions will build both platforms and publish."
   fi
 }
