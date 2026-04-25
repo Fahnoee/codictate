@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Create a draft release so build jobs can upload to it ─────────────────────
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.detect.outputs.channel }}
+
+    steps:
+      - name: Detect channel from tag
+        id: detect
+        run: |
+          if [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
+            echo "channel=canary" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          CHANNEL="${{ steps.detect.outputs.channel }}"
+          if [ "$CHANNEL" = "canary" ]; then
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "$TAG" \
+              --notes "Codictate ${TAG#v}" \
+              --prerelease \
+              --draft \
+              --verify-tag
+          else
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "$TAG" \
+              --notes "Codictate ${TAG#v}" \
+              --draft \
+              --verify-tag
+          fi
+
+  # ── macOS build ───────────────────────────────────────────────────────────────
+  build-macos:
+    needs: create-release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Cache vendor binaries and model
+        uses: actions/cache@v4
+        with:
+          path: vendors/
+          key: macos-vendors-${{ hashFiles('scripts/pre-build.ts') }}
+
+      - name: Pre-build (download and compile vendor binaries)
+        run: bun run scripts/pre-build.ts
+
+      - name: Install Apple certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          security delete-keychain build.keychain || true
+          echo $MACOS_CERTIFICATE | base64 --decode > certificate.p12
+          security create-keychain -p actions build.keychain
+          security list-keychains -d user -s build.keychain $(security list-keychains -d user | sed s/\"//g)
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import certificate.p12 -k build.keychain -P $MACOS_CERTIFICATE_PWD -T /usr/bin/codesign -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning build.keychain
+          rm certificate.p12
+
+      - name: Build (${{ needs.create-release.outputs.channel }})
+        env:
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID || '' }}
+          ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID || '' }}
+          ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID || '' }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS || '' }}
+        run: |
+          echo "::add-mask::$ELECTROBUN_DEVELOPER_ID"
+          echo "::add-mask::$ELECTROBUN_APPLEID"
+          echo "::add-mask::$ELECTROBUN_APPLEIDPASS"
+          echo "::add-mask::$ELECTROBUN_TEAMID"
+          bun run build:${{ needs.create-release.outputs.channel }}
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" artifacts/${{ needs.create-release.outputs.channel }}-* --clobber
+
+      - name: Cleanup keychain
+        if: always()
+        run: security delete-keychain build.keychain || true
+
+  # ── Windows build ─────────────────────────────────────────────────────────────
+  build-windows:
+    needs: create-release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Vulkan SDK (required for whisper-cli and llama-completion GPU builds)
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          install_runtime: false
+          cache: true
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Cache vendor binaries and model
+        uses: actions/cache@v4
+        with:
+          path: vendors/
+          key: windows-x64-vendors-${{ hashFiles('scripts/pre-build.ts') }}
+
+      - name: Pre-build (download and compile vendor binaries)
+        run: bun run scripts/pre-build.ts
+
+      - name: Build Windows native helper (Rust/Cargo)
+        run: bun run build:native:windows-helper
+
+      - name: Build (${{ needs.create-release.outputs.channel }})
+        shell: pwsh
+        env:
+          CODICTATE_CHANNEL: ${{ needs.create-release.outputs.channel }}
+        run: |
+          bunx vite build
+          bunx electrobun build --env=${{ needs.create-release.outputs.channel }}
+
+      - name: Upload to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" artifacts/${{ needs.create-release.outputs.channel }}-* --clobber
+
+  # ── Publish once both builds are done ─────────────────────────────────────────
+  publish:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false

@@ -3,169 +3,153 @@
 
   # Codictate
 
-  **Local-first dictation for macOS and Windows: hit your shortcut, speak, and Codictate drops the text where your cursor is - on your machine, not in the cloud.**
+  **Local-first dictation for macOS and Windows. Hit your shortcut, speak, and your words appear wherever your cursor is — no cloud, no account.**
 </div>
 
-Codictate puts your words wherever your cursor is with a local-first dictation workflow for macOS and Windows. No copy-pasting, no account, no cloud processing of your voice.
-
-**Website:** [codictate.app](https://codictate.app)
-
-## Support
-
-Codictate is free. If it saves you time or money compared to other tools, consider supporting the project.
-
-I'm saving toward an **Apple Developer Program** membership so the app can be **signed and notarized**. That means fewer Gatekeeper warnings and, for most people, no Terminal `xattr` step after install.
-
-[☕ ko-fi.com/emillykke](https://ko-fi.com/emillykke)
+**Website:** [codictate.app](https://codictate.app) · [Releases](https://github.com/EmilLykke/codictate/releases) · [Changelog](CHANGELOG.md)
 
 ## Features
 
-- Fully local transcription with Whisper
-- Global shortcut workflow for dictation into any app
-- Floating recording indicator on macOS and Windows
-- No account, no login, no analytics
-- Stream mode and Apple Intelligence formatting are currently macOS-only
+| Feature | macOS | Windows |
+|---------|:-----:|:-------:|
+| Local Whisper transcription | ✓ | ✓ |
+| Global shortcut dictation | ✓ | ✓ |
+| Formatting — Qwen2.5 3B / Qwen3 4B (llama.cpp) | ✓ | ✓ |
+| Formatting — Apple Intelligence (macOS 26+) | ✓ | — |
+| Floating recording indicator | ✓ | ✓ |
+| Stream mode | ✓ | — |
+| No account, no analytics | ✓ | ✓ |
 
 ## Download
 
-Visit **[codictate.app](https://codictate.app)** for the project site, then grab the latest macOS or Windows build from [**Releases**](https://github.com/EmilLykke/codictate/releases).
+Grab the latest build from [**Releases**](https://github.com/EmilLykke/codictate/releases).
 
-| Channel | Description |
-|---------|-------------|
+| Channel | Use when |
+|---------|----------|
 | **Stable** | Recommended for most users |
-| **Canary** | Latest changes, updated more frequently |
+| **Canary** | Latest changes, updated more often |
 
 ## Installation
 
-First time installing on macOS? See the **[step-by-step installation guide](docs/INSTALL.md)** with screenshots for every step.
+### macOS
 
-Using **[AeroSpace](https://github.com/nikitabobko/AeroSpace)**? See **[docs/AEROSPACE.md](docs/AEROSPACE.md)** for an optional rule snippet if you want to keep separate AeroSpace rules for the main Codictate window and the floating recording HUD.
+1. Download the `.dmg` and drag **Codictate** to Applications
+2. Open Codictate and grant the requested permissions (Input Monitoring, Accessibility, Microphone)
 
-The macOS short version:
+Full step-by-step with screenshots: **[docs/INSTALL.md](docs/INSTALL.md)**
 
-1. Download the `.dmg` from [Releases](https://github.com/EmilLykke/codictate/releases)
-2. Drag **Codictate** to your Applications folder
-3. Run `xattr -cr /Applications/Codictate.app` in Terminal if macOS blocks it
-4. Grant the required permissions when prompted
+Using **AeroSpace**? See **[docs/AEROSPACE.md](docs/AEROSPACE.md)** for an optional window rule snippet.
 
-## Requirements
+### Windows
 
-- macOS 13 or later
-- Apple Silicon (M1 or later)
-- Windows 10 or later for Windows builds
-- No internet connection required after install
+Download and run the `.exe` installer from Releases.
 
-## Privacy
+### Requirements
 
-- No account, no login
-- No data collection
-- No analytics
-- Everything runs locally on your device
+| Platform | Requirement |
+|----------|-------------|
+| macOS | 13 or later, Apple Silicon (M1+) |
+| Windows | 10 or later, x64 |
 
-## Usage examples
+## Formatting
 
-- Draft emails, Slack messages, and documents without leaving the keyboard
-- Dictate commit messages, issue comments, and notes while coding
-- Capture ideas into any text field with the same shortcut workflow
+Codictate can reformat raw transcriptions before pasting — e.g. turning spoken words into a properly structured email.
+
+Two backends are available depending on your platform:
+
+| Backend | Availability | Models |
+|---------|-------------|--------|
+| **llama.cpp (Qwen)** | macOS, Windows | Qwen2.5 3B (~2 GB) or Qwen3 4B (~2.5 GB), downloaded in-app |
+| **Apple Intelligence** | macOS 26+, Apple Intelligence enabled | On-device, no download |
+
+See **[docs/FORMATTING.md](docs/FORMATTING.md)** for details.
 
 ## Development
 
-```bash
-bun install
-
-# Dev (no HMR)
-bun run dev
-
-# Dev with HMR
-bun run dev:hmr
-```
-
-**Recording indicator (second window, Vite entry, Electrobun packaging):** see **[docs/RECORDING_INDICATOR.md](docs/RECORDING_INDICATOR.md)** for architecture and the “why” behind each step.
-
-### Dev requirements
+### Requirements
 
 - [Bun](https://bun.sh) v1.3+
-- [gh CLI](https://cli.github.com) for releases
-- [cmake](https://cmake.org) for building `whisper-cli`
-- Xcode Command Line Tools for Swift compilation
-- Rust toolchain for `native/CodictateWindowsHelper` on Windows
+- [cmake](https://cmake.org) — builds `whisper-cli` and `llama-completion` (both platforms)
+- Xcode Command Line Tools — Swift compilation (macOS only)
+- Rust toolchain — builds `CodictateWindowsHelper` (Windows only)
+- Vulkan SDK — GPU acceleration for whisper/llama on Windows (install [LunarG Vulkan SDK](https://vulkan.lunarg.com), ensure `glslc` is on PATH)
 
-## Building
+### Setup
 
 ```bash
-bun run build:canary
-bun run build:stable
-bun run build:all
+bun install
+bun run scripts/pre-build.ts   # downloads and builds vendor binaries + Whisper model (~547 MB)
+```
 
-# Windows dev/build helper
-bun run build:native:windows-helper
+### Running
+
+```bash
+# macOS
+bun run dev          # no HMR
+bun run dev:hmr      # with HMR
+
+# Windows
 bun run start:windows
 ```
 
-Unsigned local builds do not require a `.env` file.
-
-If you want to sign or notarize your own builds, copy `.env.example` to `.env` and fill in the Apple developer credentials:
+### Building locally
 
 ```bash
-cp .env.example .env
+# macOS
+bun run build:canary
+bun run build:stable
+
+# Windows
+bun run build:native:windows-helper   # compile CodictateWindowsHelper (Rust)
+# then build:canary / build:stable via CI, or run start:windows for dev
 ```
 
-Details, nested helper signing, and troubleshooting failed notarization: **[docs/MACOS_SIGNING_AND_NOTARIZATION.md](docs/MACOS_SIGNING_AND_NOTARIZATION.md)**.
+Unsigned local builds work without any `.env` configuration. To sign locally, copy `.env.example` to `.env` and fill in Apple developer credentials. See **[docs/MACOS_SIGNING_AND_NOTARIZATION.md](docs/MACOS_SIGNING_AND_NOTARIZATION.md)**.
 
 ## Releasing
 
 ```bash
 bun run release:canary
 bun run release:stable
-bun run release
+bun run release        # both channels
 ```
 
-Optional release notes:
+This commits the version bump, pushes a git tag, and triggers the CI workflow which builds macOS and Windows in parallel and publishes the GitHub Release automatically.
 
-```bash
-bun run release -- -m "Your changelog here"
-bun run release:stable -- -m "Your changelog here"
-bun run release:canary -- -m "Your changelog here"
+See **[docs/RELEASING.md](docs/RELEASING.md)** for the full guide including first-time setup.
+
+## Project structure
+
+```
+src/
+  bun/                  # Main process (Bun/Electrobun)
+  mainview/             # React frontend (Vite)
+native/
+  CodictateWindowHelper/    # macOS: recording HUD (AppKit NSPanel)
+  CodictateParakeetHelper/  # macOS: Parakeet ASR helper
+  CodictateObserverHelper/  # macOS: correction observer
+  CodictateWindowsHelper/   # Windows: keyboard hook + mic recording + indicator (Rust, single binary)
+scripts/
+  pre-build.ts          # Vendor binary + model setup
+  post-build.ts         # App bundle patching + codesign helpers
+  release.sh            # Version bump + tag push
+.github/workflows/
+  release.yml           # Tag-triggered: builds both platforms, publishes release
+  build-macos.yml       # Manual macOS build (no release)
+  build-windows.yml     # Manual Windows build (no release)
+docs/
+  INSTALL.md                        # User install guide (with screenshots)
+  FORMATTING.md                     # Formatting feature — both backends
+  RELEASING.md                      # Maintainer release guide
+  MACOS_SIGNING_AND_NOTARIZATION.md # Signing and notarization reference
+  RECORDING_INDICATOR.md            # Recording HUD architecture
+  AEROSPACE.md                      # AeroSpace window rule snippet
 ```
 
-Each release:
+## Contributing
 
-1. Builds the selected channel
-2. Creates and pushes the matching git tag
-3. Creates a versioned GitHub release in this repository
-4. Uploads artifacts from `artifacts/`
-5. Keeps updater assets available from the latest stable release
-
-After releasing, commit the version bump:
-
-```bash
-git add electrobun.config.ts version.json && git commit -m "release: vX.X.X"
-```
-
-## Documentation and community
-
-- [codictate.app](https://codictate.app) — project website
-- [Contributing guide](CONTRIBUTING.md)
-- [Code of conduct](CODE_OF_CONDUCT.md)
-- [Security policy](SECURITY.md)
-- [Changelog](CHANGELOG.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-## Project structure
-
-```text
-src/
-  bun/                  # Main process (Bun/Electrobun)
-  mainview/             # React frontend (Vite)
-scripts/
-  pre-build.ts          # Vendored binary/model setup
-  post-build.ts         # App bundle patching
-  release.sh            # Release pipeline
-docs/
-  INSTALL.md                        # User install guide
-  MACOS_SIGNING_AND_NOTARIZATION.md # Maintainer: signing & notary
-  StepByStep/                       # Install guide images
-```

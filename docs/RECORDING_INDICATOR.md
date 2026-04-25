@@ -1,93 +1,50 @@
-# Recording indicator (desktop HUD)
+# Recording indicator
 
-This document explains how the floating recording indicator works after the fullscreen fix.
+A floating status HUD that shows the current dictation state: `ready`, `recording`, or `transcribing`. Implemented natively on both macOS and Windows.
 
-## What it is
+## Architecture
 
-- A small native macOS `NSPanel` managed by a separate helper executable: `CodictateWindowHelper`
-- Driven by app status: `ready` | `recording` | `transcribing`
-- Shown according to `recordingIndicatorMode`: `off`, `always`, or `when-active`
+The indicator is a native AppKit `NSPanel` managed by `CodictateWindowHelper` — a separate Swift helper process. The main Bun process sends `show` / `hide` / `status` commands over stdin/stdout.
 
-## Why it is native now
+Key files:
 
-The previous implementation used a separate Electrobun `BrowserWindow` with a React entrypoint. That worked across normal Spaces, but not reliably over native macOS fullscreen Spaces.
+| File | Role |
+|------|------|
+| `native/CodictateWindowHelper/Sources/.../main.swift` | NSPanel, drawing, animation, drag |
+| `src/bun/utils/window/native-indicator-helper.ts` | Spawns helper, sends commands |
+| `src/bun/setup-indicator-window.ts` | Decides when/where to show the indicator |
 
-The working fix was to move the HUD to a dedicated AppKit helper process:
+## Why native AppKit
 
-- Main app stays in Electrobun/Bun/React
-- Indicator rendering and window behavior live in native AppKit
-- Bun communicates with the helper over stdin/stdout, similar to the existing native helpers
+An earlier implementation used an Electrobun `BrowserWindow`. It worked in normal Spaces but failed in native macOS fullscreen Spaces. Moving to a native `NSPanel` fixed both fullscreen Spaces and AeroSpace. Bun FFI was also ruled out — it crashed when driving an `NSPanel` directly across the dylib boundary.
 
-This avoids two problems we hit during the fullscreen work:
+## Panel behaviour
 
-- Electrobun `BrowserWindow` did not provide the right fullscreen-space semantics for this overlay
-- Bun FFI crashed when we tried to drive an `NSPanel` directly through a dylib boundary
-
-An important side effect of that change is that the indicator now behaves properly under AeroSpace as well. There is no special AeroSpace app config involved in Codictate itself.
-
-## Current architecture
-
-### Main app side
-
-- `src/bun/setup-indicator-window.ts`
-  Decides when the indicator should exist and where it should appear
-- `src/bun/utils/window/native-indicator-helper.ts`
-  Spawns `CodictateWindowHelper` and sends `show` / `hide` / `status` commands
-
-### Native helper side
-
-- `native/CodictateWindowHelper/Sources/CodictateWindowHelper/main.swift`
-  Owns the real `NSPanel`, drawing, animation, and drag/move reporting
-
-### Build and packaging
-
-- `src/scripts/build-swift.sh`
-  Builds `CodictateWindowHelper` and vendors it to `vendors/window-helper/CodictateWindowHelper`
-- `electrobun.config.ts`
-  Copies that executable into `native-helpers/CodictateWindowHelper`
-- `scripts/post-build.ts`
-  Verifies and codesigns `CodictateWindowHelper` alongside the other native helpers
-
-## Native panel behavior
-
-The helper uses a borderless, nonactivating `NSPanel` with:
-
-- `.canJoinAllSpaces`
-- `.fullScreenAuxiliary`
-- `.stationary`
-- `.ignoresCycle`
-- high window level (`.screenSaver`)
-
-Important detail:
-
-- `canJoinAllSpaces` and `moveToActiveSpace` cannot be combined; AppKit throws if both are set
+The NSPanel uses `.canJoinAllSpaces`, `.fullScreenAuxiliary`, `.stationary`, `.ignoresCycle`, and a high window level (`.screenSaver`). Note: `canJoinAllSpaces` and `moveToActiveSpace` cannot both be set — AppKit throws.
 
 ## Animation
 
-The old animation used React + Motion. The current animation is native AppKit drawing:
+Drawn natively in AppKit:
 
-- `ready`: subtle breathing pulse
-- `recording`: red pulse/ring animation
-- `transcribing`: animated blue level bars
+- `ready` — subtle breathing pulse
+- `recording` — red ring animation
+- `transcribing` — animated blue level bars
 
-## Persistence
+## Position persistence
 
-- The helper reports drag moves back to Bun over stdout as JSON lines
-- `setup-indicator-window.ts` debounces and saves the top-left position into app config
-- Saved positions are clamped back onto a valid display before reuse
+The helper reports drag moves back to Bun as JSON lines on stdout. `setup-indicator-window.ts` debounces and saves the top-left position to app config. Positions are clamped to a valid display on restore.
 
-## What is no longer used
+## Windows implementation
 
-These legacy files are gone because the indicator is no longer a webview:
+On Windows the indicator is part of `CodictateWindowsHelper` (Rust) — the same binary that handles keyboard hook and audio recording. It runs as a separate mode (`indicator`) spawned by Bun, receiving commands over stdin/stdout exactly like the macOS helper.
 
-- `src/mainview/indicator.html`
-- `src/mainview/indicator/main.tsx`
-- `src/mainview/indicator.css`
-- `IndicatorWebviewRPCType`
-- `scripts/duplicate-dist-assets-for-indicator.ts`
+The window is a Win32 layered window (`WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED`) with black as the colorkey for transparency. Animation and drawing are done with GDI — the same states and visual style as macOS (breathing pulse, red ring, orange bars). Drag moves are reported back to Bun as JSON lines on stdout.
 
-## Checklist when touching this feature
+Build: `bun run build:native:windows-helper` (Cargo).
 
-1. If fullscreen behavior regresses, inspect the native helper first, not Electrobun `BrowserWindow`
-2. If the indicator stops launching, check that `CodictateWindowHelper` is built into `vendors/window-helper/` and copied into `native-helpers/`
-3. If packaged builds fail notarization/signing, check `scripts/post-build.ts` and `entitlements/CodictateWindowHelper.entitlements`
+## Checklist
+
+- If fullscreen behaviour regresses on macOS: check the native helper, not Electrobun `BrowserWindow`
+- If the indicator won't launch on macOS: verify `vendors/window-helper/CodictateWindowHelper` exists (run `bun run build:native`)
+- If the indicator won't launch on Windows: verify `CodictateWindowsHelper.exe` is built (`bun run build:native:windows-helper`)
+- If macOS notarization fails: check `scripts/post-build.ts` and `entitlements/CodictateWindowHelper.entitlements`
