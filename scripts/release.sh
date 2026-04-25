@@ -110,12 +110,8 @@ bump_patch() {
 
 push_tag() {
   local tag="$1"
-  if git -C "${PROJECT_DIR}" ls-remote --exit-code --tags origin "refs/tags/${tag}" > /dev/null 2>&1; then
-    echo "Tag already on origin: ${tag}"
-  else
-    git -C "${PROJECT_DIR}" push origin "refs/tags/${tag}"
-    echo "Pushed tag: ${tag}"
-  fi
+  git -C "${PROJECT_DIR}" push --force origin "refs/tags/${tag}"
+  echo "Pushed tag: ${tag}"
 }
 
 create_draft_release() {
@@ -202,7 +198,12 @@ tag_channel() {
   patch_config_version "$FULL_VERSION"
 
   git add electrobun.config.ts version.json
-  git commit -m "release: ${TAG}"
+  if ! git diff --cached --quiet; then
+    git commit -m "release: ${TAG}"
+  else
+    echo "Nothing to commit (version files already at ${FULL_VERSION})"
+  fi
+  git tag -d "${TAG}" 2>/dev/null || true
   git tag -a "${TAG}" -m "${MESSAGE:-release: ${TAG}}"
   git push origin HEAD
 
