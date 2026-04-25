@@ -207,9 +207,42 @@ function withTrailingComma(text: string): string {
   return trimmed + ','
 }
 
-function normaliseLanguage(language: string, transcriptionLanguage: string): string {
+function detectLanguageFromText(text: string): string {
+  const folded = ` ${fold(text)} `
+  const scores: Record<string, number> = {
+    da: 0,
+    es: 0,
+    fr: 0,
+    en: 0,
+  }
+
+  for (const token of [' hej ', ' hejsa ', ' kære ', ' det ', ' jeg ', ' med ', ' hilsen ', ' tak ']) {
+    if (folded.includes(token)) scores.da += 1
+  }
+  for (const token of [' hola ', ' buenas ', ' gracias ', ' saludos ', ' yo ', ' para ', ' tengo ', ' una ']) {
+    if (folded.includes(token)) scores.es += 1
+  }
+  for (const token of [' bonjour ', ' salut ', ' merci ', ' cordialement ', ' je ', ' vous ']) {
+    if (folded.includes(token)) scores.fr += 1
+  }
+  for (const token of [' hi ', ' hello ', ' thanks ', ' regards ', ' the ', ' i ', ' you ']) {
+    if (folded.includes(token)) scores.en += 1
+  }
+
+  return (
+    Object.entries(scores).sort((a, b) => b[1] - a[1])[0]?.[1] > 0
+      ? Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0]
+      : 'en'
+  )
+}
+
+function normaliseLanguage(
+  language: string,
+  transcriptionLanguage: string,
+  fallbackText: string
+): string {
   const explicit = transcriptionLanguage === 'auto' ? '' : transcriptionLanguage
-  const source = explicit || language || 'en'
+  const source = explicit || language || detectLanguageFromText(fallbackText)
   return source.split('-')[0].toLowerCase()
 }
 
@@ -341,7 +374,8 @@ export function assembleEmail(
   const senderName = opts.senderNameOverride?.trim() ?? ''
   const language = normaliseLanguage(
     email.language,
-    opts.transcriptionLanguage ?? 'auto'
+    opts.transcriptionLanguage ?? 'auto',
+    `${opts.originalTranscript ?? ''} ${email.greeting} ${email.body} ${email.closing}`
   )
 
   const cleanedGreeting = stripSenderNameFromGreeting(

@@ -7,6 +7,7 @@ import type { FormatterRequest } from '../src/bun/utils/formatting/resolve-forma
 
 const baseRequest: Omit<FormatterRequest, 'modeId' | 'transcript'> = {
   formattingEnabled: true,
+  formatterModelInstalled: true,
   transcriptionLanguage: 'auto',
   userDisplayName: '',
   emailIncludeSenderName: false,

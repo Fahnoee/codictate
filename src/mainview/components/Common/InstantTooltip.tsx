@@ -54,8 +54,9 @@ export function InstantTooltip({
   tooltipClassName,
   side = "top",
   floatInViewport = false,
+  interactive = false,
 }: {
-  text: string;
+  text: ReactNode;
   children: ReactNode;
   className?: string;
   /** Merged onto the tooltip panel (e.g. width, max-height, whitespace). */
@@ -64,6 +65,8 @@ export function InstantTooltip({
   side?: "top" | "bottom";
   /** Render with `position: fixed` in `document.body` and clamp to the window (avoids overflow clipping). */
   floatInViewport?: boolean;
+  /** Allows hoverable/clickable content inside the tooltip panel. */
+  interactive?: boolean;
 }) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const floaterRef = useRef<HTMLSpanElement>(null);
@@ -108,7 +111,7 @@ export function InstantTooltip({
       : "top-full left-1/2 mt-1.5 -translate-x-1/2";
 
   const bubbleBase =
-    "pointer-events-none rounded-lg border border-white/14 bg-[#1c1c1f]/98 px-3 py-2 text-left leading-snug text-white/90 shadow-lg whitespace-normal";
+    `${interactive ? "pointer-events-auto" : "pointer-events-none"} rounded-lg border border-white/14 bg-[#1c1c1f]/98 px-3 py-2 text-left leading-snug text-white/90 shadow-lg whitespace-normal`;
 
   if (floatInViewport) {
     const initialWidth =
@@ -144,6 +147,8 @@ export function InstantTooltip({
                 }
           }
           className={`${bubbleBase} text-[17px] max-h-[min(220px,38vh)] overflow-y-auto ${tooltipClassName ?? ""}`}
+          onPointerEnter={interactive ? () => setOpen(true) : undefined}
+          onPointerLeave={interactive ? () => setOpen(false) : undefined}
         >
           {text}
         </span>,
@@ -157,6 +162,8 @@ export function InstantTooltip({
           className={`inline-flex max-w-full ${className ?? ""}`}
           onPointerEnter={() => setOpen(true)}
           onPointerLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
         >
           {children}
         </span>
@@ -165,14 +172,38 @@ export function InstantTooltip({
     );
   }
 
+  if (!interactive) {
+    return (
+      <span
+        className={`group relative inline-flex max-w-full ${className ?? ""}`}
+      >
+        {children}
+        <span
+          role="tooltip"
+          className={`absolute ${positionClass} z-60 w-[min(100vw-2rem,15rem)] ${bubbleBase} text-[18px] opacity-0 transition-none group-hover:opacity-100 group-focus-within:opacity-100 ${tooltipClassName ?? ""}`}
+        >
+          {text}
+        </span>
+      </span>
+    );
+  }
+
   return (
     <span
-      className={`group relative inline-flex max-w-full ${className ?? ""}`}
+      className={`relative inline-flex max-w-full ${className ?? ""}`}
+      onPointerEnter={() => setOpen(true)}
+      onPointerLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
     >
       {children}
       <span
         role="tooltip"
-        className={`pointer-events-none absolute ${positionClass} z-60 w-[min(100vw-2rem,15rem)] ${bubbleBase} text-[18px] opacity-0 transition-none group-hover:opacity-100 group-focus-within:opacity-100 ${tooltipClassName ?? ""}`}
+        onPointerEnter={() => setOpen(true)}
+        onPointerLeave={() => setOpen(false)}
+        className={`absolute ${positionClass} z-60 w-[min(100vw-2rem,16.5rem)] ${bubbleBase} text-[17px] transition-none ${
+          open ? "opacity-100" : "opacity-0 pointer-events-none"
+        } ${tooltipClassName ?? ""}`}
       >
         {text}
       </span>

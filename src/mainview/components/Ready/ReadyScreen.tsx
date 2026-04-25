@@ -18,6 +18,7 @@ import {
   setTranslateToEnglish,
   setStreamMode,
   setFormattingEnabled,
+  downloadFormatterModel,
   fetchSettings,
 } from "../../rpc";
 import {
@@ -265,10 +266,38 @@ export function ReadyScreen({
 
   const formattingAvailable = settings?.formatting.available ?? false;
   const formattingSupported = settings?.capabilities.supportsFormatting ?? true;
+  const formatterModelInstalled = settings?.formatting.modelInstalled ?? false;
   const isFormattingForced =
     (settings?.formatting.forceModeId ?? null) !== null;
   const isFormattingActive =
     (settings?.formatting.enabled ?? false) || isFormattingForced;
+
+  const formattingTooltipText =
+    !settings
+      ? "Formatting"
+      : !formattingSupported
+        ? `Formatting is coming soon on ${platformDisplayName(settings.capabilities.platform)}`
+        : isFormattingForced
+          ? `Force formatting: ${settings.formatting.forceModeId} — clear from tray to disable`
+          : formatterModelInstalled
+            ? isFormattingActive
+              ? "Formatting on — using the on-device formatter model. Better output, with some extra processing overhead."
+              : "Format output — use the on-device formatter model for richer formatting. Adds a bit of processing overhead."
+            : isFormattingActive
+              ? "Light formatting on — basic cleanup only."
+              : "Light formatting only right now."
+  const formattingAriaLabel =
+    !settings
+      ? "Formatting"
+      : !formattingSupported
+        ? `Formatting coming soon on ${platformDisplayName(settings.capabilities.platform)}`
+        : formatterModelInstalled
+          ? isFormattingActive
+            ? "Formatting on - using the on-device formatter model"
+            : "Format output with the on-device formatter model"
+          : isFormattingActive
+            ? "Light formatting on - download a formatter model in Settings for richer output"
+            : "Light formatting only - download a formatter model in Settings for richer output"
 
   const handleFormattingToggle = useCallback(async () => {
     if (!settings || !formattingAvailable) return;
@@ -289,6 +318,11 @@ export function ReadyScreen({
       queryClient.setQueryData(["settings"], await fetchSettings());
     }
   }, [settings, formattingAvailable, queryClient]);
+
+  const handleFormatterTooltipDownload = useCallback(() => {
+    downloadFormatterModel();
+    onOpenSettings("formatting");
+  }, [onOpenSettings]);
 
   const micName = deviceInfo
     ? (deviceInfo.devices[String(deviceInfo.selectedDevice)] ?? "Default")
@@ -589,16 +623,34 @@ export function ReadyScreen({
             (formattingAvailable || !formattingSupported) && (
               <InstantTooltip
                 text={
-                  !formattingSupported
-                    ? `Formatting is coming soon on ${platformDisplayName(settings.capabilities.platform)}`
-                    : isFormattingForced
-                      ? `Force formatting: ${settings?.formatting.forceModeId} — clear from tray to disable`
-                      : isFormattingActive
-                        ? "Formatting on — click to disable"
-                        : "Format output — reshape transcription with Apple Intelligence"
+                  !formattingSupported || formatterModelInstalled ? (
+                    formattingTooltipText
+                  ) : (
+                    <div className="flex max-w-[16rem] flex-col gap-2">
+                      <p className="text-[16px] leading-snug text-white/90">
+                        {formattingTooltipText}
+                      </p>
+                      <p className="text-[14px] leading-snug text-white/58">
+                        Download a formatter model for richer output. It adds a bit of processing overhead.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleFormatterTooltipDownload}
+                        className="inline-flex w-full items-center justify-center rounded-md border border-white/14 bg-white/10 px-2.5 py-1.5 text-[14px] font-medium text-white/90 transition-colors hover:bg-white/14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/16"
+                      >
+                        Download model
+                      </button>
+                    </div>
+                  )
                 }
                 side="top"
                 floatInViewport
+                interactive={formattingSupported && !formatterModelInstalled}
+                tooltipClassName={
+                  formattingSupported && !formatterModelInstalled
+                    ? "w-[min(100vw-2rem,16.5rem)]"
+                    : undefined
+                }
               >
                 <button
                   onClick={handleFormattingToggle}
@@ -614,11 +666,7 @@ export function ReadyScreen({
                       : "border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/48 hover:text-white/70"
                   }`}
                   aria-label={
-                    !formattingSupported
-                      ? `Formatting coming soon on ${platformDisplayName(settings.capabilities.platform)}`
-                      : isFormattingActive
-                        ? "Formatting on — click to disable"
-                        : "Format output with Apple Intelligence"
+                    formattingAriaLabel
                   }
                 >
                   <svg

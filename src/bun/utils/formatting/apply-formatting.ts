@@ -34,6 +34,16 @@ function normaliseLightweightChatText(text: string): string {
     .replace(/\n{3,}/g, '\n\n')
 }
 
+function capitaliseFirst(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return trimmed
+  return trimmed.replace(/^\p{Ll}/u, (char) => char.toLocaleUpperCase())
+}
+
+function normaliseLightweightEmailBody(text: string): string {
+  return capitaliseFirst(normaliseLightweightChatText(text))
+}
+
 function applyDeterministicChatStyle(
   text: string,
   request: FormatterRequest
@@ -56,12 +66,53 @@ function applyDeterministicChatStyle(
   return trimmed
 }
 
-function shouldBypassAiFormatting(request: FormatterRequest): boolean {
+function shouldUseLightFormatting(request: FormatterRequest): boolean {
+  if (!request.formatterModelInstalled) return true
   return (
     (request.modeId === 'imessage' && request.imessageLightweight) ||
     (request.modeId === 'slack' && request.slackLightweight) ||
     (request.modeId === 'document' && request.documentLightweight)
   )
+}
+
+function applyLightFormatting(request: FormatterRequest): string {
+  switch (request.modeId) {
+    case 'email': {
+      const senderNameOverride = request.emailIncludeSenderName
+        ? request.userDisplayName.trim()
+        : ''
+      return assembleEmail(
+        {
+          language: request.transcriptionLanguage === 'auto'
+            ? ''
+            : request.transcriptionLanguage.split('-')[0].toLowerCase(),
+          greeting: '',
+          body: normaliseLightweightEmailBody(request.transcript),
+          closing: '',
+        },
+        {
+          senderNameOverride,
+          userDisplayName: request.userDisplayName.trim(),
+          originalTranscript: request.transcript,
+          transcriptionLanguage: request.transcriptionLanguage,
+          greetingStyle: request.emailGreetingStyle,
+          closingStyle: request.emailClosingStyle,
+          customGreeting: request.emailCustomGreeting,
+          customClosing: request.emailCustomClosing,
+        }
+      )
+    }
+    case 'imessage':
+    case 'slack':
+    case 'document': {
+      return (
+        applyDeterministicChatStyle(
+          normaliseLightweightChatText(request.transcript),
+          request
+        ) || request.transcript
+      )
+    }
+  }
 }
 
 async function runModelForMode(request: FormatterRequest): Promise<string> {
@@ -138,13 +189,11 @@ export async function applyFormatting(
     return request.transcript
   }
 
-  if (shouldBypassAiFormatting(request)) {
-    const lightweight = applyDeterministicChatStyle(
-      normaliseLightweightChatText(request.transcript),
-      request
-    )
-    log('formatter', 'using lightweight deterministic formatting', {
+  if (shouldUseLightFormatting(request)) {
+    const lightweight = applyLightFormatting(request)
+    log('formatter', 'using light formatting', {
       modeId: request.modeId,
+      formatterModelInstalled: request.formatterModelInstalled,
       imessageLightweight: request.imessageLightweight,
       slackLightweight: request.slackLightweight,
       documentLightweight: request.documentLightweight,

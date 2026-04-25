@@ -793,6 +793,7 @@ export class AppConfig {
       enabled: this.formatting.enabled,
       enabledModes: { ...this.formatting.enabledModes },
       forceModeId: this.formatting.forceModeId,
+      modelInstalled: this.formatting.modelInstalled,
       transcriptionLanguageId: this.transcriptionLanguageId,
       userDisplayName: this.userDisplayName,
       formatterModelTier: this.formatting.formatterModelTier,

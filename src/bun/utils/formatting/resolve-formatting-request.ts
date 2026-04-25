@@ -14,6 +14,7 @@ export interface FormatterRequest {
   formattingEnabled: boolean
   modeId: FormattingModeId
   transcript: string
+  formatterModelInstalled: boolean
   /** Transcription language ID ('da', 'zh-cn', 'auto', …). Used by the formatter for locale hints. */
   transcriptionLanguage: string
   userDisplayName: string
@@ -173,6 +174,7 @@ function buildRequest(
     formattingEnabled: settings.enabled,
     modeId,
     transcript,
+    formatterModelInstalled: settings.modelInstalled,
     transcriptionLanguage: settings.transcriptionLanguageId,
     userDisplayName: settings.userDisplayName.trim(),
     formatterModelTier: settings.formatterModelTier,

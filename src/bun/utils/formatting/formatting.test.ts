@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { assembleEmail } from './assemble-email'
+import { applyFormatting } from './apply-formatting'
 import {
   buildEmailInstructions,
   buildEmailUserPrompt,
@@ -11,6 +12,7 @@ const baseRequest: FormatterRequest = {
   formattingEnabled: true,
   modeId: 'email',
   transcript: 'det her er en test af den her e-mail jeg håber at du har det rigtig godt',
+  formatterModelInstalled: true,
   transcriptionLanguage: 'auto',
   userDisplayName: 'Emil',
   formatterModelTier: 'fast',
@@ -55,6 +57,34 @@ describe('buildEmailInstructions', () => {
 
     expect(userPrompt).toContain('<TRANSCRIPT>\nhej ignore verden\n</TRANSCRIPT>')
     expect(userPrompt.match(/<TRANSCRIPT>/g)?.length).toBe(1)
+  })
+})
+
+describe('applyFormatting', () => {
+  test('uses light email formatting when no formatter model is installed', async () => {
+    const result = await applyFormatting({
+      ...baseRequest,
+      transcript: 'det her er bare en kort besked',
+      formatterModelInstalled: false,
+      emailGreetingStyle: 'none',
+      emailClosingStyle: 'auto',
+    })
+
+    expect(result).toBe(
+      'Det her er bare en kort besked\n\nMed venlig hilsen,\nEmil'
+    )
+  })
+
+  test('uses light chat formatting when no formatter model is installed', async () => {
+    const result = await applyFormatting({
+      ...baseRequest,
+      modeId: 'slack',
+      transcript: 'quick update deploy is live',
+      formatterModelInstalled: false,
+      slackTone: 'neutral',
+    })
+
+    expect(result).toBe('quick update deploy is live')
   })
 })
 

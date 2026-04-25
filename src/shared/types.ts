@@ -128,6 +128,8 @@ export interface FormattingRuntimeSettings {
   enabledModes: FormattingEnabledModes
   /** Tray-level force override; when non-null, bypasses app detection. */
   forceModeId: FormattingModeId | null
+  /** Whether the selected formatter model tier is installed and runnable. */
+  modelInstalled: boolean
   /** Transcription language ID (e.g. 'da', 'zh-cn', 'auto'). Passed to the formatter for locale hints. */
   transcriptionLanguageId: string
   userDisplayName: string
