@@ -40,7 +40,8 @@ export const emailSchema = {
     },
     closing: {
       type: 'string',
-      description: 'Sign-off only. Empty string if no sign-off. No sender name.',
+      description:
+        'Sign-off only. Empty string if no sign-off. No sender name.',
     },
   },
   required: ['language', 'greeting', 'body', 'closing'],

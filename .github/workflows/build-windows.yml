@@ -1,0 +1,62 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Build channel
+        required: true
+        default: canary
+        type: choice
+        options:
+          - canary
+          - stable
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Vulkan SDK (required for whisper-cli and llama-completion GPU builds)
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          install_runtime: false
+          cache: true
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Cache vendor binaries and model
+        uses: actions/cache@v4
+        with:
+          path: vendors/
+          key: windows-x64-vendors-${{ hashFiles('scripts/pre-build.ts') }}
+
+      - name: Pre-build (download and compile vendor binaries)
+        run: bun run scripts/pre-build.ts
+
+      - name: Build Windows native helper (Rust/Cargo)
+        run: bun run build:native:windows-helper
+
+      - name: Build (${{ inputs.channel }})
+        shell: pwsh
+        env:
+          CODICTATE_CHANNEL: ${{ inputs.channel }}
+        run: |
+          bunx vite build
+          bunx electrobun build --env=${{ inputs.channel }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-${{ inputs.channel }}
+          path: artifacts/${{ inputs.channel }}-*
+          if-no-files-found: error

@@ -1,4 +1,7 @@
-import type { FormattingEmailClosingStyle, FormattingEmailGreetingStyle } from '../../../shared/types'
+import type {
+  FormattingEmailClosingStyle,
+  FormattingEmailGreetingStyle,
+} from '../../../shared/types'
 import type { FormattedEmail } from './schemas'
 
 const CLOSING_MARKERS = [
@@ -33,12 +36,14 @@ const GREETING_MARKERS = [
 ] as const
 
 function stripEnvelopeNoise(text: string): string {
-  return text
-    .replace(/[{}[\]`<>]/g, '')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1F\x7F]/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
+  return (
+    text
+      .replace(/[{}[\]`<>]/g, '')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  )
 }
 
 function cleanBody(text: string): string {
@@ -112,7 +117,10 @@ function detectTemplateLanguage(
   return match?.language ?? ''
 }
 
-function wasSpokenInTranscript(text: string, originalTranscript: string): boolean {
+function wasSpokenInTranscript(
+  text: string,
+  originalTranscript: string
+): boolean {
   const candidate = fold(text)
   const transcript = fold(originalTranscript)
   if (!candidate || !transcript) return false
@@ -179,7 +187,10 @@ function stripSenderNameFromGreeting(
   if (!foldedGreeting.includes(foldedName)) return cleaned
   if (foldedTranscriptStart.includes(foldedName)) return cleaned
 
-  const namePattern = new RegExp(userDisplayName.trim().replace(/\s+/g, '\\s+'), 'i')
+  const namePattern = new RegExp(
+    userDisplayName.trim().replace(/\s+/g, '\\s+'),
+    'i'
+  )
   return cleaned
     .replace(namePattern, '')
     .replace(/\s{2,}/g, ' ')
@@ -187,7 +198,10 @@ function stripSenderNameFromGreeting(
     .trim()
 }
 
-function stripSenderNameFromClosing(closing: string, senderName: string): string {
+function stripSenderNameFromClosing(
+  closing: string,
+  senderName: string
+): string {
   const cleaned = stripEnvelopeNoise(closing)
   if (!cleaned || !senderName.trim()) return cleaned
 
@@ -216,24 +230,55 @@ function detectLanguageFromText(text: string): string {
     en: 0,
   }
 
-  for (const token of [' hej ', ' hejsa ', ' kære ', ' det ', ' jeg ', ' med ', ' hilsen ', ' tak ']) {
+  for (const token of [
+    ' hej ',
+    ' hejsa ',
+    ' kære ',
+    ' det ',
+    ' jeg ',
+    ' med ',
+    ' hilsen ',
+    ' tak ',
+  ]) {
     if (folded.includes(token)) scores.da += 1
   }
-  for (const token of [' hola ', ' buenas ', ' gracias ', ' saludos ', ' yo ', ' para ', ' tengo ', ' una ']) {
+  for (const token of [
+    ' hola ',
+    ' buenas ',
+    ' gracias ',
+    ' saludos ',
+    ' yo ',
+    ' para ',
+    ' tengo ',
+    ' una ',
+  ]) {
     if (folded.includes(token)) scores.es += 1
   }
-  for (const token of [' bonjour ', ' salut ', ' merci ', ' cordialement ', ' je ', ' vous ']) {
+  for (const token of [
+    ' bonjour ',
+    ' salut ',
+    ' merci ',
+    ' cordialement ',
+    ' je ',
+    ' vous ',
+  ]) {
     if (folded.includes(token)) scores.fr += 1
   }
-  for (const token of [' hi ', ' hello ', ' thanks ', ' regards ', ' the ', ' i ', ' you ']) {
+  for (const token of [
+    ' hi ',
+    ' hello ',
+    ' thanks ',
+    ' regards ',
+    ' the ',
+    ' i ',
+    ' you ',
+  ]) {
     if (folded.includes(token)) scores.en += 1
   }
 
-  return (
-    Object.entries(scores).sort((a, b) => b[1] - a[1])[0]?.[1] > 0
-      ? Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0]
-      : 'en'
-  )
+  return Object.entries(scores).sort((a, b) => b[1] - a[1])[0]?.[1] > 0
+    ? Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0]
+    : 'en'
 }
 
 function normaliseLanguage(
@@ -246,7 +291,10 @@ function normaliseLanguage(
   return source.split('-')[0].toLowerCase()
 }
 
-function defaultGreeting(style: FormattingEmailGreetingStyle, language: string): string {
+function defaultGreeting(
+  style: FormattingEmailGreetingStyle,
+  language: string
+): string {
   if (style === 'none') return ''
   if (style === 'custom') return ''
   if (language === 'da') {
@@ -261,12 +309,19 @@ function defaultGreeting(style: FormattingEmailGreetingStyle, language: string):
   return language === 'en' ? 'Hi' : ''
 }
 
-function defaultClosing(style: FormattingEmailClosingStyle, language: string): string {
+function defaultClosing(
+  style: FormattingEmailClosingStyle,
+  language: string
+): string {
   if (style === 'none') return ''
   if (style === 'custom') return ''
   if (language === 'da') {
     if (style === 'thanks') return 'Tak'
-    if (style === 'kind-regards' || style === 'best-regards' || style === 'auto') {
+    if (
+      style === 'kind-regards' ||
+      style === 'best-regards' ||
+      style === 'auto'
+    ) {
       return 'Med venlig hilsen'
     }
     return ''
@@ -299,7 +354,11 @@ function pickGreeting(
   if (!candidate && looksLikeGreeting(closing)) {
     candidate = stripEnvelopeNoise(closing)
   }
-  if (candidate && looksLikeClosing(candidate) && !looksLikeGreeting(candidate)) {
+  if (
+    candidate &&
+    looksLikeClosing(candidate) &&
+    !looksLikeGreeting(candidate)
+  ) {
     candidate = ''
   }
   const candidateLanguage = detectTemplateLanguage(candidate, GREETING_MARKERS)
@@ -336,7 +395,11 @@ function pickClosing(
   if (!candidate && looksLikeClosing(greeting)) {
     candidate = stripEnvelopeNoise(greeting)
   }
-  if (candidate && looksLikeGreeting(candidate) && !looksLikeClosing(candidate)) {
+  if (
+    candidate &&
+    looksLikeGreeting(candidate) &&
+    !looksLikeClosing(candidate)
+  ) {
     candidate = ''
   }
   const candidateLanguage = detectTemplateLanguage(candidate, CLOSING_MARKERS)
@@ -390,14 +453,15 @@ export function assembleEmail(
     looksLikeClosing(cleanedGreeting) &&
     !looksLikeGreeting(cleanedGreeting)
   const greetingLooksLikeBody =
-    cleanedGreeting && !greetingLooksLikeClosingOnly && !isPureGreetingText(cleanedGreeting)
+    cleanedGreeting &&
+    !greetingLooksLikeClosingOnly &&
+    !isPureGreetingText(cleanedGreeting)
   const bodySource = greetingLooksLikeBody
     ? [cleanedGreeting, cleanedBody].filter(Boolean).join(' ')
     : cleanedBody
   const greetingSourceField = greetingLooksLikeBody ? '' : cleanedGreeting
-  const { greeting: bodyGreeting, body } = extractGreetingFromBodyStart(
-    bodySource
-  )
+  const { greeting: bodyGreeting, body } =
+    extractGreetingFromBodyStart(bodySource)
 
   const greetingSource =
     greetingSourceField &&

@@ -110,8 +110,7 @@ export function InstantTooltip({
       ? "bottom-full left-1/2 mb-1.5 -translate-x-1/2"
       : "top-full left-1/2 mt-1.5 -translate-x-1/2";
 
-  const bubbleBase =
-    `${interactive ? "pointer-events-auto" : "pointer-events-none"} rounded-lg border border-white/14 bg-[#1c1c1f]/98 px-3 py-2 text-left leading-snug text-white/90 shadow-lg whitespace-normal`;
+  const bubbleBase = `${interactive ? "pointer-events-auto" : "pointer-events-none"} rounded-lg border border-white/14 bg-[#1c1c1f]/98 px-3 py-2 text-left leading-snug text-white/90 shadow-lg whitespace-normal`;
 
   if (floatInViewport) {
     const initialWidth =

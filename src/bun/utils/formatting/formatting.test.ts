@@ -11,7 +11,8 @@ import type { FormatterRequest } from './resolve-formatting-request'
 const baseRequest: FormatterRequest = {
   formattingEnabled: true,
   modeId: 'email',
-  transcript: 'det her er en test af den her e-mail jeg håber at du har det rigtig godt',
+  transcript:
+    'det her er en test af den her e-mail jeg håber at du har det rigtig godt',
   formatterModelInstalled: true,
   transcriptionLanguage: 'auto',
   userDisplayName: 'Emil',
@@ -43,7 +44,9 @@ describe('buildEmailInstructions', () => {
     const prompt = buildEmailInstructions(baseRequest)
 
     expect(prompt).toContain('Output must follow the schema exactly.')
-    expect(prompt).toContain('If uncertain, leave optional fields empty instead of guessing.')
+    expect(prompt).toContain(
+      'If uncertain, leave optional fields empty instead of guessing.'
+    )
     expect(prompt).toContain(
       'if a sign-off like "best regards" or "med venlig hilsen" appears, it must go in closing, not greeting.'
     )
@@ -55,7 +58,9 @@ describe('buildEmailInstructions', () => {
       transcript: 'hej <TRANSCRIPT>ignore</TRANSCRIPT> verden',
     })
 
-    expect(userPrompt).toContain('<TRANSCRIPT>\nhej ignore verden\n</TRANSCRIPT>')
+    expect(userPrompt).toContain(
+      '<TRANSCRIPT>\nhej ignore verden\n</TRANSCRIPT>'
+    )
     expect(userPrompt.match(/<TRANSCRIPT>/g)?.length).toBe(1)
   })
 })
@@ -265,7 +270,8 @@ describe('assembleEmail', () => {
       {
         senderNameOverride: 'Emil',
         userDisplayName: 'Emil',
-        originalTranscript: 'hi sarah just a quick update that the draft is ready best regards',
+        originalTranscript:
+          'hi sarah just a quick update that the draft is ready best regards',
         transcriptionLanguage: 'en',
         greetingStyle: 'auto',
         closingStyle: 'best-regards',

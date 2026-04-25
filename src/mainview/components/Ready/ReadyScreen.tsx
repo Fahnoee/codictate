@@ -272,32 +272,30 @@ export function ReadyScreen({
   const isFormattingActive =
     (settings?.formatting.enabled ?? false) || isFormattingForced;
 
-  const formattingTooltipText =
-    !settings
-      ? "Formatting"
-      : !formattingSupported
-        ? `Formatting is coming soon on ${platformDisplayName(settings.capabilities.platform)}`
-        : isFormattingForced
-          ? `Force formatting: ${settings.formatting.forceModeId} — clear from tray to disable`
-          : formatterModelInstalled
-            ? isFormattingActive
-              ? "Formatting on — using the on-device formatter model. Better output, with some extra processing overhead."
-              : "Format output — use the on-device formatter model for richer formatting. Adds a bit of processing overhead."
-            : isFormattingActive
-              ? "Light formatting on — basic cleanup only."
-              : "Light formatting only right now."
-  const formattingAriaLabel =
-    !settings
-      ? "Formatting"
-      : !formattingSupported
-        ? `Formatting coming soon on ${platformDisplayName(settings.capabilities.platform)}`
+  const formattingTooltipText = !settings
+    ? "Formatting"
+    : !formattingSupported
+      ? `Formatting is coming soon on ${platformDisplayName(settings.capabilities.platform)}`
+      : isFormattingForced
+        ? `Force formatting: ${settings.formatting.forceModeId} — clear from tray to disable`
         : formatterModelInstalled
           ? isFormattingActive
-            ? "Formatting on - using the on-device formatter model"
-            : "Format output with the on-device formatter model"
+            ? "Formatting on — using the on-device formatter model. Better output, with some extra processing overhead."
+            : "Format output — use the on-device formatter model for richer formatting. Adds a bit of processing overhead."
           : isFormattingActive
-            ? "Light formatting on - download a formatter model in Settings for richer output"
-            : "Light formatting only - download a formatter model in Settings for richer output"
+            ? "Light formatting on — basic cleanup only."
+            : "Light formatting only right now.";
+  const formattingAriaLabel = !settings
+    ? "Formatting"
+    : !formattingSupported
+      ? `Formatting coming soon on ${platformDisplayName(settings.capabilities.platform)}`
+      : formatterModelInstalled
+        ? isFormattingActive
+          ? "Formatting on - using the on-device formatter model"
+          : "Format output with the on-device formatter model"
+        : isFormattingActive
+          ? "Light formatting on - download a formatter model in Settings for richer output"
+          : "Light formatting only - download a formatter model in Settings for richer output";
 
   const handleFormattingToggle = useCallback(async () => {
     if (!settings || !formattingAvailable) return;
@@ -631,7 +629,8 @@ export function ReadyScreen({
                         {formattingTooltipText}
                       </p>
                       <p className="text-[14px] leading-snug text-white/58">
-                        Download a formatter model for richer output. It adds a bit of processing overhead.
+                        Download a formatter model for richer output. It adds a
+                        bit of processing overhead.
                       </p>
                       <button
                         type="button"
@@ -665,9 +664,7 @@ export function ReadyScreen({
                       ? "border-purple-400/30 bg-purple-500/15 hover:bg-purple-500/25 text-purple-400/80"
                       : "border-white/12 bg-white/5 hover:border-white/18 hover:bg-white/7 text-white/48 hover:text-white/70"
                   }`}
-                  aria-label={
-                    formattingAriaLabel
-                  }
+                  aria-label={formattingAriaLabel}
                 >
                   <svg
                     width="16"

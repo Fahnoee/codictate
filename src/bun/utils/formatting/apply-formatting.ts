@@ -83,9 +83,10 @@ function applyLightFormatting(request: FormatterRequest): string {
         : ''
       return assembleEmail(
         {
-          language: request.transcriptionLanguage === 'auto'
-            ? ''
-            : request.transcriptionLanguage.split('-')[0].toLowerCase(),
+          language:
+            request.transcriptionLanguage === 'auto'
+              ? ''
+              : request.transcriptionLanguage.split('-')[0].toLowerCase(),
           greeting: '',
           body: normaliseLightweightEmailBody(request.transcript),
           closing: '',
