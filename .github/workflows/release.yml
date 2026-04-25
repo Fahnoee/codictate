@@ -17,13 +17,26 @@ jobs:
       mac_exists: ${{ steps.check-mac.outputs.mac_exists }}
 
     steps:
-      - name: Detect channel from tag
+      - name: Checkout (for tag annotation)
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Detect channel and release notes from tag
         id: detect
         run: |
           if [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
             echo "channel=canary" >> "$GITHUB_OUTPUT"
           else
             echo "channel=stable" >> "$GITHUB_OUTPUT"
+          fi
+          # Use the git tag annotation message as release notes if set
+          TAG_MSG=$(git tag -l --format='%(contents:subject)' "${{ github.ref_name }}")
+          if [[ -n "$TAG_MSG" && "$TAG_MSG" != "release: ${{ github.ref_name }}" ]]; then
+            echo "notes=${TAG_MSG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "notes=Codictate ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create draft release (skip if already exists)
@@ -32,13 +45,14 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           CHANNEL="${{ steps.detect.outputs.channel }}"
+          NOTES="${{ steps.detect.outputs.notes }}"
           if gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
             echo "Release already exists: $TAG"
           elif [ "$CHANNEL" = "canary" ]; then
             gh release create "$TAG" \
               --repo "${{ github.repository }}" \
               --title "$TAG" \
-              --notes "Codictate ${TAG#v}" \
+              --notes "$NOTES" \
               --prerelease \
               --draft \
               --verify-tag
@@ -46,7 +60,7 @@ jobs:
             gh release create "$TAG" \
               --repo "${{ github.repository }}" \
               --title "$TAG" \
-              --notes "Codictate ${TAG#v}" \
+              --notes "$NOTES" \
               --draft \
               --verify-tag
           fi

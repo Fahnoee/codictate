@@ -6,10 +6,11 @@
 #                  and uploads macOS artifacts. CI detects them and only builds Windows.
 #
 # Usage:
-#   bun run release:canary           → tag + push, CI does everything
-#   bun run release:canary --local   → tag + push + build Mac + upload, CI does Windows
-#   bun run release:stable [--local]
-#   bun run release        [--local]
+#   bun run release:canary                    → tag + push, CI does everything
+#   bun run release:canary --local            → tag + push + build Mac + upload, CI does Windows
+#   bun run release:canary -- -m "my note"   → same, with custom release notes
+#   bun run release:stable [--local] [-m "…"]
+#   bun run release        [--local] [-m "…"]
 
 set -e
 
@@ -30,6 +31,7 @@ fi
 
 CHANNEL=""
 LOCAL=false
+MESSAGE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -42,8 +44,14 @@ while [ $# -gt 0 ]; do
       LOCAL=true
       shift
       ;;
+    -m|--message)
+      shift
+      [ -z "$1" ] && { echo "Error: -m requires a value"; exit 1; }
+      MESSAGE="$1"
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [stable|canary|both] [--local]"
+      echo "Usage: $0 [stable|canary|both] [--local] [-m \"message\"]"
       exit 0
       ;;
     *)
@@ -112,6 +120,7 @@ push_tag() {
 
 create_draft_release() {
   local tag="$1" ch="$2" full_version="$3" repo="$4"
+  local notes="${MESSAGE:-Codictate ${full_version}}"
   local prerelease_flag=""
   [ "$ch" = "canary" ] && prerelease_flag="--prerelease"
 
@@ -121,7 +130,7 @@ create_draft_release() {
     gh release create "${tag}" \
       --repo "${repo}" \
       --title "${tag}" \
-      --notes "Codictate ${full_version}" \
+      --notes "${notes}" \
       --draft \
       --verify-tag \
       ${prerelease_flag}
@@ -179,7 +188,7 @@ tag_channel() {
 
   git add electrobun.config.ts version.json
   git commit -m "release: ${TAG}"
-  git tag -a "${TAG}" -m "release: ${TAG}"
+  git tag -a "${TAG}" -m "${MESSAGE:-release: ${TAG}}"
   git push origin HEAD
   push_tag "${TAG}"
 
