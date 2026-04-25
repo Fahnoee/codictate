@@ -9,8 +9,8 @@ on:
         default: canary
         type: choice
         options:
-          - canary
           - stable
+          - canary
 
 jobs:
   build:

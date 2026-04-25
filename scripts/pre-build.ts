@@ -548,13 +548,29 @@ async function vendorWhisperModel() {
   const url = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_NAME}`;
 
   console.log(
-    `[pre-build] Downloading ${MODEL_NAME} (~547 MB, this may take a moment)...`,
+    `[pre-build] Downloading ${MODEL_NAME} (~547 MB)...`,
   );
-  const response = await fetch(url);
-  if (!response.ok) {
+
+  const result = Bun.spawnSync(
+    [
+      "curl",
+      "--location",
+      "--fail",
+      "--retry", "3",
+      "--retry-delay", "5",
+      "--connect-timeout", "30",
+      "--max-time", "600",
+      "--progress-bar",
+      "--output", MODEL_PATH,
+      url,
+    ],
+    { stdio: ["ignore", "inherit", "inherit"] },
+  );
+
+  if (result.exitCode !== 0) {
+    if (existsSync(MODEL_PATH)) rmSync(MODEL_PATH, { force: true });
     throw new Error(`[pre-build] Failed to download ${MODEL_NAME}`);
   }
-  await Bun.write(MODEL_PATH, response);
 
   console.log(`[pre-build] ${MODEL_NAME} vendored successfully`);
 }
