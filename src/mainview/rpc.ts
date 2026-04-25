@@ -7,6 +7,7 @@ import type {
   AppSettings,
   DictionaryCandidate,
   DictionaryEntry,
+  FormatterModelTier,
   SettingsPane,
   ShortcutId,
   StreamTranscriptionMode,
@@ -71,6 +72,13 @@ const rpc = Electroview.defineRPC<WebviewRPCType>({
         error?: string
       }) => {
         appEvents.emit('modelDownloadProgress', data)
+      },
+      updateFormatterModelProgress: (data: {
+        progressFraction: number
+        done: boolean
+        error?: string
+      }) => {
+        appEvents.emit('formatterModelProgress', data)
       },
       updateModelAvailability: (data: {
         modelId: string
@@ -486,4 +494,24 @@ export function cancelModelDownload(modelId: string): void {
 
 export function deleteWhisperModel(modelId: string): void {
   rpc.send.deleteWhisperModel({ modelId })
+}
+
+export async function setFormatterModelTier(
+  tier: FormatterModelTier
+): Promise<boolean> {
+  return rpc.request.updateFormattingSettings({
+    patch: { formatterModelTier: tier },
+  })
+}
+
+export function downloadFormatterModel(): void {
+  rpc.send.downloadFormatterModel({})
+}
+
+export function cancelFormatterModelDownload(): void {
+  rpc.send.cancelFormatterModelDownload({})
+}
+
+export function deleteFormatterModel(): void {
+  rpc.send.deleteFormatterModel({})
 }

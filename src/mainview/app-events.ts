@@ -22,6 +22,11 @@ type EventMap = {
     error?: string
   }
   modelAvailability: { modelId: string; available: boolean }
+  formatterModelProgress: {
+    progressFraction: number
+    done: boolean
+    error?: string
+  }
 }
 
 type Unsubscribe = () => void

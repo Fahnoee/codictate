@@ -13,9 +13,25 @@
  *   ObserverHelper — AT-SPI2 (libatspi) for accessibility text observation
  */
 
+import { existsSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import type { PlatformProvider, PermissionType } from '../types'
+import { FORMATTER_MODEL_PATH } from '../runtime'
+
+function llamaBinaryCandidates(): string[] {
+  return [
+    join(import.meta.dir, '../native-helpers/llama-completion'),
+    join(process.cwd(), 'vendors/llama/llama-completion'),
+  ]
+}
+
+function resolveLlamaBinary(): string | null {
+  for (const candidate of llamaBinaryCandidates()) {
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
 
 export class LinuxPlatformProvider implements PlatformProvider {
   getDataDir(): string {
@@ -50,7 +66,7 @@ export class LinuxPlatformProvider implements PlatformProvider {
   }
 
   isFormattingAvailable(): boolean {
-    return false
+    return resolveLlamaBinary() !== null
   }
 
   // ── Unimplemented native helpers ──────────────────────────────────────────
@@ -79,10 +95,18 @@ export class LinuxPlatformProvider implements PlatformProvider {
     return null
   }
 
-  async findFormatterHelperBinary(): Promise<string> {
-    throw new Error(
-      '[Linux] On-device AI formatting is not available on Linux.'
-    )
+  async findLlamaBinary(): Promise<string> {
+    const found = resolveLlamaBinary()
+    if (!found) {
+      throw new Error(
+        'llama-completion not found. Run `bun scripts/pre-build.ts` to build it.'
+      )
+    }
+    return found
+  }
+
+  getFormatterModelPath(): string {
+    return FORMATTER_MODEL_PATH
   }
 
   findParakeetHelperBinary(): string {

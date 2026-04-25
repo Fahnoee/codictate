@@ -23,7 +23,11 @@ export interface PlatformProvider {
    */
   getPermissionSettingsUrl(type: PermissionType): string | null
 
-  /** Whether on-device AI formatting is available (macOS 26+ only). */
+  /**
+   * Whether on-device AI formatting is available on this platform —
+   * i.e. the vendored `llama-cli` binary is resolvable. The formatter model
+   * is a separate, user-downloadable asset (see `getFormatterModelPath`).
+   */
   isFormattingAvailable(): boolean
 
   // ── Native helper binary resolution ──────────────────────────────────────
@@ -34,6 +38,16 @@ export interface PlatformProvider {
   findMicRecorderBinary(): Promise<string>
   findWindowHelperBinary(): string | null
   findObserverHelperBinary(): string | null
-  findFormatterHelperBinary(): Promise<string>
+  /**
+   * Resolve the vendored llama.cpp `llama-cli` binary used by the formatter.
+   * Throws if not present (build must have run).
+   */
+  findLlamaBinary(): Promise<string>
+  /**
+   * Absolute path the formatter model should live at (user app-data dir).
+   * File is only present if the user has downloaded it; callers must
+   * check `existsSync(path)` before use.
+   */
+  getFormatterModelPath(): string
   findParakeetHelperBinary(): string
 }

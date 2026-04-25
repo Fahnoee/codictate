@@ -29,17 +29,31 @@ const WHISPER_BUILD_SIGNATURE = [
   `vulkan=${process.platform === "win32" ? "on" : "off"}`,
 ].join("\n");
 
+// PrismML fork of llama.cpp (required for Q2_0 ternary quantization used by Ternary-Bonsai).
+// Pinned to tag prism-b8846-d104cf1 — upstream fork at https://github.com/PrismML-Eng/llama.cpp
+// Earlier tags (e.g. v0.0.2-prism) defined only Q1_0 ternary types; GGML_TYPE_Q2_0 = 42 arrived
+// in this build tag and is required for the Ternary-Bonsai-1.7B-Q2_0 GGUF.
+// Prism renamed `llama-cli` → `llama-completion`; only llama-completion can load ternary Q2_0 weights.
+const LLAMA_VERSION = "prism-b8846-d104cf1";
+const LLAMA_DIR = join(VENDORS_DIR, "llama");
+const LLAMA_BINARY_NAME = process.platform === "win32" ? "llama-completion.exe" : "llama-completion";
+const LLAMA_BINARY = join(LLAMA_DIR, LLAMA_BINARY_NAME);
+const LLAMA_BUILD_STAMP = join(LLAMA_DIR, "build-stamp.txt");
+const LLAMA_BUILD_SIGNATURE = [
+  `version=${LLAMA_VERSION}`,
+  `platform=${process.platform}`,
+  `shared=off`,
+  `metal=${process.platform === "darwin" ? "on" : "off"}`,
+  `vulkan=${process.platform === "win32" ? "on" : "off"}`,
+].join("\n");
+
 const PARAKEET_PKG = join(import.meta.dir, "..", "native", "CodictateParakeetHelper");
 const PARAKEET_DIR = join(VENDORS_DIR, "parakeet");
 const PARAKEET_BINARY = join(PARAKEET_DIR, "CodictateParakeetHelper");
 
-const FORMATTER_PKG = join(import.meta.dir, "..", "native", "CodictateFormatterHelper");
-const FORMATTER_DIR = join(VENDORS_DIR, "formatter");
-
 const OBSERVER_PKG = join(import.meta.dir, "..", "native", "CodictateObserverHelper");
 const OBSERVER_DIR = join(VENDORS_DIR, "observer");
 const OBSERVER_BINARY = join(OBSERVER_DIR, "CodictateObserverHelper");
-const FORMATTER_BINARY = join(FORMATTER_DIR, "CodictateFormatterHelper");
 const TEXT_PROCESSING_RS_DIR = join(import.meta.dir, "..", "vendors", "text-processing-rs");
 const NEMO_STATIC_LIB = join(
   PARAKEET_PKG,
@@ -165,6 +179,126 @@ async function vendorWhisperBinaries() {
   }
   writeFileSync(WHISPER_BUILD_STAMP, WHISPER_BUILD_SIGNATURE);
   console.log("[pre-build] whisper-cli built and vendored successfully");
+
+  rmSync(srcDir, { recursive: true, force: true });
+  rmSync(buildDir, { recursive: true, force: true });
+}
+
+async function vendorLlamaBinaries() {
+  if (
+    existsSync(LLAMA_BINARY) &&
+    existsSync(LLAMA_BUILD_STAMP) &&
+    readFileSync(LLAMA_BUILD_STAMP, "utf8") === LLAMA_BUILD_SIGNATURE
+  ) {
+    console.log("[pre-build] llama-completion already vendored, skipping");
+    return;
+  }
+
+  const cmakeCheck = Bun.spawnSync(["cmake", "--version"], { stdout: "pipe" });
+  if (cmakeCheck.exitCode !== 0) {
+    throw new Error(
+      process.platform === "win32"
+        ? "[pre-build] cmake not found. Install it and ensure `cmake` is on PATH."
+        : "[pre-build] cmake not found. Install it with: brew install cmake",
+    );
+  }
+
+  if (process.platform === "win32" && !commandExists("glslc")) {
+    throw new Error(
+      "[pre-build] Vulkan GPU build requires the Vulkan SDK shader compiler (`glslc`). Install the LunarG Vulkan SDK and reopen your terminal so `glslc` is on PATH.",
+    );
+  }
+
+  mkdirSync(LLAMA_DIR, { recursive: true });
+
+  const sourceUrl = `https://github.com/PrismML-Eng/llama.cpp/archive/refs/tags/${LLAMA_VERSION}.tar.gz`;
+  const tarPath = join(LLAMA_DIR, "llama-src.tar.gz");
+  const srcDir = join(LLAMA_DIR, "llama-src");
+  const buildDir = join(LLAMA_DIR, "llama-build");
+
+  console.log(`[pre-build] Downloading PrismML llama.cpp ${LLAMA_VERSION} source...`);
+  const response = await fetch(sourceUrl);
+  if (!response.ok) {
+    throw new Error(`[pre-build] Failed to download llama.cpp source (HTTP ${response.status})`);
+  }
+  await Bun.write(tarPath, response);
+
+  mkdirSync(srcDir, { recursive: true });
+  Bun.spawnSync(["tar", "-xf", tarPath, "-C", srcDir, "--strip-components=1"], {
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  rmSync(tarPath, { force: true });
+
+  console.log("[pre-build] Configuring llama-completion (static, release)...");
+  // llama-completion lives under tools/completion/. LLAMA_BUILD_TOOLS must be
+  // ON so the whole tools/ subtree is included. LLAMA_CURL=OFF avoids a system
+  // curl dependency. (The deprecated tools/cli/ also exists but refuses Q2_0.)
+  const configureArgs: string[] = [
+    "cmake",
+    "-S", srcDir,
+    "-B", buildDir,
+    ...(process.platform === "win32" ? ["-A", "x64"] : []),
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DBUILD_SHARED_LIBS=OFF",
+    "-DLLAMA_BUILD_TESTS=OFF",
+    "-DLLAMA_BUILD_EXAMPLES=OFF",
+    "-DLLAMA_BUILD_TOOLS=ON",
+    "-DLLAMA_BUILD_SERVER=OFF",
+    "-DLLAMA_BUILD_COMMON=ON",
+    "-DLLAMA_CURL=OFF",
+    // Block cpp-httplib from auto-linking the system OpenSSL (Homebrew on macOS).
+    // Otherwise the resulting binary depends on /opt/homebrew/opt/openssl@3/...
+    // which fails to load inside the packaged .app (Team ID mismatch).
+    "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE",
+  ];
+  if (process.platform === "darwin") {
+    configureArgs.push("-DGGML_METAL=ON", "-DGGML_METAL_EMBED_LIBRARY=ON");
+  } else if (process.platform === "win32") {
+    configureArgs.push("-DGGML_VULKAN=ON");
+  }
+
+  const configure = Bun.spawnSync(configureArgs, {
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  if (configure.exitCode !== 0) {
+    rmSync(srcDir, { recursive: true, force: true });
+    rmSync(buildDir, { recursive: true, force: true });
+    throw new Error("[pre-build] cmake configure (llama.cpp) failed");
+  }
+
+  const jobs = String(Math.max(1, availableParallelism?.() ?? 4));
+
+  console.log(
+    `[pre-build] Building llama-completion (${jobs} cores, ~5-10 min first time)...`,
+  );
+  const buildArgs = ["cmake", "--build", buildDir, "--config", "Release"];
+  if (process.platform !== "win32") {
+    buildArgs.push("--target", "llama-completion", "-j", jobs);
+  } else {
+    buildArgs.push("--target", "llama-completion");
+  }
+  const build = Bun.spawnSync(buildArgs, {
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  if (build.exitCode !== 0) {
+    rmSync(srcDir, { recursive: true, force: true });
+    rmSync(buildDir, { recursive: true, force: true });
+    throw new Error("[pre-build] llama-completion build failed");
+  }
+
+  const cliPath = findFileRecursively(buildDir, LLAMA_BINARY_NAME);
+  if (!cliPath) {
+    rmSync(srcDir, { recursive: true, force: true });
+    rmSync(buildDir, { recursive: true, force: true });
+    throw new Error("[pre-build] llama-completion binary not found after build");
+  }
+
+  copyFileSync(cliPath, LLAMA_BINARY);
+  if (process.platform !== "win32") {
+    chmodSync(LLAMA_BINARY, 0o755);
+  }
+  writeFileSync(LLAMA_BUILD_STAMP, LLAMA_BUILD_SIGNATURE);
+  console.log("[pre-build] llama-completion built and vendored successfully");
 
   rmSync(srcDir, { recursive: true, force: true });
   rmSync(buildDir, { recursive: true, force: true });
@@ -358,76 +492,6 @@ async function vendorParakeetHelper() {
   console.log("[pre-build] CodictateParakeetHelper vendored successfully");
 }
 
-function formatterBinaryIsRealBuild(path: string): boolean {
-  // Distinguish the real Swift binary from the tiny C stub by size.
-  // The C stub is ~33 KB; the real Swift binary is ~63 KB+.
-  // Threshold set at 50 KB to safely separate the two.
-  if (!parakeetVendoredBinaryLooksExecutable(path)) return false;
-  try {
-    const stat = Bun.spawnSync(["stat", "-f%z", path], { stdout: "pipe" });
-    const bytes = parseInt(stat.stdout.toString().trim(), 10);
-    return bytes > 50_000;
-  } catch {
-    return false;
-  }
-}
-
-async function vendorFormatterHelper() {
-  if (existsSync(FORMATTER_BINARY) && formatterBinaryIsRealBuild(FORMATTER_BINARY)) {
-    console.log("[pre-build] CodictateFormatterHelper already vendored, skipping");
-    return;
-  }
-
-  mkdirSync(FORMATTER_DIR, { recursive: true });
-
-  if (!existsSync(join(FORMATTER_PKG, "Package.swift"))) {
-    throw new Error(
-      `[pre-build] Missing ${FORMATTER_PKG}/Package.swift — cannot build formatter helper`,
-    );
-  }
-
-  console.log("[pre-build] Building CodictateFormatterHelper (Swift + FoundationModels)…");
-  const build = Bun.spawnSync(["swift", "build", "-c", "release"], {
-    cwd: FORMATTER_PKG,
-    stdio: ["ignore", "inherit", "inherit"],
-  });
-
-  if (build.exitCode === 0) {
-    const binPathRes = Bun.spawnSync(
-      ["swift", "build", "-c", "release", "--show-bin-path"],
-      { cwd: FORMATTER_PKG, stdout: "pipe" },
-    );
-    const releaseDir = binPathRes.stdout.toString().trim();
-    const built = join(releaseDir, "CodictateFormatterHelper");
-
-    if (existsSync(built)) {
-      Bun.spawnSync(["cp", built, FORMATTER_BINARY]);
-      chmodSync(FORMATTER_BINARY, 0o755);
-      console.log("[pre-build] CodictateFormatterHelper vendored successfully");
-      return;
-    }
-  }
-
-  // Build failed — compile a minimal C stub that exits 1 so the binary always exists
-  // for electrobun's copy step. The TypeScript bridge falls back to raw text silently.
-  console.warn(
-    "[pre-build] CodictateFormatterHelper Swift build failed (requires macOS 26 SDK) — compiling stub; formatting will be disabled",
-  );
-  const stubSrc = `#include <stdio.h>\nint main(int argc, char **argv){fputs("[formatter] FoundationModels not available (requires macOS 26 SDK)\\n", stderr);return 1;}\n`;
-  const stubPath = join(FORMATTER_DIR, "stub.c");
-  await Bun.write(stubPath, stubSrc);
-  const stubBuild = Bun.spawnSync(
-    ["cc", "-o", FORMATTER_BINARY, stubPath],
-    { stdio: ["ignore", "inherit", "inherit"] },
-  );
-  Bun.spawnSync(["rm", "-f", stubPath]);
-  if (stubBuild.exitCode !== 0) {
-    throw new Error("[pre-build] Failed to compile CodictateFormatterHelper stub");
-  }
-  chmodSync(FORMATTER_BINARY, 0o755);
-  console.log("[pre-build] CodictateFormatterHelper stub compiled (formatting disabled)");
-}
-
 async function vendorObserverHelper() {
   if (existsSync(OBSERVER_BINARY)) {
     console.log("[pre-build] CodictateObserverHelper already vendored, skipping");
@@ -498,14 +562,23 @@ async function vendorWhisperModel() {
 if (process.platform === "win32") {
   ensureWindowsTrayIcon();
   await vendorWhisperBinaries();
+  await vendorLlamaBinaries();
   await vendorWhisperModel();
-  console.log("[pre-build] Windows whisper dependencies ready");
+  console.log("[pre-build] Windows dependencies ready");
+  process.exit(0);
+}
+
+if (process.platform === "linux") {
+  await vendorWhisperBinaries();
+  await vendorLlamaBinaries();
+  await vendorWhisperModel();
+  console.log("[pre-build] Linux dependencies ready");
   process.exit(0);
 }
 
 if (process.platform !== "darwin") {
   console.warn(
-    "[pre-build] vendoring only supported on macOS for now, skipping",
+    "[pre-build] unsupported platform, skipping",
   );
   process.exit(0);
 }
@@ -516,9 +589,15 @@ if (process.argv.includes("--parakeet-only")) {
   process.exit(0);
 }
 
+if (process.argv.includes("--llama-only")) {
+  await vendorLlamaBinaries();
+  console.log("[pre-build] llama-completion ready");
+  process.exit(0);
+}
+
 await vendorWhisperBinaries();
+await vendorLlamaBinaries();
 await vendorParakeetHelper();
-await vendorFormatterHelper();
 await vendorObserverHelper();
 await vendorWhisperModel();
 

@@ -35,6 +35,8 @@ if (isWindowsHost) {
   ] = "native-helpers/CodictateWindowsHelper.exe";
   buildCopy["vendors/whisper/whisper-cli.exe"] =
     "native-helpers/whisper-cli.exe";
+  buildCopy["vendors/llama/llama-completion.exe"] =
+    "native-helpers/llama-completion.exe";
   buildCopy["vendors/whisper/ggml-large-v3-turbo-q5_0.bin"] =
     "native-helpers/ggml-large-v3-turbo-q5_0.bin";
   buildCopy["vendors/windows/TrayIcon.ico"] = "images/TrayIcon.ico";
@@ -43,10 +45,10 @@ if (isWindowsHost) {
     "native-helpers/KeyListener";
   buildCopy["src/bun/utils/audio/MicRecorder"] = "native-helpers/MicRecorder";
   buildCopy["vendors/whisper/whisper-cli"] = "native-helpers/whisper-cli";
+  buildCopy["vendors/llama/llama-completion"] =
+    "native-helpers/llama-completion";
   buildCopy["vendors/parakeet/CodictateParakeetHelper"] =
     "native-helpers/CodictateParakeetHelper";
-  buildCopy["vendors/formatter/CodictateFormatterHelper"] =
-    "native-helpers/CodictateFormatterHelper";
   buildCopy["vendors/window-helper/CodictateWindowHelper"] =
     "native-helpers/CodictateWindowHelper";
   buildCopy["vendors/observer/CodictateObserverHelper"] =

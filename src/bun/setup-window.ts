@@ -18,6 +18,7 @@ import type {
 import { AppConfig } from './AppConfig/AppConfig'
 import { copyLogToClipboard } from './utils/logger'
 import { modelManager } from './utils/whisper/model-manager'
+import { formatterModelManager } from './utils/formatting/formatter-model-manager'
 import { isTranslateCapableModelId } from '../shared/whisper-models'
 import { DEFAULT_STREAM_CAPABLE_MODEL_ID } from '../shared/speech-models'
 import { warmupParakeet } from './utils/whisper/speech2text'
@@ -89,14 +90,12 @@ export interface WindowHandle {
 }
 
 export function setupWindow(deps: WindowDeps): WindowHandle {
-  let resizeSession:
-    | {
-        edge: WindowResizeEdge
-        startX: number
-        startY: number
-        frame: { x: number; y: number; width: number; height: number }
-      }
-    | null = null
+  let resizeSession: {
+    edge: WindowResizeEdge
+    startX: number
+    startY: number
+    frame: { x: number; y: number; width: number; height: number }
+  } | null = null
 
   function applyWindowResize(screenX: number, screenY: number) {
     if (!mainWindow || !resizeSession) return
@@ -123,7 +122,12 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
       height = nextHeight
     }
 
-    mainWindow.setFrame(Math.round(x), Math.round(y), Math.round(width), Math.round(height))
+    mainWindow.setFrame(
+      Math.round(x),
+      Math.round(y),
+      Math.round(width),
+      Math.round(height)
+    )
   }
 
   const rpc = BrowserView.defineRPC<WebviewRPCType>({
@@ -331,6 +335,39 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
             if (isTranslateCapableModelId(modelId)) {
               deps.onTranslateChanged?.()
             }
+          }
+        },
+        downloadFormatterModel: () => {
+          const tier =
+            deps.appConfig.getSettings().formatting.formatterModelTier
+          formatterModelManager
+            .download(tier, (progressFraction, done, error) => {
+              try {
+                rpc.send.updateFormatterModelProgress({
+                  progressFraction,
+                  done,
+                  error,
+                })
+                if (done && !error) {
+                  deps.appConfig.refreshFormatterModelInstalled()
+                  rpc.send.updateSettings(deps.appConfig.getSettings())
+                }
+              } catch {
+                // Window may be closed during a long download
+              }
+            })
+            .catch(console.error)
+        },
+        cancelFormatterModelDownload: () => {
+          formatterModelManager.cancel()
+        },
+        deleteFormatterModel: () => {
+          const tier =
+            deps.appConfig.getSettings().formatting.formatterModelTier
+          const deleted = formatterModelManager.delete(tier)
+          if (deleted) {
+            deps.appConfig.refreshFormatterModelInstalled()
+            rpc.send.updateSettings(deps.appConfig.getSettings())
           }
         },
       },

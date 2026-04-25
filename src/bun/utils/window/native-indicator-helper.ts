@@ -34,7 +34,9 @@ export function createNativeIndicatorHelper(
   if (!helperPath) return null
 
   const args =
-    getPlatformRuntime() === 'windows' ? [helperPath, 'indicator'] : [helperPath]
+    getPlatformRuntime() === 'windows'
+      ? [helperPath, 'indicator']
+      : [helperPath]
 
   const proc = Bun.spawn(args, {
     stdin: 'pipe',

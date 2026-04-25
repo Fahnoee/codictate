@@ -17,6 +17,7 @@ import type {
   DictionaryEntry,
   DictionarySettings,
   DictionarySettingsPatch,
+  FormatterModelTier,
   FormattingRuntimeSettings,
   FormattingSettings,
   FormattingSettingsPatch,
@@ -43,7 +44,10 @@ import {
   type FormattingModeId,
 } from '../../shared/formatting-modes'
 import { modelManager } from '../utils/whisper/model-manager'
-import { detectFormattingAvailable } from '../utils/formatting/formatting-availability'
+import {
+  detectFormattingAvailable,
+  isFormatterModelInstalled,
+} from '../utils/formatting/formatting-availability'
 import { disableDebug, enableDebug, log } from '../utils/logger'
 import {
   invalidateDictionaryCandidatesForText as getInvalidatedDictionaryCandidatesForText,
@@ -104,12 +108,17 @@ function defaultEnabledModes(): FormattingSettings['enabledModes'] {
   }
 }
 
-function defaultFormattingSettings(available: boolean): FormattingSettings {
+function defaultFormattingSettings(
+  available: boolean,
+  modelInstalled: boolean
+): FormattingSettings {
   return {
     enabled: false,
     enabledModes: defaultEnabledModes(),
     forceModeId: null,
+    formatterModelTier: 'fast',
     available,
+    modelInstalled,
     email: {
       includeSenderName: false,
       greetingStyle: 'auto',
@@ -120,18 +129,21 @@ function defaultFormattingSettings(available: boolean): FormattingSettings {
     imessage: {
       tone: 'neutral',
       allowEmoji: false,
-      lightweight: true,
+      // Default to LLM polish (not the deterministic bypass). Was true when
+      // the backend was Apple Intelligence (slow / unreliable); the local
+      // llama-completion run is ~1s, so the LLM is the better default now.
+      lightweight: false,
     },
     slack: {
       tone: 'professional',
       allowEmoji: false,
       useMarkdown: true,
-      lightweight: true,
+      lightweight: false,
     },
     document: {
       tone: 'neutral',
       structure: 'prose',
-      lightweight: true,
+      lightweight: false,
     },
   }
 }
@@ -169,7 +181,7 @@ interface PersistedMainSettings {
   streamMode: boolean
   streamTranscriptionMode: StreamTranscriptionMode
   userDisplayName: string
-  formatting: Omit<FormattingSettings, 'available'>
+  formatting: Omit<FormattingSettings, 'available' | 'modelInstalled'>
   audioDucking: AudioDuckingSettings
   debugMode: false
 }
@@ -217,7 +229,10 @@ export class AppConfig {
     this.streamMode = false
     this.streamTranscriptionMode = 'vad'
     this.userDisplayName = ''
-    this.formatting = defaultFormattingSettings(detectFormattingAvailable())
+    this.formatting = defaultFormattingSettings(
+      detectFormattingAvailable(),
+      isFormatterModelInstalled('fast')
+    )
     this.audioDucking = defaultAudioDuckingSettings()
     this.dictionary = defaultDictionarySettings()
   }
@@ -244,6 +259,7 @@ export class AppConfig {
         enabled: this.formatting.enabled,
         enabledModes: { ...this.formatting.enabledModes },
         forceModeId: this.formatting.forceModeId,
+        formatterModelTier: this.formatting.formatterModelTier,
         email: { ...this.formatting.email },
         imessage: { ...this.formatting.imessage },
         slack: { ...this.formatting.slack },
@@ -382,6 +398,13 @@ export class AppConfig {
         this.formatting.forceModeId = null
       } else if (isValidFormattingModeId(formatting.forceModeId)) {
         this.formatting.forceModeId = formatting.forceModeId
+      }
+      const validTiers: FormatterModelTier[] = ['fast', 'quality']
+      if (
+        validTiers.includes(formatting.formatterModelTier as FormatterModelTier)
+      ) {
+        this.formatting.formatterModelTier =
+          formatting.formatterModelTier as FormatterModelTier
       }
       if (
         formatting.enabledModes &&
@@ -772,11 +795,19 @@ export class AppConfig {
       forceModeId: this.formatting.forceModeId,
       transcriptionLanguageId: this.transcriptionLanguageId,
       userDisplayName: this.userDisplayName,
+      formatterModelTier: this.formatting.formatterModelTier,
       email: { ...this.formatting.email },
       imessage: { ...this.formatting.imessage },
       slack: { ...this.formatting.slack },
       document: { ...this.formatting.document },
     }
+  }
+
+  /** Re-check whether the formatter model GGUF for the active tier exists on disk. */
+  public refreshFormatterModelInstalled(): void {
+    this.formatting.modelInstalled = isFormatterModelInstalled(
+      this.formatting.formatterModelTier
+    )
   }
 
   public async updateGeneralSettings(
@@ -952,6 +983,12 @@ export class AppConfig {
         return false
       }
       this.formatting.forceModeId = patch.forceModeId
+    }
+    if (patch.formatterModelTier !== undefined) {
+      const validTiers: FormatterModelTier[] = ['fast', 'quality']
+      if (!validTiers.includes(patch.formatterModelTier)) return false
+      this.formatting.formatterModelTier = patch.formatterModelTier
+      this.refreshFormatterModelInstalled()
     }
     if (patch.email !== undefined) {
       if (

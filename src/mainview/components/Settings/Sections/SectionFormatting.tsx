@@ -7,6 +7,7 @@ import {
 } from "../../../../shared/formatting-modes";
 import type {
   AppSettings,
+  FormatterModelTier,
   FormattingDocumentStructure,
   FormattingDocumentTone,
   FormattingEmailClosingStyle,
@@ -17,7 +18,11 @@ import type {
   FormattingSlackTone,
 } from "../../../../shared/types";
 import {
+  cancelFormatterModelDownload,
+  deleteFormatterModel,
+  downloadFormatterModel,
   fetchSettings,
+  setFormatterModelTier,
   setFormattingDocumentLightweight,
   setFormattingDocumentStructure,
   setFormattingDocumentTone,
@@ -37,6 +42,7 @@ import {
   setFormattingSlackTone,
   setFormattingSlackUseMarkdown,
 } from "../../../rpc";
+import { appEvents } from "../../../app-events";
 import { settingsHelperClass } from "../settings-shared";
 import { platformDisplayName } from "../../../../shared/platform";
 
@@ -152,7 +158,7 @@ const DOCUMENT_STRUCTURE_OPTIONS: TileOption<FormattingDocumentStructure>[] = [
 ];
 
 const LIGHT_AI_LOCKED_HINT =
-  "These use Apple Intelligence. Turn off light formatting above to change them.";
+  "These use the on-device LLM. Turn off light formatting above to change them.";
 
 function LightLockedShell({
   locked,
@@ -191,6 +197,45 @@ export function SectionFormatting({ settings }: Props) {
   const [focusedFormat, setFocusedFormat] = useState<FormattingModeId>("email");
   const [customGreetingDraft, setCustomGreetingDraft] = useState("");
   const [customClosingDraft, setCustomClosingDraft] = useState("");
+  const [modelDownload, setModelDownload] = useState<{
+    inFlight: boolean;
+    fraction: number;
+    error?: string;
+  }>({ inFlight: false, fraction: 0 });
+
+  useEffect(() => {
+    return appEvents.on("formatterModelProgress", (data) => {
+      setModelDownload({
+        inFlight: !data.done,
+        fraction: data.progressFraction,
+        error: data.error,
+      });
+    });
+  }, []);
+
+  const handleDownloadFormatterModel = useCallback(() => {
+    setModelDownload({ inFlight: true, fraction: 0 });
+    downloadFormatterModel();
+  }, []);
+
+  const handleCancelFormatterDownload = useCallback(() => {
+    cancelFormatterModelDownload();
+    setModelDownload({ inFlight: false, fraction: 0 });
+  }, []);
+
+  const handleDeleteFormatterModel = useCallback(() => {
+    deleteFormatterModel();
+  }, []);
+
+  const handleFormatterModelTierChange = useCallback(
+    async (tier: FormatterModelTier) => {
+      const ok = await setFormatterModelTier(tier);
+      if (!ok) {
+        queryClient.setQueryData(["settings"], await fetchSettings());
+      }
+    },
+    [queryClient],
+  );
 
   useEffect(() => {
     setCustomGreetingDraft(formatting.email.customGreeting);
@@ -475,23 +520,128 @@ export function SectionFormatting({ settings }: Props) {
     }
   }, [formatting.email.includeSenderName, mergeFormatting, queryClient]);
 
+  const effectiveFraction = modelDownload.inFlight
+    ? modelDownload.fraction
+    : formatting.modelInstalled
+      ? 1
+      : 0;
+
   return (
     <>
       {!formatting.available && (
         <div className="mb-6 rounded-xl border border-white/10 bg-white/4 px-4 py-3.5">
           <p className="text-[18px] text-white/44 leading-relaxed font-sans">
-            {settings.capabilities.supportsFormatting
-              ? "Be aware: output formatting only works on "
-              : "Formatting is planned, but not available yet on "}
+            Formatting requires the vendored llama-cli binary, which is missing.
+            Run{" "}
             <span className="text-white/62 font-medium">
-              {settings.capabilities.supportsFormatting
-                ? "macOS 26 or later"
-                : platformDisplayName(settings.capabilities.platform)}
+              bun scripts/pre-build.ts
+            </span>{" "}
+            and relaunch on{" "}
+            <span className="text-white/62 font-medium">
+              {platformDisplayName(settings.capabilities.platform)}
             </span>
-            {settings.capabilities.supportsFormatting
-              ? " with Apple Intelligence enabled in System Settings."
-              : "."}
+            .
           </p>
+        </div>
+      )}
+
+      {formatting.available && (
+        <div className="mb-6 rounded-xl border border-white/11 bg-white/4 px-4 py-3.5">
+          <span className="block text-[17px] font-medium text-white/86 mb-2.5">
+            Formatter model
+          </span>
+          <div className="flex gap-2 mb-3">
+            {(
+              [
+                {
+                  tier: "fast" as FormatterModelTier,
+                  label: "Qwen2.5 3B",
+                  sublabel: "Fast · ~2 GB · multilingual",
+                },
+                {
+                  tier: "quality" as FormatterModelTier,
+                  label: "Qwen3 4B",
+                  sublabel: "Better quality · ~2.5 GB · 119 languages",
+                },
+              ] as const
+            ).map(({ tier, label, sublabel }) => {
+              const active = formatting.formatterModelTier === tier;
+              return (
+                <button
+                  key={tier}
+                  onClick={() => handleFormatterModelTierChange(tier)}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-left transition-colors cursor-pointer ${
+                    active
+                      ? "border-blue-400/40 bg-blue-500/16 text-white"
+                      : "border-white/12 bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/80"
+                  }`}
+                >
+                  <span className="block text-[15px] font-medium">{label}</span>
+                  <span className="block text-[13px] mt-0.5 opacity-70">
+                    {sublabel}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {!formatting.modelInstalled && (
+            <div>
+              <span className="block text-[15px] text-white/50 mb-2">
+                {formatting.formatterModelTier === "fast"
+                  ? "Qwen2.5 3B not downloaded yet."
+                  : "Qwen3 4B not downloaded yet."}
+              </span>
+              {modelDownload.error && (
+                <span className="mb-2 block text-[14px] text-rose-300/80">
+                  {modelDownload.error}
+                </span>
+              )}
+              {modelDownload.inFlight && (
+                <div className="mb-2 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-blue-400 transition-all duration-150"
+                    style={{ width: `${Math.round(effectiveFraction * 100)}%` }}
+                  />
+                </div>
+              )}
+              <div className="flex gap-2">
+                {modelDownload.inFlight ? (
+                  <button
+                    onClick={handleCancelFormatterDownload}
+                    className="rounded-lg border border-white/16 bg-white/8 px-3 py-1.5 text-[14px] text-white/80 hover:bg-white/12 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleDownloadFormatterModel}
+                    className="rounded-lg border border-blue-400/40 bg-blue-500/20 px-3 py-1.5 text-[14px] text-white hover:bg-blue-500/30 cursor-pointer"
+                  >
+                    Download
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {formatting.modelInstalled && (
+            <div className="flex items-center gap-2">
+              <span className="text-[14px] text-emerald-400/80">
+                ✓{" "}
+                {formatting.formatterModelTier === "fast"
+                  ? "Qwen2.5 3B"
+                  : "Qwen3 4B"}{" "}
+                installed
+              </span>
+              <button
+                onClick={handleDeleteFormatterModel}
+                className="ml-auto text-[13px] text-white/40 hover:text-white/70 cursor-pointer"
+              >
+                Remove
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -508,12 +658,6 @@ export function SectionFormatting({ settings }: Props) {
                   >
                     Formatting
                   </span>
-                  {!settings.capabilities.supportsFormatting && (
-                    <span className="mt-1.5 inline-flex rounded-full border border-amber-400/28 bg-amber-500/10 px-2 py-0.5 text-[13px] font-medium uppercase tracking-wide text-amber-100/75">
-                      Coming soon on{" "}
-                      {platformDisplayName(settings.capabilities.platform)}
-                    </span>
-                  )}
                   <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
                     Auto-detects the focused app and applies the matching
                     format. Works in standard recording mode only — not stream
@@ -523,7 +667,7 @@ export function SectionFormatting({ settings }: Props) {
                 </div>
                 <button
                   onClick={handleFormattingEnabledToggle}
-                  disabled={!formatting.available}
+                  disabled={!formatting.available || !formatting.modelInstalled}
                   className={`relative shrink-0 w-10 h-6 rounded-full transition-colors duration-200 cursor-pointer border disabled:cursor-not-allowed disabled:opacity-50 ${
                     effectiveOn
                       ? "border-blue-400/50 bg-white/10"
@@ -790,9 +934,9 @@ export function SectionFormatting({ settings }: Props) {
                   Light formatting only
                 </span>
                 <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
-                  Skips Apple Intelligence for Messages. Tidies spacing only;
-                  tone below then controls capitalization (Very casual =
-                  lowercase). Turn off for emoji and fuller rewrites.
+                  Skips the LLM rewrite for Messages. Tidies spacing only; tone
+                  below then controls capitalization (Very casual = lowercase).
+                  Turn off for emoji and fuller rewrites.
                 </span>
               </div>
               <button
@@ -863,10 +1007,10 @@ export function SectionFormatting({ settings }: Props) {
             />
           </div>
           <p className={settingsHelperClass}>
-            Applies in the Messages app. With Apple Intelligence off (light
-            formatting), only spacing and tone-driven caps apply. With it on,
-            Formal means heavier polish, Casual a lighter touch, and Very casual
-            the smallest rewrite.
+            Applies in the Messages app. With light formatting only, only
+            spacing and tone-driven caps apply. With the LLM on, Formal means
+            heavier polish, Casual a lighter touch, and Very casual the smallest
+            rewrite.
           </p>
         </div>
       )}
@@ -885,7 +1029,7 @@ export function SectionFormatting({ settings }: Props) {
                   Light formatting only
                 </span>
                 <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
-                  Skips Apple Intelligence for Slack. Tidies spacing; tone below
+                  Skips the LLM rewrite for Slack. Tidies spacing; tone below
                   then controls capitalization when Very casual is selected.
                   Turn off for markdown, emoji, and fuller rewrites.
                 </span>
@@ -994,9 +1138,9 @@ export function SectionFormatting({ settings }: Props) {
           </div>
           <p className={settingsHelperClass}>
             Applies in the Slack desktop app. With light formatting, only
-            spacing and tone-driven caps apply. With Apple Intelligence on,
-            Formal is a stronger polish, Casual a lighter touch, and Very casual
-            the smallest rewrite.
+            spacing and tone-driven caps apply. With the LLM on, Formal is a
+            stronger polish, Casual a lighter touch, and Very casual the
+            smallest rewrite.
           </p>
         </div>
       )}
@@ -1015,8 +1159,8 @@ export function SectionFormatting({ settings }: Props) {
                   Light formatting only
                 </span>
                 <span className="mt-0.5 block text-[17px] text-white/40 leading-snug">
-                  Skips Apple Intelligence for document apps. Tidies spacing;
-                  tone below then controls capitalization when Very casual is
+                  Skips the LLM rewrite for document apps. Tidies spacing; tone
+                  below then controls capitalization when Very casual is
                   selected. Turn off for structure choices and fuller rewrites.
                 </span>
               </div>

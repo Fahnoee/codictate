@@ -2,6 +2,7 @@ import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import type { PlatformProvider, PermissionType } from '../types'
+import { FORMATTER_MODEL_PATH } from '../runtime'
 
 const PERMISSION_URLS: Record<PermissionType, string> = {
   inputMonitoring:
@@ -52,17 +53,14 @@ export class MacOSPlatformProvider implements PlatformProvider {
   }
 
   isFormattingAvailable(): boolean {
-    try {
-      const result = Bun.spawnSync(['sw_vers', '-productVersion'], {
-        stdout: 'pipe',
-      })
-      if (result.exitCode !== 0) return false
-      const version = result.stdout.toString().trim()
-      const major = parseInt(version.split('.')[0], 10)
-      return !isNaN(major) && major >= 26
-    } catch {
-      return false
-    }
+    return resolveBinary(this.llamaBinaryCandidates()) !== null
+  }
+
+  private llamaBinaryCandidates(): string[] {
+    return [
+      join(import.meta.dir, '../native-helpers/llama-completion'),
+      join(process.cwd(), 'vendors/llama/llama-completion'),
+    ]
   }
 
   findKeyListenerBinary(): string {
@@ -109,18 +107,17 @@ export class MacOSPlatformProvider implements PlatformProvider {
     return resolveBinary(candidates)
   }
 
-  async findFormatterHelperBinary(): Promise<string> {
-    const candidates = [
-      join(import.meta.dir, '../native-helpers/CodictateFormatterHelper'),
-      join(process.cwd(), 'vendors/formatter/CodictateFormatterHelper'),
-      join(import.meta.dir, '../../utils/formatting/CodictateFormatterHelper'),
-    ]
-    const found = await resolveBinaryAsync(candidates)
+  async findLlamaBinary(): Promise<string> {
+    const found = await resolveBinaryAsync(this.llamaBinaryCandidates())
     if (!found)
       throw new Error(
-        'CodictateFormatterHelper not found. Run `bun run build:native` or `scripts/pre-build.ts`.'
+        'llama-completion not found. Run `bun scripts/pre-build.ts --llama-only` or `bun scripts/pre-build.ts`.'
       )
     return found
+  }
+
+  getFormatterModelPath(): string {
+    return FORMATTER_MODEL_PATH
   }
 
   findParakeetHelperBinary(): string {

@@ -56,11 +56,18 @@ export interface FormattingDocumentSettings {
   lightweight: boolean
 }
 
+export type FormatterModelTier = 'fast' | 'quality'
+
 export interface FormattingSettings {
   enabled: boolean
   enabledModes: FormattingEnabledModes
   forceModeId: FormattingModeId | null
+  /** Which formatter model tier the user has selected ('fast' = Qwen2.5 3B, 'quality' = Qwen3 4B). */
+  formatterModelTier: FormatterModelTier
+  /** Platform supports running the formatter at all (vendored llama-cli present). */
   available: boolean
+  /** Local formatter model GGUF for the selected tier has been downloaded. */
+  modelInstalled: boolean
   email: FormattingEmailSettings
   imessage: FormattingImessageSettings
   slack: FormattingSlackSettings
@@ -124,6 +131,7 @@ export interface FormattingRuntimeSettings {
   /** Transcription language ID (e.g. 'da', 'zh-cn', 'auto'). Passed to the formatter for locale hints. */
   transcriptionLanguageId: string
   userDisplayName: string
+  formatterModelTier: FormatterModelTier
   email: FormattingEmailSettings
   imessage: FormattingImessageSettings
   slack: FormattingSlackSettings
@@ -256,6 +264,7 @@ export interface FormattingSettingsPatch {
   enabled?: boolean
   enabledModes?: Partial<FormattingEnabledModes>
   forceModeId?: FormattingModeId | null
+  formatterModelTier?: FormatterModelTier
   email?: Partial<FormattingEmailSettings>
   imessage?: Partial<FormattingImessageSettings>
   slack?: Partial<FormattingSlackSettings>
@@ -313,13 +322,20 @@ export type WebviewRPCType = {
       windowMinimize: {}
       windowToggleMaximize: {}
       windowClose: {}
-      windowResizeStart: { edge: WindowResizeEdge; screenX: number; screenY: number }
+      windowResizeStart: {
+        edge: WindowResizeEdge
+        screenX: number
+        screenY: number
+      }
       windowResizeMove: { screenX: number; screenY: number }
       windowResizeEnd: {}
       copyDebugLog: {}
       downloadWhisperModel: { modelId: string }
       cancelModelDownload: { modelId: string }
       deleteWhisperModel: { modelId: string }
+      downloadFormatterModel: {}
+      cancelFormatterModelDownload: {}
+      deleteFormatterModel: {}
     }
   }>
   webview: RPCSchema<{
@@ -338,6 +354,11 @@ export type WebviewRPCType = {
         error?: string
       }
       updateModelAvailability: { modelId: string; available: boolean }
+      updateFormatterModelProgress: {
+        progressFraction: number
+        done: boolean
+        error?: string
+      }
     }
   }>
 }

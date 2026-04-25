@@ -1,5 +1,6 @@
 import type {
   FocusedAppContext,
+  FormatterModelTier,
   FormattingRuntimeSettings,
 } from '../../../shared/types'
 import {
@@ -16,6 +17,7 @@ export interface FormatterRequest {
   /** Transcription language ID ('da', 'zh-cn', 'auto', …). Used by the formatter for locale hints. */
   transcriptionLanguage: string
   userDisplayName: string
+  formatterModelTier: FormatterModelTier
   // Email
   emailIncludeSenderName: boolean
   emailGreetingStyle: FormattingRuntimeSettings['email']['greetingStyle']
@@ -173,6 +175,7 @@ function buildRequest(
     transcript,
     transcriptionLanguage: settings.transcriptionLanguageId,
     userDisplayName: settings.userDisplayName.trim(),
+    formatterModelTier: settings.formatterModelTier,
     emailIncludeSenderName: settings.email.includeSenderName,
     emailGreetingStyle: settings.email.greetingStyle,
     emailClosingStyle: settings.email.closingStyle,
@@ -199,18 +202,34 @@ export async function buildFormatterRequest(
   // Force mode bypasses both the master switch and per-mode toggles.
   if (settings.forceModeId !== null) {
     const focusedApp = await getFocusedAppContext()
+    log('formatter', 'force mode active', {
+      forceModeId: settings.forceModeId,
+      focusedApp: focusedApp?.appName,
+    })
     return buildRequest(settings.forceModeId, transcript, settings, focusedApp)
   }
 
-  if (!settings.enabled) return null
+  if (!settings.enabled) {
+    log('formatter', 'skip: master switch off')
+    return null
+  }
 
   const focusedApp = await getFocusedAppContext()
   for (const modeId of FORMATTING_MODE_ORDER) {
     if (!settings.enabledModes[modeId]) continue
     if (appMatchesMode(modeId, focusedApp)) {
+      log('formatter', 'matched mode', {
+        modeId,
+        focusedApp: focusedApp?.appName,
+      })
       return buildRequest(modeId, transcript, settings, focusedApp)
     }
   }
 
+  log('formatter', 'skip: no enabled mode matches focused app', {
+    focusedApp: focusedApp?.appName,
+    bundleIdentifier: focusedApp?.bundleIdentifier,
+    enabledModes: settings.enabledModes,
+  })
   return null
 }

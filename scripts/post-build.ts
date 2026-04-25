@@ -170,13 +170,10 @@ const helperEntitlementsByBasename: Record<string, string> = {
   KeyListener: join(entitlementsRoot, "KeyListener.entitlements"),
   MicRecorder: join(entitlementsRoot, "MicRecorder.entitlements"),
   "whisper-cli": join(entitlementsRoot, "whisper-cli.entitlements"),
+  "llama-completion": join(entitlementsRoot, "llama-completion.entitlements"),
   CodictateWindowHelper: join(
     entitlementsRoot,
     "CodictateWindowHelper.entitlements",
-  ),
-  CodictateFormatterHelper: join(
-    entitlementsRoot,
-    "CodictateFormatterHelper.entitlements",
   ),
   CodictateParakeetHelper: join(
     entitlementsRoot,
@@ -265,7 +262,7 @@ verifyRequiredHelperExecutable(
   "Re-run: bun run scripts/pre-build.ts",
 );
 verifyRequiredHelperExecutable(
-  "CodictateFormatterHelper",
+  "llama-completion",
   "Re-run: bun run scripts/pre-build.ts",
 );
 verifyRequiredHelperExecutable(

@@ -1,4 +1,8 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type {
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from "react";
 import { useCallback, useEffect, useState } from "react";
 import type { PlatformRuntime } from "../../../shared/platform";
 import type { WindowResizeEdge } from "../../../shared/types";
@@ -22,13 +26,41 @@ const RESIZE_HANDLES: {
   cursor: string;
 }[] = [
   { edge: "top", className: "top-0 left-2 right-2 h-1.5", cursor: "ns-resize" },
-  { edge: "right", className: "top-2 right-0 bottom-2 w-1.5", cursor: "ew-resize" },
-  { edge: "bottom", className: "bottom-0 left-2 right-2 h-1.5", cursor: "ns-resize" },
-  { edge: "left", className: "top-2 left-0 bottom-2 w-1.5", cursor: "ew-resize" },
-  { edge: "top-left", className: "top-0 left-0 h-3 w-3", cursor: "nwse-resize" },
-  { edge: "top-right", className: "top-0 right-0 h-3 w-3", cursor: "nesw-resize" },
-  { edge: "bottom-right", className: "bottom-0 right-0 h-3 w-3", cursor: "nwse-resize" },
-  { edge: "bottom-left", className: "bottom-0 left-0 h-3 w-3", cursor: "nesw-resize" },
+  {
+    edge: "right",
+    className: "top-2 right-0 bottom-2 w-1.5",
+    cursor: "ew-resize",
+  },
+  {
+    edge: "bottom",
+    className: "bottom-0 left-2 right-2 h-1.5",
+    cursor: "ns-resize",
+  },
+  {
+    edge: "left",
+    className: "top-2 left-0 bottom-2 w-1.5",
+    cursor: "ew-resize",
+  },
+  {
+    edge: "top-left",
+    className: "top-0 left-0 h-3 w-3",
+    cursor: "nwse-resize",
+  },
+  {
+    edge: "top-right",
+    className: "top-0 right-0 h-3 w-3",
+    cursor: "nesw-resize",
+  },
+  {
+    edge: "bottom-right",
+    className: "bottom-0 right-0 h-3 w-3",
+    cursor: "nwse-resize",
+  },
+  {
+    edge: "bottom-left",
+    className: "bottom-0 left-0 h-3 w-3",
+    cursor: "nesw-resize",
+  },
 ];
 
 function ControlButton({
@@ -87,11 +119,17 @@ export function WindowTitleBar({
       setResizeEdge(null);
       windowResizeEnd();
     };
-    window.addEventListener("pointermove", handleMove as unknown as EventListener);
+    window.addEventListener(
+      "pointermove",
+      handleMove as unknown as EventListener,
+    );
     window.addEventListener("pointerup", handleEnd);
     window.addEventListener("pointercancel", handleEnd);
     return () => {
-      window.removeEventListener("pointermove", handleMove as unknown as EventListener);
+      window.removeEventListener(
+        "pointermove",
+        handleMove as unknown as EventListener,
+      );
       window.removeEventListener("pointerup", handleEnd);
       window.removeEventListener("pointercancel", handleEnd);
       windowResizeEnd();

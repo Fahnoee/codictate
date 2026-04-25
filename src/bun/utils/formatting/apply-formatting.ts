@@ -1,6 +1,31 @@
 import { log } from '../logger'
-import { findFormatterHelperPath } from './formatting-availability'
+import { assembleEmail } from './assemble-email'
+import {
+  FormatterBinaryNotFoundError,
+  FormatterModelNotInstalledError,
+  runLlamaFormatter,
+} from './llama-runner'
+import {
+  buildDocumentInstructions,
+  buildDocumentUserPrompt,
+  buildEmailInstructions,
+  buildEmailUserPrompt,
+  buildIMessageInstructions,
+  buildIMessageUserPrompt,
+  buildSlackInstructions,
+  buildSlackUserPrompt,
+} from './prompts'
 import type { FormatterRequest } from './resolve-formatting-request'
+import {
+  documentSchema,
+  emailSchema,
+  imessageSchema,
+  slackSchema,
+  type FormattedDocument,
+  type FormattedEmail,
+  type FormattedIMessage,
+  type FormattedSlack,
+} from './schemas'
 
 function normaliseLightweightChatText(text: string): string {
   return text
@@ -39,10 +64,72 @@ function shouldBypassAiFormatting(request: FormatterRequest): boolean {
   )
 }
 
+async function runModelForMode(request: FormatterRequest): Promise<string> {
+  switch (request.modeId) {
+    case 'email': {
+      const result = await runLlamaFormatter<FormattedEmail>({
+        systemPrompt: buildEmailInstructions(request),
+        userPrompt: buildEmailUserPrompt(request),
+        schema: emailSchema,
+        modelTier: request.formatterModelTier,
+        debugTag: 'email',
+      })
+      // Sender is fully user-controlled: their display name when they opted
+      // in, otherwise none. The model never gets to invent one.
+      const senderNameOverride = request.emailIncludeSenderName
+        ? request.userDisplayName.trim()
+        : ''
+      return assembleEmail(result, {
+        senderNameOverride,
+        userDisplayName: request.userDisplayName.trim(),
+        originalTranscript: request.transcript,
+        transcriptionLanguage: request.transcriptionLanguage,
+        greetingStyle: request.emailGreetingStyle,
+        closingStyle: request.emailClosingStyle,
+        customGreeting: request.emailCustomGreeting,
+        customClosing: request.emailCustomClosing,
+      })
+    }
+    case 'imessage': {
+      const result = await runLlamaFormatter<FormattedIMessage>({
+        systemPrompt: buildIMessageInstructions(request),
+        userPrompt: buildIMessageUserPrompt(request),
+        schema: imessageSchema,
+        modelTier: request.formatterModelTier,
+        debugTag: 'imessage',
+      })
+      return result.message.trim()
+    }
+    case 'slack': {
+      const result = await runLlamaFormatter<FormattedSlack>({
+        systemPrompt: buildSlackInstructions(request),
+        userPrompt: buildSlackUserPrompt(request),
+        schema: slackSchema,
+        modelTier: request.formatterModelTier,
+        debugTag: 'slack',
+      })
+      return result.message.trim()
+    }
+    case 'document': {
+      const result = await runLlamaFormatter<FormattedDocument>({
+        systemPrompt: buildDocumentInstructions(request),
+        userPrompt: buildDocumentUserPrompt(request),
+        schema: documentSchema,
+        modelTier: request.formatterModelTier,
+        debugTag: 'document',
+      })
+      const title = result.title.trim()
+      const body = result.body.trim()
+      if (title && body) return `${title}\n\n${body}`
+      return body || request.transcript
+    }
+  }
+}
+
 /**
- * Calls CodictateFormatterHelper to reformat `text` using Apple FoundationModels.
- * Returns the formatted text on success, or the original `text` on any failure
- * (missing binary, macOS < 26, Apple Intelligence unavailable, etc.).
+ * Reformats `request.transcript` via the local llama.cpp formatter model.
+ * Returns the formatted text on success, or the original transcript on any
+ * failure (missing binary, missing model, runtime error, parse failure).
  */
 export async function applyFormatting(
   request: FormatterRequest
@@ -66,81 +153,36 @@ export async function applyFormatting(
   }
 
   try {
-    const helper = await findFormatterHelperPath()
-    const payload = JSON.stringify(request)
-
-    log('formatter', 'spawning CodictateFormatterHelper', {
+    log('formatter', 'invoking llama-cli', {
       modeId: request.modeId,
-      helper,
       focusedApp: request.focusedApp?.appName,
     })
 
-    const proc = Bun.spawn([helper, '--request', payload], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-
-    const [stdoutBytes, stderrBytes] = await Promise.all([
-      readStream(proc.stdout),
-      readStream(proc.stderr),
-    ])
-    await proc.exited
-
-    const stderrText = new TextDecoder('utf-8').decode(stderrBytes).trim()
-    if (stderrText) {
-      log('formatter', 'helper stderr', { text: stderrText.slice(0, 500) })
-    }
-
-    if (proc.exitCode !== 0) {
-      log(
-        'formatter',
-        'helper exited with non-zero code — using raw transcript',
-        {
-          exitCode: proc.exitCode,
-        }
-      )
-      return request.transcript
-    }
-
-    const formatted = applyDeterministicChatStyle(
-      new TextDecoder('utf-8').decode(stdoutBytes),
-      request
-    )
+    const rawOutput = await runModelForMode(request)
+    const formatted = applyDeterministicChatStyle(rawOutput, request)
     if (!formatted) {
-      log('formatter', 'empty output from helper — using raw transcript')
+      log('formatter', 'empty output from model — using raw transcript')
       return request.transcript
     }
-
     log('formatter', 'formatting complete', {
       originalLength: request.transcript.length,
       formattedLength: formatted.length,
     })
     return formatted
   } catch (err) {
-    log('formatter', 'failed to spawn helper — using raw transcript', {
-      error: String(err),
-    })
+    if (err instanceof FormatterModelNotInstalledError) {
+      log('formatter', 'model not installed — using raw transcript', {
+        path: err.modelPath,
+      })
+    } else if (err instanceof FormatterBinaryNotFoundError) {
+      log('formatter', 'llama-cli missing — using raw transcript', {
+        error: err.message,
+      })
+    } else {
+      log('formatter', 'llama-cli run failed — using raw transcript', {
+        error: String(err),
+      })
+    }
     return request.transcript
   }
-}
-
-async function readStream(
-  stream: ReadableStream<Uint8Array> | undefined
-): Promise<Uint8Array> {
-  if (!stream) return new Uint8Array(0)
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value?.length) chunks.push(value)
-  }
-  const total = chunks.reduce((a, b) => a + b.length, 0)
-  const out = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    out.set(chunk, offset)
-    offset += chunk.length
-  }
-  return out
 }
