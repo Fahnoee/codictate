@@ -92,7 +92,7 @@ export default {
     },
     win: {
       bundleCEF: false,
-      icon: "src/assets/images/MacDocIcon.png",
+      icon: "src/assets/images/MacDocIcon.ico",
     },
   },
   release: {
