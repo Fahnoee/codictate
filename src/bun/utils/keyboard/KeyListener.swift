@@ -3,6 +3,16 @@ import AVFoundation
 import Cocoa
 import Foundation
 
+// One-shot permission check — exits immediately so the Bun host gets a fresh
+// snapshot without keeping a long-lived process (which can cache stale TCC state).
+if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "--check-permissions" {
+    let ax = AXIsProcessTrusted()
+    let im = CGPreflightListenEventAccess()
+    let mic = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+    print("{\"accessibility\": \(ax), \"inputMonitoring\": \(im), \"microphone\": \(mic)}")
+    exit(0)
+}
+
 // Read config from stdin (first line) before the command thread consumes stdin.
 var swallowRules: [[String: Any]] = []
 if let line = readLine(),

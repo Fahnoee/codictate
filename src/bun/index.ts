@@ -6,6 +6,7 @@ import type { PermissionState, SettingsPane } from '../shared/types'
 import { findDevices } from './utils/audio/devices'
 import { duckDelayAfterStartChimeMs } from './utils/sound/play-sound'
 import { checkMicrophoneAuthorization } from './utils/audio/check-mic-authorization'
+import { checkNativePermissions } from './utils/keyboard/check-native-permissions'
 import { AppConfig } from './AppConfig/AppConfig'
 import { setupApplicationMenu } from './setup-menu'
 import { setupTray } from './setup-tray'
@@ -171,17 +172,27 @@ const win = setupWindow({
   openWindowOnLaunch: true,
   getCurrentDevices: () => devices,
   getPermissions: async () => {
+    let accessibility = currentPermissions.accessibility
+    let inputMonitoring = currentPermissions.inputMonitoring
     let microphone = currentPermissions.microphone
     try {
-      microphone = await checkMicrophoneAuthorization()
+      const fresh = await checkNativePermissions()
+      accessibility = fresh.accessibility
+      inputMonitoring = fresh.inputMonitoring
+      microphone = fresh.microphone
     } catch {
-      /* MicRecorder unavailable — leave previous value */
+      // KeyListener binary unavailable — fall back to mic-only check
+      try {
+        microphone = await checkMicrophoneAuthorization()
+      } catch {
+        /* MicRecorder also unavailable — keep previous values */
+      }
     }
+    const nativeSlice = { accessibility, inputMonitoring, microphone }
     currentPermissions = {
-      ...currentPermissions,
-      microphone,
+      ...nativeSlice,
       documents: mergeDocumentsField(
-        currentPermissions,
+        nativeSlice,
         currentPermissions.documents
       ),
     }
@@ -232,19 +243,20 @@ const win = setupWindow({
       Bun.spawn(['open', INPUT_MONITORING_PREFS_URL])
       return
     }
+    if (pane === 'documents') {
+      if (shouldProbeDocuments(currentPermissions)) {
+        currentPermissions = {
+          ...currentPermissions,
+          documents: checkDocumentsPermission(),
+        }
+        win.send.updatePermissions(currentPermissions)
+      }
+      return
+    }
     if (!keyboard.isAlive) return
     switch (pane) {
       case 'accessibility':
         keyboard.promptAccessibility()
-        break
-      case 'documents':
-        if (shouldProbeDocuments(currentPermissions)) {
-          currentPermissions = {
-            ...currentPermissions,
-            documents: checkDocumentsPermission(),
-          }
-          win.send.updatePermissions(currentPermissions)
-        }
         break
       case 'microphone':
         keyboard.requestMicrophone()

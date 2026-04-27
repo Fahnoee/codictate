@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { PermissionState } from "../../app-events";
 import type { SettingsPane } from "../../../shared/types";
@@ -60,28 +60,18 @@ export function PermissionScreen({
   ).length;
   const allGranted = grantedCount === 4;
   const activePane = firstMissingPane(permissions);
-  const promptedPanes = useRef(new Set<SettingsPane>());
 
   useEffect(() => {
-    for (const pane of PERMISSION_ORDER) {
-      if (permissions[pane]) promptedPanes.current.delete(pane);
-    }
     if (allGranted || !activePane) return;
     // Input Monitoring is the last step. The user clicks "Allow →" to trigger
     // CGRequestListenEventAccess() via keyboard.requestInputMonitoringPrompt().
     // Never auto-trigger — the system dialog must only appear when the user asks.
     if (activePane === "inputMonitoring") return;
-    if (promptedPanes.current.has(activePane)) return;
-    promptedPanes.current.add(activePane);
+    // Native prompts are idempotent (macOS shows each dialog at most once), so
+    // re-sending the command on every step transition is safe and ensures the
+    // prompt fires even if KeyListener was still starting on the first attempt.
     triggerPermissionPrompt(activePane);
-  }, [
-    activePane,
-    allGranted,
-    permissions.inputMonitoring,
-    permissions.accessibility,
-    permissions.documents,
-    permissions.microphone,
-  ]);
+  }, [activePane, allGranted]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-codictate-page text-white select-none px-6 overflow-hidden">
