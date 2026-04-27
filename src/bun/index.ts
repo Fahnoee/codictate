@@ -145,8 +145,23 @@ const pushInitialState = () => {
 }
 
 const onApplyUpdate = async () => {
-  if (Updater.updateInfo()?.updateReady) {
+  if (!Updater.updateInfo()?.updateReady) {
+    // UI state is stale — re-run the full check so state syncs back up.
+    void checkForUpdates()
+    return
+  }
+  try {
     await Updater.applyUpdate()
+  } catch (e) {
+    console.error('Failed to apply update:', e)
+    try {
+      win.send.updateCheckStatus({
+        state: 'error',
+        message: 'Failed to apply update. Please restart the app manually.',
+      })
+    } catch {
+      /* window may be closed */
+    }
   }
 }
 
