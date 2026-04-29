@@ -31,7 +31,13 @@ Grab the latest build from [**Releases**](https://github.com/EmilLykke/codictate
 
 ## Installation
 
-### macOS
+### macOS (Homebrew)
+
+```bash
+brew install emillykke/tap/codictate
+```
+
+### macOS (manual)
 
 1. Download the `.dmg` and drag **Codictate** to Applications
 2. Open Codictate and grant the requested permissions (Input Monitoring, Accessibility, Microphone)

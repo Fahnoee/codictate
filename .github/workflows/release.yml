@@ -215,3 +215,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false
+
+  # ── Update Homebrew tap ──────────────────────────────────────────────────────
+  update-homebrew:
+    needs: publish
+    if: ${{ !contains(github.ref_name, 'canary') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: EmilLykke/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update cask version and SHA256
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DMG_URL="https://github.com/EmilLykke/codictate/releases/download/${GITHUB_REF_NAME}/stable-macos-arm64-Codictate.dmg"
+          SHA256=$(curl -sL "$DMG_URL" | shasum -a 256 | cut -d' ' -f1)
+
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" Casks/codictate.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/codictate.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/codictate.rb
+          git diff --cached --quiet || (git commit -m "codictate ${GITHUB_REF_NAME}" && git push)
