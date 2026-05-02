@@ -40,6 +40,7 @@ if (isWindowsHost) {
   buildCopy["vendors/whisper/ggml-large-v3-turbo-q5_0.bin"] =
     "native-helpers/ggml-large-v3-turbo-q5_0.bin";
   buildCopy["vendors/windows/TrayIcon.ico"] = "images/TrayIcon.ico";
+  buildCopy["src/assets/images/MacDocIcon.ico"] = "images/WindowsAppIcon.ico";
 } else {
   buildCopy["src/bun/utils/keyboard/KeyListener"] =
     "native-helpers/KeyListener";
