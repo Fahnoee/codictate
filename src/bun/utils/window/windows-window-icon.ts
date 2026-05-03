@@ -14,24 +14,22 @@ type WindowWithPtr = {
   ptr: Pointer
 }
 
-let user32:
-  | ReturnType<
-      typeof dlopen<{
-        LoadImageW: {
-          args: ['ptr', 'ptr', 'u32', 'i32', 'i32', 'u32']
-          returns: 'ptr'
-        }
-        SendMessageW: {
-          args: ['ptr', 'u32', 'usize', 'ptr']
-          returns: 'ptr'
-        }
-        SetClassLongPtrW: {
-          args: ['ptr', 'i32', 'ptr']
-          returns: 'ptr'
-        }
-      }>
-    >
-  | null = null
+let user32: ReturnType<
+  typeof dlopen<{
+    LoadImageW: {
+      args: ['ptr', 'ptr', 'u32', 'i32', 'i32', 'u32']
+      returns: 'ptr'
+    }
+    SendMessageW: {
+      args: ['ptr', 'u32', 'usize', 'ptr']
+      returns: 'ptr'
+    }
+    SetClassLongPtrW: {
+      args: ['ptr', 'i32', 'ptr']
+      returns: 'ptr'
+    }
+  }>
+> | null = null
 
 function getUser32() {
   user32 ??= dlopen('user32.dll', {

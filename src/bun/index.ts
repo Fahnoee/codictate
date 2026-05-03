@@ -191,10 +191,7 @@ const win = setupWindow({
     const nativeSlice = { accessibility, inputMonitoring, microphone }
     currentPermissions = {
       ...nativeSlice,
-      documents: mergeDocumentsField(
-        nativeSlice,
-        currentPermissions.documents
-      ),
+      documents: mergeDocumentsField(nativeSlice, currentPermissions.documents),
     }
     if (keyboard.isAlive) keyboard.checkPermissions()
     return currentPermissions
