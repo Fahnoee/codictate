@@ -23,6 +23,7 @@ import { isTranslateCapableModelId } from '../shared/whisper-models'
 import { DEFAULT_STREAM_CAPABLE_MODEL_ID } from '../shared/speech-models'
 import { warmupParakeet } from './utils/whisper/speech2text'
 import { getPlatformRuntime } from './platform/runtime'
+import { setWindowsWindowIcon } from './utils/window/windows-window-icon'
 
 interface WindowDeps {
   url: string
@@ -384,6 +385,7 @@ export function setupWindow(deps: WindowDeps): WindowHandle {
       titleBarStyle,
       rpc,
     })
+    setWindowsWindowIcon(win)
     return win
   }
 
