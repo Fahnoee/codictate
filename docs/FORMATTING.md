@@ -27,8 +27,6 @@ Falls back to raw transcript if the binary is missing, the OS is older than macO
 
 ## Architecture
 
-Both backends use constrained structured generation to produce reliable, parseable output. The llama.cpp backend uses `--json-schema` (GBNF grammar internally). The Apple backend uses `@Generable` structured output.
-
 Before invoking either backend, the Bun process captures the frontmost application via `osascript`. This context is included in the prompt and drives **auto-select** — when enabled, Codictate switches automatically to email mode when a recognised mail client is in focus (Mail, Outlook, Spark, Superhuman, Mimestream, etc.).
 
 ## Settings
@@ -46,10 +44,3 @@ Stored in `~/Library/Application Support/codictate/main-config.json`.
 | Include sender name | `formattingEmailIncludeSenderName` | `false` |
 | User display name | `userDisplayName` | `""` |
 
-## Building the Apple backend helper
-
-```bash
-bun run build:native   # builds all Swift helpers including CodictateFormatterHelper
-```
-
-The binary is vendored to `vendors/formatter/CodictateFormatterHelper` and copied into the app bundle by `electrobun.config.ts`.

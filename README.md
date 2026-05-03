@@ -77,7 +77,7 @@ See **[docs/FORMATTING.md](docs/FORMATTING.md)** for details.
 - [Bun](https://bun.sh) v1.3+
 - [cmake](https://cmake.org) — builds `whisper-cli` and `llama-completion` (both platforms)
 - Xcode Command Line Tools — Swift compilation (macOS only)
-- Rust toolchain — builds `CodictateWindowsHelper` (Windows only)
+- Rust toolchain — macOS: NeMo ITN for `CodictateParakeetHelper`; Windows: `CodictateWindowsHelper`
 - Vulkan SDK — GPU acceleration for whisper/llama on Windows (install [LunarG Vulkan SDK](https://vulkan.lunarg.com), ensure `glslc` is on PATH)
 
 ### Setup
@@ -91,7 +91,7 @@ bun run scripts/pre-build.ts   # downloads and builds vendor binaries + Whisper 
 
 ```bash
 # macOS
-bun run dev          # no HMR
+bun run start        # dev mode
 bun run dev:hmr      # with HMR
 
 # Windows

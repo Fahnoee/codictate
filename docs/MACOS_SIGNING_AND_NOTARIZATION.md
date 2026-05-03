@@ -1,6 +1,6 @@
 # macOS Signing and Notarization
 
-Release builds are signed and notarized automatically by CI. This document is for local signing or debugging notarization failures.
+Release builds are signed and notarized automatically by CI. For local signing or debugging notarization failures:
 
 ## Requirements
 

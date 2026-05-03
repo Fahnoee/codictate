@@ -1,43 +1,64 @@
 # Contributing
 
-Thanks for contributing to Codictate.
+## Getting started
 
-## Before you start
+Fork the repo, make your changes on a branch, and open a pull request. For substantial changes, open an issue first so we can align before you invest time.
 
-- Open an issue for substantial changes before investing time in implementation.
-- Keep pull requests focused. Small, reviewable changes land faster.
-- Follow the existing code style and project structure.
+After your first merged PR you'll be added to [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
-## Development setup
+## Setup
 
-```bash
-bun install
-bun run dev:hmr (or simply bun run start)
-```
+### macOS
 
-Requirements:
-
-- macOS on Apple Silicon
-- Bun v1.3+
-- Xcode Command Line Tools
-- `cmake` for vendoring `whisper-cli`
-- Xcode (Swift toolchain) for vendoring `CodictateParakeetHelper` (Parakeet / Core ML stream + one-shot path)
-- [Rust / cargo](https://rustup.rs) for NeMo inverse text normalization ([FluidInference/text-processing-rs](https://github.com/FluidInference/text-processing-rs)), linked into the Parakeet helper
+**Requirements:** Bun v1.3+, Xcode Command Line Tools, cmake, Rust toolchain
 
 ```bash
 brew install cmake sdl2
+bun install
+bun run start          # or bun run dev:hmr for HMR
 ```
 
-> **Note:** Stream mode uses the Parakeet Core ML model (user download, ~2.5 GB) plus the `CodictateParakeetHelper` binary built in `scripts/pre-build.ts` (FluidAudio + NeMo ITN from text-processing-rs). Whisper models still use vendored `whisper-cli`.
+### Windows (x64)
 
-If you need signing or notarization for local release testing, copy `.env.example` to `.env` and fill in your Apple developer credentials.
+**Requirements:** Bun v1.3+, cmake, Rust toolchain, [LunarG Vulkan SDK](https://vulkan.lunarg.com) (ensure `glslc` is on `PATH`)
+
+Vulkan is required to build `whisper-cli` and `llama-completion` with GPU support.
+
+```bash
+bun install
+bun run start:windows
+```
+
+## Building
+
+```bash
+# macOS
+bun run build:canary
+bun run build:stable
+```
+
+Windows releases build through CI (`build-windows.yml`) — use `start:windows` for local dev. Unsigned builds work without any `.env` setup. For signed macOS builds, copy `.env.example` to `.env` — see [docs/MACOS_SIGNING_AND_NOTARIZATION.md](docs/MACOS_SIGNING_AND_NOTARIZATION.md).
+
+## CI
+
+Pushing a `v*` tag triggers `release.yml`, which builds macOS and Windows in parallel and publishes the GitHub Release. Use `build-macos.yml` / `build-windows.yml` for manual one-off builds.
 
 ## Pull requests
 
 - Describe the user-facing change and how you tested it.
-- Update docs when behavior, installation, or release flow changes.
-- Avoid mixing refactors with unrelated fixes.
+- Update docs when behavior, setup, or release flow changes.
+- Don't mix refactors with unrelated fixes.
 
-## License for contributions
+## We're looking for contributors
 
-By submitting a contribution, you agree that your work will be licensed under the Apache License 2.0.
+| Area | Notes |
+|------|-------|
+| **Windows ARM64** | No hardware available — untested |
+| **Linux** | We plan to test this ourselves, but contributions are welcome |
+| **Windows dev setup** | Additional platform testing and edge-case fixes |
+
+If you can help with any of these, open an issue to coordinate before starting.
+
+## License
+
+By submitting a contribution, you agree your work will be licensed under the Apache License 2.0.

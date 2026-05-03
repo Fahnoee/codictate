@@ -44,7 +44,6 @@ Build: `bun run build:native:windows-helper` (Cargo).
 
 ## Checklist
 
-- If fullscreen behaviour regresses on macOS: check the native helper, not Electrobun `BrowserWindow`
-- If the indicator won't launch on macOS: verify `vendors/window-helper/CodictateWindowHelper` exists (run `bun run build:native`)
-- If the indicator won't launch on Windows: verify `CodictateWindowsHelper.exe` is built (`bun run build:native:windows-helper`)
-- If macOS notarization fails: check `scripts/post-build.ts` and `entitlements/CodictateWindowHelper.entitlements`
+- Indicator won't launch on macOS: verify `vendors/window-helper/CodictateWindowHelper` exists (`bun run build:native`)
+- Indicator won't launch on Windows: verify `CodictateWindowsHelper.exe` is built (`bun run build:native:windows-helper`)
+- macOS notarization fails: check `scripts/post-build.ts` and `entitlements/CodictateWindowHelper.entitlements`

@@ -1,8 +1,4 @@
-# AeroSpace (tiling window manager)
-
-For how the recording HUD is implemented in the app, see **[RECORDING_INDICATOR.md](./RECORDING_INDICATOR.md)**.
-
-The current HUD is a native AppKit `NSPanel` managed by the `CodictateWindowHelper` process. That native implementation is what made fullscreen Spaces and AeroSpace behave properly. There is no AeroSpace-specific app config in Codictate that enables this.
+# AeroSpace
 
 If you use [AeroSpace](https://github.com/nikitabobko/AeroSpace) on macOS, Codictate opens two kinds of windows:
 
